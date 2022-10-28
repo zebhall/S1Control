@@ -79,19 +79,19 @@ def recvData(s):
         datatype = '1'
         return data, datatype
 
-    elif (header[4:6] == b'\x02\x80'):          # 2 - RESULTS SET (don't really know when this is used?)
+    if (header[4:6] == b'\x02\x80'):          # 2 - RESULTS SET (don't really know when this is used?)
         datatype = '2'
         return data, datatype
 
-    elif (header[4:6] == b'\x03\x80'):          # 3 - RAW SPECTRUM
+    if (header[4:6] == b'\x03\x80'):          # 3 - RAW SPECTRUM
         datatype = '3'
         return data, datatype
 
-    elif (header[4:6] == b'\x04\x80'):          # 4 - PDZ FILENAME
+    if (header[4:6] == b'\x04\x80'):          # 4 - PDZ FILENAME
         datatype = '4'
         return data, datatype
 
-    elif (header[4:6] == b'\x17\x80'):          # 5 - XML PACKET (Response, results?)
+    if (header[4:6] == b'\x17\x80'):          # 5 - XML PACKET (Response, results?)
         datatype = '5'
         data = data.decode("utf-8").replace('\n','').replace('\r','').replace('\t','')
         data = xmltodict.parse(data)
@@ -99,7 +99,7 @@ def recvData(s):
             datatype = '5a'                     # 5a - XML PACKET, 'Logged in' response
         return data, datatype
 
-    elif (header[4:6] == b'\x18\x80'):          # 6 - STATUS CHANGE     (i.e. trigger pulled/released, assay start/stop/complete, phase change, etc.)
+    if (header[4:6] == b'\x18\x80'):          # 6 - STATUS CHANGE     (i.e. trigger pulled/released, assay start/stop/complete, phase change, etc.)
         datatype = '6'
         return data, datatype
 
@@ -167,11 +167,11 @@ def instrument_GetInfo():
     # print(data_size)
     # data = recvData(s, data_size)
     # footer = recvData(s, 4)
-    # XML Packet Received / Status Change
+    #XML Packet Received / Status Change
 
     data, datatype = recvData(s)
 
-    if datatype == 5:   # If XML packet
+    if datatype == '5' or datatype == '5a':   # If XML packet
         #print(msg)
         # If it returns valid IDF data
         if ('Response' in data) and ('@parameter' in data['Response']) and (data['Response']['@parameter'] == 'instrument definition') and (data['Response']['@status'] == 'success'):
@@ -291,16 +291,15 @@ def loginClicked():
     instrument_Login()
 
 def getInfoClicked():
-    instrument_GetInfo()
-    #listen_thread = threading.Thread(target = instrument_GetInfo)
-    #listen_thread.start()
+    #instrument_GetInfo()
+    getinfo_thread = threading.Thread(target = instrument_GetInfo).start()
 
 def startAssayClicked():
     instrument_StartAssay()
 
 def listenLoopThreading():
-    listen_thread = threading.Thread(target = xrfListenLoop)
-    listen_thread.start()
+    listen_thread1 = threading.Thread(target = xrfListenLoop).start()
+
 
 
 
@@ -352,7 +351,7 @@ textfg1 = CHARCOAL
 button_inst_reconnect = tk.Button(width = 15, text = "Login", font = consolas10, fg = buttonfg1, bg = buttonbg1, command = loginClicked).pack(ipadx=8,ipady=2)
 button_inst_startassay = tk.Button(width = 15, text = "Start Assay", font = consolas10, fg = buttonfg2, bg = buttonbg2, command = startAssayClicked).pack(ipadx=8,ipady=2)
 button_inst_startlistener = tk.Button(width = 15, text = "start listen", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = listenLoopThreading).pack(ipadx=8,ipady=2)
-button_inst_startlistener = tk.Button(width = 15, text = "get instdef", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = getInfoClicked).pack(ipadx=8,ipady=2)
+button_inst_getinstdef = tk.Button(width = 15, text = "get instdef", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = getInfoClicked).pack(ipadx=8,ipady=2)
 
 
 
