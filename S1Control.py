@@ -1,6 +1,6 @@
 # S1Control by ZH for PSS
-versionNum = 'v0.0.2'
-versionDate = '2022/10/25'
+versionNum = 'v0.0.3'
+versionDate = '2022/11/22'
 
 import socket
 import xmltodict
@@ -12,6 +12,7 @@ import sys
 import threading
 import time
 import hashlib
+import pandas as pd
 
 
 
@@ -21,19 +22,20 @@ s =  socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 s.connect((XRF_IP, XRF_PORT))
 
 
+
 # BRUKER API COMMANDS to be used with sendCommand
 bruker_query_loginstate = '<Query parameter="Login State"/>'
 bruker_query_instdef = '<Query parameter="Instrument Definition"/>'
 bruker_command_login = '<Command>Login</Command>'
-bruker_command_assaystart = '<Command parameter=“Assay”>Start</Command>'
-bruker_command_assaystop = '<Command parameter=“Assay”>Stop</Command>'
+bruker_command_assaystart = '<Command parameter="Assay">Start</Command>'
+bruker_command_assaystop = '<Command parameter="Assay">Stop</Command>'
 
 
 def instrument_Connect():
     global s
     s.connect((XRF_IP, XRF_PORT))
     instrument_GetInfo()
-    instrument_Login()
+    #instrument_Login()
 
 def instrument_Disconnect():
     global s
@@ -96,12 +98,14 @@ def recvData(s):
         datatype = '5'
         data = data.decode("utf-8").replace('\n','').replace('\r','').replace('\t','')
         data = xmltodict.parse(data)
-        if ('Response' in data) and ('@status' in data['Response']) and ('#text' in data['Response']) and ('ogged in ' in data['Response']['#text']):
-            datatype = '5a'                     # 5a - XML PACKET, 'Logged in' response
+        if ('Response' in data) and ('@status' in data['Response']) and ('#text' in data['Response']):  # and ('ogged in ' in data['Response']['#text']):
+            datatype = '5a'                     # 5a - XML PACKET, 'success, assay start' 'success, Logged in' etc response
         return data, datatype
 
     if (header[4:6] == b'\x18\x80'):          # 6 - STATUS CHANGE     (i.e. trigger pulled/released, assay start/stop/complete, phase change, etc.)
         datatype = '6'
+        data = data.decode("utf-8").replace('\n','').replace('\r','').replace('\t','')
+        data = xmltodict.parse(data)
         return data, datatype
 
     else:                                       # 0 - UNKNOWN DATA
@@ -110,12 +114,6 @@ def recvData(s):
 
     
 
-
-
-#sendCommand(s, commandLogin)
-#sendCommand(s, queryLoginState)
-
-#sendCommand(s, '<Query parameter="Instrument Definition"/>')
 
 
 def elementZtoSymbol(Z):        # Returns 1-2 character Element symbol as a string
@@ -142,73 +140,8 @@ def elementZtoName(Z):          # Returns Element name
 
 
 def instrument_GetInfo():
-
     sendCommand(s, bruker_query_instdef)
-    # header = recvData(s, 10)
-    # data_size = int.from_bytes(header[6:10], 'little')
-    # print(data_size)
-    # data = recvData(s, data_size)
-    # footer = recvData(s, 4)
-    #XML Packet Received / Status Change
-
-    # data, datatype = recvData(s)
-
-    # if datatype == '5' or datatype == '5a':   # If XML packet
-    #     #print(msg)
-    #     # If it returns valid IDF data
-    #     if ('Response' in data) and ('@parameter' in data['Response']) and (data['Response']['@parameter'] == 'instrument definition') and (data['Response']['@status'] == 'success'):
-    #         #All IDF data:
-    #         vers_info = data['Response']['InstrumentDefinition']
-
-    #         #Broken Down:
-    #         instr_model = vers_info['Model']
-    #         instr_serialnumber = vers_info['SerialNumber']
-    #         instr_buildnumber = vers_info['BuildNumber']
-
-    #         instr_detectormodel = vers_info['Detector']['DetectorModel']
-    #         instr_detectortype = instr_buildnumber[0:3]
-    #         if instr_detectortype[1] in 'PMK':  # Older detectors with Beryllium windows. eg SPX, SMA, SK6, etc
-    #             instr_detectorwindowtype = 'Beryllium'
-    #             try:
-    #                 instr_detectorwindowthickness = vers_info['Detector']['BerylliumWindowThicknessInuM'] + 'μM'
-    #             except KeyError:
-    #                 instr_detectorwindowthickness = 'Unknown'
-    #         if instr_detectortype[1] in 'G':
-    #             instr_detectorwindowtype = 'Graphene'
-    #             try:
-    #                 instr_detectorwindowthickness = vers_info['Detector']['GrapheneWindowThicknessInuM'] + 'μM'    # In case instrument def is wrong (eg. Martin has graphene det, but only beryllium thickness listed)
-    #             except KeyError:
-    #                 instr_detectorwindowthickness = 'Unknown'
-    #         instr_detectorresolution = vers_info['Detector']['TypicalResolutionIneV'] + 'eV'
-    #         instr_detectormaxTemp = vers_info['Detector']['OperatingTempMaxInC'] + '°C'
-    #         instr_detectorminTemp = vers_info['Detector']['OperatingTempMinInC'] + '°C'
-
-    #         instr_sourcemanufacturer = vers_info['XrayTube']['Manufacturer']
-    #         instr_sourcetargetZ = vers_info['XrayTube']['TargetElementNumber']
-    #         instr_sourcetargetSymbol = elementZtoSymbol(int(instr_sourcetargetZ))
-    #         instr_sourcetargetName = elementZtoName(int(instr_sourcetargetZ))
-    #         instr_sourcemaxV = vers_info['XrayTube']['OperatingLimits']['MaxHighVoltage'] + 'kV'
-    #         instr_sourceminV = vers_info['XrayTube']['OperatingLimits']['MinHighVoltage'] + 'kV'
-    #         instr_sourcemaxI = vers_info['XrayTube']['OperatingLimits']['MaxAnodeCurrentInuA'] + 'μA'
-    #         instr_sourceminI = vers_info['XrayTube']['OperatingLimits']['MinAnodeCurrentInuA'] + 'μA'
-    #         instr_sourcemaxP = vers_info['XrayTube']['OperatingLimits']['MaxOutputPowerInmW'] + 'mW'
-
-    #         # a = globals()
-    #         # for i in a:
-    #         #     print(i, ':', a[i])
-
-    #         # Print Important info to Console
-    #         print(f'Model: {instr_model}')
-    #         print(f'Serial Number: {instr_serialnumber}')
-    #         print(f'Build Number: {instr_buildnumber}')
-    #         print(f'Detector: {instr_detectormodel}')
-    #         print(f'Detector Specs: {instr_detectortype} - {instr_detectorwindowthickness} {instr_detectorwindowtype} window, {instr_detectorresolution} resolution, operating temps {instr_detectormaxTemp} - {instr_detectorminTemp}')
-    #         print(f'Source: {instr_sourcemanufacturer} {instr_sourcemaxP}')
-    #         print(f'Source Target: {instr_sourcetargetName}')
-    #         print(f'Source Voltage Range: {instr_sourceminV} - {instr_sourcemaxV}')
-    #         print(f'Source Current Range: {instr_sourceminI} - {instr_sourcemaxI}')
-            
-
+    
 
 def resource_path(relative_path):
     """ Get absolute path to resource, works for dev and for PyInstaller """
@@ -234,26 +167,34 @@ def xrfListenLoop():
     while True:
         data, datatype = recvData(s)
         if datatype == '6':       # STATUS CHANGE
-            msg = data.decode("utf-8").replace('\n','').replace('\r','').replace('\t','')#.replace('<?xml version="1.0" encoding="utf-8"?>','').replace('"','').removeprefix('<Status parameter=').removesuffix('</Status>')
+            #msg = data.decode("utf-8").replace('\n','').replace('\r','').replace('\t','')#.replace('<?xml version="1.0" encoding="utf-8"?>','').replace('"','').removeprefix('<Status parameter=').removesuffix('</Status>')
             #if msg[0] == '<':
             #    msg = msg.replace('<','')
             #msg = xmltodict.parse(msg)
-            print(msg)
+            statusparam = data['Status']['@parameter']
+            statustext = data['Status']['#text']
+            print(f'Status Change: {statusparam} {statustext}')
+            #print(data)
 
-        if datatype == '4':       # PDZ FILENAME
+
+        elif datatype == '1':       # COOKED SPECTRUM
+            print('New cooked Spectrum')
+            #print(data)
+
+        elif datatype == '4':       # PDZ FILENAME
             print('New PDZ!')
             print(data)
 
-        if datatype == '2':
+        elif datatype == '2':                     # RESULTS SET (don't really know when this is used?)
             #print(etree'.tostring(data, pretty_print=True))
             print(data)
 
-        if datatype == '3':       # RAW SPECTRA
+        elif datatype == '3':       # RAW SPECTRA
             data = hashlib.md5(data).hexdigest()
             print('Raw spectrum')
-            print(data)
+            #print(data)
         
-        if datatype == '5':       # XML PACKET
+        elif datatype == '5':       # XML PACKET
             if ('Response' in data) and ('@parameter' in data['Response']) and (data['Response']['@parameter'] == 'instrument definition') and (data['Response']['@status'] == 'success'):
                 
                 global instr_model
@@ -297,7 +238,7 @@ def xrfListenLoop():
                     try:
                         instr_detectorwindowthickness = vers_info['Detector']['GrapheneWindowThicknessInuM'] + 'μM'    # In case instrument def is wrong (eg. Martin has graphene det, but only beryllium thickness listed)
                     except KeyError:
-                        instr_detectorwindowthickness = 'Unknown'
+                        instr_detectorwindowthickness = '?μM'
                 instr_detectorresolution = vers_info['Detector']['TypicalResolutionIneV'] + 'eV'
                 instr_detectormaxTemp = vers_info['Detector']['OperatingTempMaxInC'] + '°C'
                 instr_detectorminTemp = vers_info['Detector']['OperatingTempMinInC'] + '°C'
@@ -327,16 +268,29 @@ def xrfListenLoop():
                 print(f'Source Voltage Range: {instr_sourceminV} - {instr_sourcemaxV}')
                 print(f'Source Current Range: {instr_sourceminI} - {instr_sourcemaxI}')
             
+            elif ('Data' in data) and ('ElementData' in data['Data']['Elements']):      #Results packet?
+                results_analysismode = data['Data']['AnalysisMode']
+                results_chemistry = list(map(lambda x: {
+                    'Z': int(x['AtomicNumber']['#text']),
+                    'Name': x['Compound'],
+                    'Concentration %': float(x['Concentration']),
+                    'Error(1SD)': x['Error']},
+                    data['Data']['Elements']['ElementData']))
+                results = pd.DataFrame.from_dict(results_chemistry)
+                print(results)
+
             else:
+                print('non-idf xml packet.')
                 print(data)
         
-        if datatype == '5a':      # XML PACKET, 'logged in' response
+        elif datatype == '5a':      # XML PACKET, 'logged in' response
             print(f"{data['Response']['@status']}: {data['Response']['#text']}")
 
         else: 
-            print(data)
+            #print(data)
+            print(f'unknown data type: {datatype}')
         
-        time.sleep(1)
+        time.sleep(0.05)
 
 
 
@@ -352,6 +306,7 @@ gui.title("S1Control")
 gui.geometry('400x400')
 iconpath = resource_path("pss.ico")
 gui.iconbitmap(iconpath)
+xrf_assayisrunning = 0
 
 
 # Functions for Widgets 
@@ -364,7 +319,16 @@ def getInfoClicked():
     #getinfo_thread = threading.Thread(target = instrument_GetInfo).start()
 
 def startAssayClicked():
-    instrument_StartAssay()
+    global xrf_assayisrunning
+    if xrf_assayisrunning:
+        instrument_StopAssay()
+        button_assay_text.set('Start Assay')
+        xrf_assayisrunning = 0
+    else:
+        instrument_StartAssay()
+        button_assay_text.set('Stop Assay')
+        xrf_assayisrunning = 1
+    
 
 def listenLoopThreading():
     listen_thread1 = threading.Thread(target = xrfListenLoop).start()
@@ -378,6 +342,7 @@ consolas20 = font.Font(family='Consolas', size=20)
 consolas18 = font.Font(family='Consolas', size=18)
 consolas18B = font.Font(family='Consolas', size=18, weight = 'bold')
 consolas16 = font.Font(family='Consolas', size=16)
+consolas13 = font.Font(family='Consolas', size=13)
 consolas12 = font.Font(family='Consolas', size=12)
 consolas10 = font.Font(family='Consolas', size=10)
 consolas10B = font.Font(family='Consolas', size=10, weight = 'bold')
@@ -417,10 +382,15 @@ textfg1 = CHARCOAL
 
 
 # Buttons
-button_inst_reconnect = tk.Button(width = 15, text = "Login", font = consolas10, fg = buttonfg1, bg = buttonbg1, command = loginClicked).pack(ipadx=8,ipady=2)
-button_inst_startassay = tk.Button(width = 15, text = "Start Assay", font = consolas10, fg = buttonfg2, bg = buttonbg2, command = startAssayClicked).pack(ipadx=8,ipady=2)
-button_inst_startlistener = tk.Button(width = 15, text = "start listen", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = lambda:xrfListenLoop_Start(None)).pack(ipadx=8,ipady=2)
-button_inst_getinstdef = tk.Button(width = 15, text = "get instdef", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = getInfoClicked).pack(ipadx=8,ipady=2)
+button_reconnect = tk.Button(width = 15, text = "Login", font = consolas10, fg = buttonfg1, bg = buttonbg1, command = loginClicked).pack(ipadx=8,ipady=2)
+
+button_assay_text = tk.StringVar()
+button_assay_text.set('Start Assay')
+button_assay = tk.Button(width = 15, textvariable = button_assay_text, font = consolas10, fg = buttonfg2, bg = buttonbg2, command = startAssayClicked).pack(ipadx=8,ipady=2)
+
+#button_startlistener = tk.Button(width = 15, text = "start listen", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = lambda:xrfListenLoop_Start(None)).pack(ipadx=8,ipady=2)
+
+button_getinstdef = tk.Button(width = 15, text = "get instdef", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = getInfoClicked).pack(ipadx=8,ipady=2)
 
 
 
@@ -431,7 +401,7 @@ button_inst_getinstdef = tk.Button(width = 15, text = "get instdef", font = cons
 
 
 
-#lambda:xrfListenLoop_Start(None)
+xrfListenLoop_Start(None)
 gui.mainloop()
 #instrument_Connect()
 
