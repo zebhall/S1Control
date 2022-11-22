@@ -6,6 +6,7 @@ import socket
 import xmltodict
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog, font 
+from concurrent import futures
 import os
 import sys
 import threading
@@ -141,25 +142,6 @@ def elementZtoName(Z):          # Returns Element name
 
 
 def instrument_GetInfo():
-    global instr_model
-    global instr_serialnumber
-    global instr_buildnumber
-    global instr_detectormodel
-    global instr_detectortype
-    global instr_detectorresolution
-    global instr_detectormaxTemp
-    global instr_detectorminTemp
-    global instr_detectorwindowtype
-    global instr_detectorwindowthickness
-    global instr_sourcemanufacturer
-    global instr_sourcetargetZ
-    global instr_sourcetargetSymbol
-    global instr_sourcetargetName
-    global instr_sourcemaxV
-    global instr_sourceminV
-    global instr_sourcemaxI
-    global instr_sourceminI
-    global instr_sourcemaxP
 
     sendCommand(s, bruker_query_instdef)
     # header = recvData(s, 10)
@@ -169,62 +151,62 @@ def instrument_GetInfo():
     # footer = recvData(s, 4)
     #XML Packet Received / Status Change
 
-    data, datatype = recvData(s)
+    # data, datatype = recvData(s)
 
-    if datatype == '5' or datatype == '5a':   # If XML packet
-        #print(msg)
-        # If it returns valid IDF data
-        if ('Response' in data) and ('@parameter' in data['Response']) and (data['Response']['@parameter'] == 'instrument definition') and (data['Response']['@status'] == 'success'):
-            #All IDF data:
-            vers_info = data['Response']['InstrumentDefinition']
+    # if datatype == '5' or datatype == '5a':   # If XML packet
+    #     #print(msg)
+    #     # If it returns valid IDF data
+    #     if ('Response' in data) and ('@parameter' in data['Response']) and (data['Response']['@parameter'] == 'instrument definition') and (data['Response']['@status'] == 'success'):
+    #         #All IDF data:
+    #         vers_info = data['Response']['InstrumentDefinition']
 
-            #Broken Down:
-            instr_model = vers_info['Model']
-            instr_serialnumber = vers_info['SerialNumber']
-            instr_buildnumber = vers_info['BuildNumber']
+    #         #Broken Down:
+    #         instr_model = vers_info['Model']
+    #         instr_serialnumber = vers_info['SerialNumber']
+    #         instr_buildnumber = vers_info['BuildNumber']
 
-            instr_detectormodel = vers_info['Detector']['DetectorModel']
-            instr_detectortype = instr_buildnumber[0:3]
-            if instr_detectortype[1] in 'PMK':  # Older detectors with Beryllium windows. eg SPX, SMA, SK6, etc
-                instr_detectorwindowtype = 'Beryllium'
-                try:
-                    instr_detectorwindowthickness = vers_info['Detector']['BerylliumWindowThicknessInuM'] + 'μM'
-                except KeyError:
-                    instr_detectorwindowthickness = 'Unknown'
-            if instr_detectortype[1] in 'G':
-                instr_detectorwindowtype = 'Graphene'
-                try:
-                    instr_detectorwindowthickness = vers_info['Detector']['GrapheneWindowThicknessInuM'] + 'μM'    # In case instrument def is wrong (eg. Martin has graphene det, but only beryllium thickness listed)
-                except KeyError:
-                    instr_detectorwindowthickness = 'Unknown'
-            instr_detectorresolution = vers_info['Detector']['TypicalResolutionIneV'] + 'eV'
-            instr_detectormaxTemp = vers_info['Detector']['OperatingTempMaxInC'] + '°C'
-            instr_detectorminTemp = vers_info['Detector']['OperatingTempMinInC'] + '°C'
+    #         instr_detectormodel = vers_info['Detector']['DetectorModel']
+    #         instr_detectortype = instr_buildnumber[0:3]
+    #         if instr_detectortype[1] in 'PMK':  # Older detectors with Beryllium windows. eg SPX, SMA, SK6, etc
+    #             instr_detectorwindowtype = 'Beryllium'
+    #             try:
+    #                 instr_detectorwindowthickness = vers_info['Detector']['BerylliumWindowThicknessInuM'] + 'μM'
+    #             except KeyError:
+    #                 instr_detectorwindowthickness = 'Unknown'
+    #         if instr_detectortype[1] in 'G':
+    #             instr_detectorwindowtype = 'Graphene'
+    #             try:
+    #                 instr_detectorwindowthickness = vers_info['Detector']['GrapheneWindowThicknessInuM'] + 'μM'    # In case instrument def is wrong (eg. Martin has graphene det, but only beryllium thickness listed)
+    #             except KeyError:
+    #                 instr_detectorwindowthickness = 'Unknown'
+    #         instr_detectorresolution = vers_info['Detector']['TypicalResolutionIneV'] + 'eV'
+    #         instr_detectormaxTemp = vers_info['Detector']['OperatingTempMaxInC'] + '°C'
+    #         instr_detectorminTemp = vers_info['Detector']['OperatingTempMinInC'] + '°C'
 
-            instr_sourcemanufacturer = vers_info['XrayTube']['Manufacturer']
-            instr_sourcetargetZ = vers_info['XrayTube']['TargetElementNumber']
-            instr_sourcetargetSymbol = elementZtoSymbol(int(instr_sourcetargetZ))
-            instr_sourcetargetName = elementZtoName(int(instr_sourcetargetZ))
-            instr_sourcemaxV = vers_info['XrayTube']['OperatingLimits']['MaxHighVoltage'] + 'kV'
-            instr_sourceminV = vers_info['XrayTube']['OperatingLimits']['MinHighVoltage'] + 'kV'
-            instr_sourcemaxI = vers_info['XrayTube']['OperatingLimits']['MaxAnodeCurrentInuA'] + 'μA'
-            instr_sourceminI = vers_info['XrayTube']['OperatingLimits']['MinAnodeCurrentInuA'] + 'μA'
-            instr_sourcemaxP = vers_info['XrayTube']['OperatingLimits']['MaxOutputPowerInmW'] + 'mW'
+    #         instr_sourcemanufacturer = vers_info['XrayTube']['Manufacturer']
+    #         instr_sourcetargetZ = vers_info['XrayTube']['TargetElementNumber']
+    #         instr_sourcetargetSymbol = elementZtoSymbol(int(instr_sourcetargetZ))
+    #         instr_sourcetargetName = elementZtoName(int(instr_sourcetargetZ))
+    #         instr_sourcemaxV = vers_info['XrayTube']['OperatingLimits']['MaxHighVoltage'] + 'kV'
+    #         instr_sourceminV = vers_info['XrayTube']['OperatingLimits']['MinHighVoltage'] + 'kV'
+    #         instr_sourcemaxI = vers_info['XrayTube']['OperatingLimits']['MaxAnodeCurrentInuA'] + 'μA'
+    #         instr_sourceminI = vers_info['XrayTube']['OperatingLimits']['MinAnodeCurrentInuA'] + 'μA'
+    #         instr_sourcemaxP = vers_info['XrayTube']['OperatingLimits']['MaxOutputPowerInmW'] + 'mW'
 
-            # a = globals()
-            # for i in a:
-            #     print(i, ':', a[i])
+    #         # a = globals()
+    #         # for i in a:
+    #         #     print(i, ':', a[i])
 
-            # Print Important info to Console
-            print(f'Model: {instr_model}')
-            print(f'Serial Number: {instr_serialnumber}')
-            print(f'Build Number: {instr_buildnumber}')
-            print(f'Detector: {instr_detectormodel}')
-            print(f'Detector Specs: {instr_detectortype} - {instr_detectorwindowthickness} {instr_detectorwindowtype} window, {instr_detectorresolution} resolution, operating temps {instr_detectormaxTemp} - {instr_detectorminTemp}')
-            print(f'Source: {instr_sourcemanufacturer} {instr_sourcemaxP}')
-            print(f'Source Target: {instr_sourcetargetName}')
-            print(f'Source Voltage Range: {instr_sourceminV} - {instr_sourcemaxV}')
-            print(f'Source Current Range: {instr_sourceminI} - {instr_sourcemaxI}')
+    #         # Print Important info to Console
+    #         print(f'Model: {instr_model}')
+    #         print(f'Serial Number: {instr_serialnumber}')
+    #         print(f'Build Number: {instr_buildnumber}')
+    #         print(f'Detector: {instr_detectormodel}')
+    #         print(f'Detector Specs: {instr_detectortype} - {instr_detectorwindowthickness} {instr_detectorwindowtype} window, {instr_detectorresolution} resolution, operating temps {instr_detectormaxTemp} - {instr_detectorminTemp}')
+    #         print(f'Source: {instr_sourcemanufacturer} {instr_sourcemaxP}')
+    #         print(f'Source Target: {instr_sourcetargetName}')
+    #         print(f'Source Voltage Range: {instr_sourceminV} - {instr_sourcemaxV}')
+    #         print(f'Source Current Range: {instr_sourceminI} - {instr_sourcemaxI}')
             
 
 
@@ -233,6 +215,20 @@ def resource_path(relative_path):
     base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
     return os.path.join(base_path, relative_path)
 
+
+
+def xrfListenLoop_Start(event):
+    global listen_thread
+    listen_thread = threading.Thread(target=xrfListenLoop)
+    listen_thread.daemon = True
+    listen_thread.start()
+    gui.after(20, xrfListenLoop_Check)
+
+def xrfListenLoop_Check():
+    if listen_thread.is_alive():
+        gui.after(20, xrfListenLoop_Check)
+    else:
+        print('listen loop broke')
 
 def xrfListenLoop():
     while True:
@@ -258,16 +254,90 @@ def xrfListenLoop():
             print(data)
         
         if datatype == '5':       # XML PACKET
-            print(data)
+            if ('Response' in data) and ('@parameter' in data['Response']) and (data['Response']['@parameter'] == 'instrument definition') and (data['Response']['@status'] == 'success'):
+                
+                global instr_model
+                global instr_serialnumber
+                global instr_buildnumber
+                global instr_detectormodel
+                global instr_detectortype
+                global instr_detectorresolution
+                global instr_detectormaxTemp
+                global instr_detectorminTemp
+                global instr_detectorwindowtype
+                global instr_detectorwindowthickness
+                global instr_sourcemanufacturer
+                global instr_sourcetargetZ
+                global instr_sourcetargetSymbol
+                global instr_sourcetargetName
+                global instr_sourcemaxV
+                global instr_sourceminV
+                global instr_sourcemaxI
+                global instr_sourceminI
+                global instr_sourcemaxP
+                
+                #All IDF data:
+                vers_info = data['Response']['InstrumentDefinition']
+
+                #Broken Down:
+                instr_model = vers_info['Model']
+                instr_serialnumber = vers_info['SerialNumber']
+                instr_buildnumber = vers_info['BuildNumber']
+
+                instr_detectormodel = vers_info['Detector']['DetectorModel']
+                instr_detectortype = instr_buildnumber[0:3]
+                if instr_detectortype[1] in 'PMK':  # Older detectors with Beryllium windows. eg SPX, SMA, SK6, etc
+                    instr_detectorwindowtype = 'Beryllium'
+                    try:
+                        instr_detectorwindowthickness = vers_info['Detector']['BerylliumWindowThicknessInuM'] + 'μM'
+                    except KeyError:
+                        instr_detectorwindowthickness = 'Unknown'
+                if instr_detectortype[1] in 'G':
+                    instr_detectorwindowtype = 'Graphene'
+                    try:
+                        instr_detectorwindowthickness = vers_info['Detector']['GrapheneWindowThicknessInuM'] + 'μM'    # In case instrument def is wrong (eg. Martin has graphene det, but only beryllium thickness listed)
+                    except KeyError:
+                        instr_detectorwindowthickness = 'Unknown'
+                instr_detectorresolution = vers_info['Detector']['TypicalResolutionIneV'] + 'eV'
+                instr_detectormaxTemp = vers_info['Detector']['OperatingTempMaxInC'] + '°C'
+                instr_detectorminTemp = vers_info['Detector']['OperatingTempMinInC'] + '°C'
+
+                instr_sourcemanufacturer = vers_info['XrayTube']['Manufacturer']
+                instr_sourcetargetZ = vers_info['XrayTube']['TargetElementNumber']
+                instr_sourcetargetSymbol = elementZtoSymbol(int(instr_sourcetargetZ))
+                instr_sourcetargetName = elementZtoName(int(instr_sourcetargetZ))
+                instr_sourcemaxV = vers_info['XrayTube']['OperatingLimits']['MaxHighVoltage'] + 'kV'
+                instr_sourceminV = vers_info['XrayTube']['OperatingLimits']['MinHighVoltage'] + 'kV'
+                instr_sourcemaxI = vers_info['XrayTube']['OperatingLimits']['MaxAnodeCurrentInuA'] + 'μA'
+                instr_sourceminI = vers_info['XrayTube']['OperatingLimits']['MinAnodeCurrentInuA'] + 'μA'
+                instr_sourcemaxP = vers_info['XrayTube']['OperatingLimits']['MaxOutputPowerInmW'] + 'mW'
+
+                # a = globals()
+                # for i in a:
+                #     print(i, ':', a[i])
+
+                # Print Important info to Console
+                print(f'Model: {instr_model}')
+                print(f'Serial Number: {instr_serialnumber}')
+                print(f'Build Number: {instr_buildnumber}')
+                print(f'Detector: {instr_detectormodel}')
+                print(f'Detector Specs: {instr_detectortype} - {instr_detectorwindowthickness} {instr_detectorwindowtype} window, {instr_detectorresolution} resolution, operating temps {instr_detectormaxTemp} - {instr_detectorminTemp}')
+                print(f'Source: {instr_sourcemanufacturer} {instr_sourcemaxP}')
+                print(f'Source Target: {instr_sourcetargetName}')
+                print(f'Source Voltage Range: {instr_sourceminV} - {instr_sourcemaxV}')
+                print(f'Source Current Range: {instr_sourceminI} - {instr_sourcemaxI}')
+            
+            else:
+                print(data)
         
         if datatype == '5a':      # XML PACKET, 'logged in' response
             print(f"{data['Response']['@status']}: {data['Response']['#text']}")
 
         else: 
             print(data)
+        
+        time.sleep(1)
 
-
-        time.sleep(0.1)
 
 
 
@@ -275,7 +345,6 @@ def xrfListenLoop():
 
 # GUI
 
-global gui
 gui = tk.Tk()
 gui.title("S1Control")
 #gui.wm_attributes('-toolwindow', 'True',)
@@ -291,8 +360,8 @@ def loginClicked():
     instrument_Login()
 
 def getInfoClicked():
-    #instrument_GetInfo()
-    getinfo_thread = threading.Thread(target = instrument_GetInfo).start()
+    instrument_GetInfo()
+    #getinfo_thread = threading.Thread(target = instrument_GetInfo).start()
 
 def startAssayClicked():
     instrument_StartAssay()
@@ -350,7 +419,7 @@ textfg1 = CHARCOAL
 # Buttons
 button_inst_reconnect = tk.Button(width = 15, text = "Login", font = consolas10, fg = buttonfg1, bg = buttonbg1, command = loginClicked).pack(ipadx=8,ipady=2)
 button_inst_startassay = tk.Button(width = 15, text = "Start Assay", font = consolas10, fg = buttonfg2, bg = buttonbg2, command = startAssayClicked).pack(ipadx=8,ipady=2)
-button_inst_startlistener = tk.Button(width = 15, text = "start listen", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = listenLoopThreading).pack(ipadx=8,ipady=2)
+button_inst_startlistener = tk.Button(width = 15, text = "start listen", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = lambda:xrfListenLoop_Start(None)).pack(ipadx=8,ipady=2)
 button_inst_getinstdef = tk.Button(width = 15, text = "get instdef", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = getInfoClicked).pack(ipadx=8,ipady=2)
 
 
@@ -362,17 +431,13 @@ button_inst_getinstdef = tk.Button(width = 15, text = "get instdef", font = cons
 
 
 
-def main():
-    gui.mainloop()
-    #instrument_Connect()
-    
-    #EXECUTOR.submit(startGUI)
-    #EXECUTOR.submit(xrfListenLoop)
+#lambda:xrfListenLoop_Start(None)
+gui.mainloop()
+#instrument_Connect()
+
+#EXECUTOR.submit(startGUI)
+#EXECUTOR.submit(xrfListenLoop)
 
 
-
-
-if __name__ == "__main__":
-    main()
 
 
