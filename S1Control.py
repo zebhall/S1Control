@@ -1,6 +1,6 @@
 # S1Control by ZH for PSS
-versionNum = 'v0.0.3'
-versionDate = '2022/11/22'
+versionNum = 'v0.0.4'
+versionDate = '2022/11/23'
 
 import socket
 import xmltodict
@@ -13,46 +13,69 @@ import threading
 import time
 import hashlib
 import pandas as pd
+import json
 
 
 
 XRF_IP = '192.168.137.139'
 XRF_PORT = 55204
-s =  socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-s.connect((XRF_IP, XRF_PORT))
+xrf =  socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
 
 
 # BRUKER API COMMANDS to be used with sendCommand
 bruker_query_loginstate = '<Query parameter="Login State"/>'
 bruker_query_instdef = '<Query parameter="Instrument Definition"/>'
+bruker_query_allapplications = '<Query parameter="Applications"/>'
+bruker_query_currentapplication = '<Query parameter="ActiveApplication">Include Methods</Query>'
+bruker_query_methodsforcurrentapplication = '<Query parameter="Method"></Query>'
 bruker_command_login = '<Command>Login</Command>'
 bruker_command_assaystart = '<Command parameter="Assay">Start</Command>'
 bruker_command_assaystop = '<Command parameter="Assay">Stop</Command>'
 
 
+
 def instrument_Connect():
-    global s
-    s.connect((XRF_IP, XRF_PORT))
-    instrument_GetInfo()
-    #instrument_Login()
+    global xrf
+    try:
+        xrf.connect((XRF_IP, XRF_PORT))
+    except:
+        print('Connection Error. Check instrument has booted to login screen and is properly connected before restarting the program.')
 
 def instrument_Disconnect():
-    global s
-    s.close()
-    print('Instrument Connection Closed.')
+    global xrf
+    xrf.close()
+    printAndLog('Instrument Connection Closed.')
 
 def instrument_StartAssay():
-    sendCommand(s, bruker_command_assaystart)
+    sendCommand(xrf, bruker_command_assaystart)
 
 def instrument_StopAssay():
-    sendCommand(s, bruker_command_assaystop)
+    sendCommand(xrf, bruker_command_assaystop)
 
 def instrument_Login():
-    sendCommand(s, bruker_command_login)
+    sendCommand(xrf, bruker_command_login)
 
 
 
+def printAndLog(data):
+    if logFileName != "":
+        print(data)
+        with open(logFileName, "a", encoding= 'utf-16') as logFile:
+            logFile.write(time.strftime("%H:%M:%S", time.localtime()))
+            logFile.write('\t')
+            if type(data) is dict:
+                logFile.write(json.dumps(data))
+            elif type(data) is str:
+                logFile.write(data) 
+            elif type(data) is pd.DataFrame:
+                logFile.write(data.to_string().replace('\n','\n\t\t'))
+            else:
+                printAndLog(f'Error: Data type {type(data)} unable to be written to log.')
+            logFile.write("\n")
+
+
+    
 
 def sendCommand(s, command):
     msg = '<?xml version="1.0" encoding="utf-8"?>'+ command
@@ -94,12 +117,17 @@ def recvData(s):
         datatype = '4'
         return data, datatype
 
-    if (header[4:6] == b'\x17\x80'):          # 5 - XML PACKET (Response, results?)
+    if (header[4:6] == b'\x17\x80'):          # 5 - XML PACKET (Usually results?)
         datatype = '5'
         data = data.decode("utf-8").replace('\n','').replace('\r','').replace('\t','')
         data = xmltodict.parse(data)
         if ('Response' in data) and ('@status' in data['Response']) and ('#text' in data['Response']):  # and ('ogged in ' in data['Response']['#text']):
             datatype = '5a'                     # 5a - XML PACKET, 'success, assay start' 'success, Logged in' etc response
+        elif ('Response' in data) and ('@parameter' in data['Response']) and (data['Response']['@parameter'] == 'applications'):
+            datatype = '5b'                     # 5b - XML PACKET, Applications present response
+        elif ('Response' in data) and ('@parameter' in data['Response']) and (data['Response']['@parameter'] == 'activeapplication'):
+            datatype = '5c'                     # 5c - XML PACKET, Active Application and Methods present response
+        
         return data, datatype
 
     if (header[4:6] == b'\x18\x80'):          # 6 - STATUS CHANGE     (i.e. trigger pulled/released, assay start/stop/complete, phase change, etc.)
@@ -140,8 +168,21 @@ def elementZtoName(Z):          # Returns Element name
 
 
 def instrument_GetInfo():
-    sendCommand(s, bruker_query_instdef)
+    sendCommand(xrf, bruker_query_instdef)
+    sendCommand(xrf, bruker_query_allapplications)
+    sendCommand(xrf, bruker_query_currentapplication)
     
+
+def printInstrumentInfo():
+    printAndLog(f'Model: {instr_model}')
+    printAndLog(f'Serial Number: {instr_serialnumber}')
+    printAndLog(f'Build Number: {instr_buildnumber}')
+    printAndLog(f'Detector: {instr_detectormodel}')
+    printAndLog(f'Detector Specs: {instr_detectortype} - {instr_detectorwindowthickness} {instr_detectorwindowtype} window, {instr_detectorresolution} resolution, operating temps {instr_detectormaxTemp} - {instr_detectorminTemp}')
+    printAndLog(f'Source: {instr_sourcemanufacturer} {instr_sourcemaxP}')
+    printAndLog(f'Source Target: {instr_sourcetargetName}')
+    printAndLog(f'Source Voltage Range: {instr_sourceminV} - {instr_sourcemaxV}')
+    printAndLog(f'Source Current Range: {instr_sourceminI} - {instr_sourcemaxI}')
 
 def resource_path(relative_path):
     """ Get absolute path to resource, works for dev and for PyInstaller """
@@ -149,6 +190,7 @@ def resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 
+# XRF Listen Loop Functions
 
 def xrfListenLoop_Start(event):
     global listen_thread
@@ -161,11 +203,11 @@ def xrfListenLoop_Check():
     if listen_thread.is_alive():
         gui.after(20, xrfListenLoop_Check)
     else:
-        print('listen loop broke')
+        printAndLog('xrf listen loop broke')
 
 def xrfListenLoop():
     while True:
-        data, datatype = recvData(s)
+        data, datatype = recvData(xrf)
         if datatype == '6':       # STATUS CHANGE
             #msg = data.decode("utf-8").replace('\n','').replace('\r','').replace('\t','')#.replace('<?xml version="1.0" encoding="utf-8"?>','').replace('"','').removeprefix('<Status parameter=').removesuffix('</Status>')
             #if msg[0] == '<':
@@ -173,26 +215,26 @@ def xrfListenLoop():
             #msg = xmltodict.parse(msg)
             statusparam = data['Status']['@parameter']
             statustext = data['Status']['#text']
-            print(f'Status Change: {statusparam} {statustext}')
-            #print(data)
+            printAndLog(f'Status Change: {statusparam} {statustext}')
+            #printAndLog(data)
 
 
         elif datatype == '1':       # COOKED SPECTRUM
-            print('New cooked Spectrum')
-            #print(data)
+            printAndLog('New cooked Spectrum')
+            #printAndLog(data)
 
         elif datatype == '4':       # PDZ FILENAME
-            print('New PDZ!')
-            print(data)
+            printAndLog('New PDZ!')
+            printAndLog(data)
 
         elif datatype == '2':                     # RESULTS SET (don't really know when this is used?)
-            #print(etree'.tostring(data, pretty_print=True))
-            print(data)
+            #printAndLog(etree'.tostring(data, pretty_print=True))
+            printAndLog(data)
 
         elif datatype == '3':       # RAW SPECTRA
             data = hashlib.md5(data).hexdigest()
-            print('Raw spectrum')
-            #print(data)
+            printAndLog('Raw spectrum')
+            #printAndLog(data)
         
         elif datatype == '5':       # XML PACKET
             if ('Response' in data) and ('@parameter' in data['Response']) and (data['Response']['@parameter'] == 'instrument definition') and (data['Response']['@status'] == 'success'):
@@ -255,40 +297,58 @@ def xrfListenLoop():
 
                 # a = globals()
                 # for i in a:
-                #     print(i, ':', a[i])
+                #     printAndLog(i, ':', a[i])
 
                 # Print Important info to Console
-                print(f'Model: {instr_model}')
-                print(f'Serial Number: {instr_serialnumber}')
-                print(f'Build Number: {instr_buildnumber}')
-                print(f'Detector: {instr_detectormodel}')
-                print(f'Detector Specs: {instr_detectortype} - {instr_detectorwindowthickness} {instr_detectorwindowtype} window, {instr_detectorresolution} resolution, operating temps {instr_detectormaxTemp} - {instr_detectorminTemp}')
-                print(f'Source: {instr_sourcemanufacturer} {instr_sourcemaxP}')
-                print(f'Source Target: {instr_sourcetargetName}')
-                print(f'Source Voltage Range: {instr_sourceminV} - {instr_sourcemaxV}')
-                print(f'Source Current Range: {instr_sourceminI} - {instr_sourcemaxI}')
+                printAndLog(f'Model: {instr_model}')
+                printAndLog(f'Serial Number: {instr_serialnumber}')
+                printAndLog(f'Build Number: {instr_buildnumber}')
+                printAndLog(f'Detector: {instr_detectormodel}')
+                printAndLog(f'Detector Specs: {instr_detectortype} - {instr_detectorwindowthickness} {instr_detectorwindowtype} window, {instr_detectorresolution} resolution, operating temps {instr_detectormaxTemp} - {instr_detectorminTemp}')
+                printAndLog(f'Source: {instr_sourcemanufacturer} {instr_sourcemaxP}')
+                printAndLog(f'Source Target: {instr_sourcetargetName}')
+                printAndLog(f'Source Voltage Range: {instr_sourceminV} - {instr_sourcemaxV}')
+                printAndLog(f'Source Current Range: {instr_sourceminI} - {instr_sourcemaxI}')
             
+            elif ('Data' in data) and (data['Data']['Elements'] == None):
+                printAndLog('ERROR: Calculation Error has occurred, no results provided by instrument. Try Rebooting.')
+
             elif ('Data' in data) and ('ElementData' in data['Data']['Elements']):      #Results packet?
                 results_analysismode = data['Data']['AnalysisMode']
                 results_chemistry = list(map(lambda x: {
                     'Z': int(x['AtomicNumber']['#text']),
                     'Name': x['Compound'],
-                    'Concentration %': float(x['Concentration']),
+                    'Concentration': float(x['Concentration']),
                     'Error(1SD)': x['Error']},
                     data['Data']['Elements']['ElementData']))
                 results = pd.DataFrame.from_dict(results_chemistry)
-                print(results)
+                printAndLog(results)
 
             else:
-                print('non-idf xml packet.')
-                print(data)
+                printAndLog('non-idf xml packet.')
+                printAndLog(data)
         
-        elif datatype == '5a':      # XML PACKET, 'logged in' response
-            print(f"{data['Response']['@status']}: {data['Response']['#text']}")
+        elif datatype == '5a':      # 5a - XML PACKET, 'logged in' response etc
+            printAndLog(f"{data['Response']['@status']}: {data['Response']['#text']}")
+
+        elif datatype == '5b':      # 5b - XML PACKET, Applications present response
+            global instr_applicationspresent
+            instr_applicationspresent = data['Response']['ApplicationList']['Application']
+            printAndLog(f"Applications Available: {data['Response']['ApplicationList']['Application']}")
+
+        elif datatype == '5c':      # 5c - XML PACKET, Active Application and Methods present response
+            global instr_currentapplication
+            global instr_currentmethod
+            instr_currentapplication = data['Response']['Application']
+            instr_currentmethod = data['Response']['ActiveMethod']
+            printAndLog(f"Current Application: {data['Response']['Application']} | Current Method: {data['Response']['ActiveMethod']} | Methods Available: {data['Response']['MethodList']['Method']}")
+
+
+
 
         else: 
-            #print(data)
-            print(f'unknown data type: {datatype}')
+            #printAndLog(data)
+            printAndLog(f'unknown data type: {datatype}')
         
         time.sleep(0.05)
 
@@ -401,12 +461,49 @@ button_getinstdef = tk.Button(width = 15, text = "get instdef", font = consolas1
 
 
 
-xrfListenLoop_Start(None)
-gui.mainloop()
-#instrument_Connect()
 
-#EXECUTOR.submit(startGUI)
-#EXECUTOR.submit(xrfListenLoop)
+# Main (basically)
+logFileName = ""
+
+# Set PC user and name for log file
+try:
+    pc_user = os.getlogin()
+    pc_device = os.environ['COMPUTERNAME']
+except:
+    pc_user = 'Unkown User'
+    pc_device = 'Unknown Device'
+
+
+# Begin Instrument Connection
+
+instrument_Connect()
+xrfListenLoop_Start(None)
+instrument_GetInfo()        # Get info from IDF for log file NAMING purposes
+time.sleep(0.3)
+
+
+    # Create Log file using time/date/XRFserial      
+
+datetimeString = time.strftime("%Y%m%d-%H%M%S", time.localtime())
+logFileName = f'S1Control_Log_{datetimeString}_{instr_serialnumber}.txt'
+logFileStartTime = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+with open(logFileName, "x", encoding= 'utf-16') as logFile:
+    logFile.write(f'TIMESTAMP \tLog File Created: {logFileStartTime} by {pc_device}\{pc_user}, using S1Control {versionNum}. \n')
+    logFile.write('--------------------------------------------------------------------------------------------------------------------------------------------\n')
+
+
+    # Get info to add to Log file
+instrument_GetInfo()
+
+time.sleep(0.3)
+    # CLosing **** around idf, app, method info
+with open(logFileName, "a", encoding= 'utf-16') as logFile:
+    logFile.write('--------------------------------------------------------------------------------------------------------------------------------------------\n')
+
+
+
+gui.mainloop()
+
 
 
 
