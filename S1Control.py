@@ -1,11 +1,12 @@
 # S1Control by ZH for PSS
-versionNum = 'v0.0.4'
-versionDate = '2022/11/23'
+versionNum = 'v0.0.5'
+versionDate = '2022/11/24'
 
 import socket
 import xmltodict
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog, font 
+from tkinter.ttk import Progressbar, Treeview
 from concurrent import futures
 import os
 import sys
@@ -14,6 +15,8 @@ import time
 import hashlib
 import pandas as pd
 import json
+import shutil
+import pathlib
 
 
 
@@ -61,7 +64,7 @@ def instrument_Login():
 def printAndLog(data):
     if logFileName != "":
         print(data)
-        with open(logFileName, "a", encoding= 'utf-16') as logFile:
+        with open(logFilePath, "a", encoding= 'utf-16') as logFile:
             logFile.write(time.strftime("%H:%M:%S", time.localtime()))
             logFile.write('\t')
             if type(data) is dict:
@@ -71,7 +74,7 @@ def printAndLog(data):
             elif type(data) is pd.DataFrame:
                 logFile.write(data.to_string().replace('\n','\n\t\t'))
             else:
-                printAndLog(f'Error: Data type {type(data)} unable to be written to log.')
+                logFile.write(f'Error: Data type {type(data)} unable to be written to log.')
             logFile.write("\n")
 
 
@@ -189,6 +192,61 @@ def resource_path(relative_path):
     base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
     return os.path.join(base_path, relative_path)
 
+def initialiseLogFile():
+    global logFile
+    global logFileArchivePath
+    global logFileName
+    global logFilePath
+    global instr_serialnumber
+        # Set PC user and name for log file
+    try:
+        pc_user = os.getlogin()
+        pc_device = os.environ['COMPUTERNAME']
+    except:
+        pc_user = 'Unkown User'
+        pc_device = 'Unknown Device'
+
+    # Check for GDrive Paths to save backup of Log file
+    if os.path.exists(R'C:\PXRFS\26. SERVICE\Automatic Instrument Logs'):
+        driveArchiveLoc = R'C:\PXRFS\26. SERVICE\Automatic Instrument Logs'
+    elif os.path.exists(R'G:\.shortcut-targets-by-id\1w2nUsja1tidZ-QYTuemO6DzCaclAmIlm\PXRFS\26. SERVICE\Automatic Instrument Logs'):
+        driveArchiveLoc = R'G:\.shortcut-targets-by-id\1w2nUsja1tidZ-QYTuemO6DzCaclAmIlm\PXRFS\26. SERVICE\Automatic Instrument Logs'
+    else:
+        driveArchiveLoc = None
+
+    if (driveArchiveLoc is not None) and not (os.path.exists(driveArchiveLoc + f'\{instr_serialnumber}')):
+        os.makedirs(driveArchiveLoc + f'\{instr_serialnumber}')
+
+    if not os.path.exists(f'{os.getcwd()}\Logs'):
+        os.makedirs(f'{os.getcwd()}\Logs')
+
+        # Create Log file using time/date/XRFserial      
+
+
+
+    datetimeString = time.strftime("%Y%m%d-%H%M%S", time.localtime())
+    logFileName = f'S1Control_Log_{datetimeString}_{instr_serialnumber}.txt'
+    logFilePath = f'{os.getcwd()}\Logs\{logFileName}'
+    logFileArchivePath = None
+    if driveArchiveLoc is not None:
+        logFileArchivePath = driveArchiveLoc + f'\{instr_serialnumber}' + f'\{logFileName}'
+    
+
+    logFileStartTime = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+
+    with open(logFilePath, "x", encoding= 'utf-16') as logFile:
+        logFile.write(f'TIMESTAMP \tLog File Created: {logFileStartTime} by {pc_device}\{pc_user}, using S1Control {versionNum}. \n')
+        logFile.write('--------------------------------------------------------------------------------------------------------------------------------------------\n')
+
+        # Get info to add to Log file
+    instrument_GetInfo()
+
+    time.sleep(0.3)
+        # CLosing **** around idf, app, method info
+    with open(logFilePath, "a", encoding= 'utf-16') as logFile:
+        logFile.write('--------------------------------------------------------------------------------------------------------------------------------------------\n')
+
+
 
 # XRF Listen Loop Functions
 
@@ -207,15 +265,27 @@ def xrfListenLoop_Check():
 
 def xrfListenLoop():
     while True:
-        data, datatype = recvData(xrf)
+        try:
+            data, datatype = recvData(xrf)
+        except:
+            onInstrDisconnect()
+
         if datatype == '6':       # STATUS CHANGE
             #msg = data.decode("utf-8").replace('\n','').replace('\r','').replace('\t','')#.replace('<?xml version="1.0" encoding="utf-8"?>','').replace('"','').removeprefix('<Status parameter=').removesuffix('</Status>')
             #if msg[0] == '<':
             #    msg = msg.replace('<','')
             #msg = xmltodict.parse(msg)
-            statusparam = data['Status']['@parameter']
-            statustext = data['Status']['#text']
-            printAndLog(f'Status Change: {statusparam} {statustext}')
+            if '@parameter' in data['Status']:      #   basic status change
+                statusparam = data['Status']['@parameter']
+                statustext = data['Status']['#text']
+                printAndLog(f'Status Change: {statusparam} {statustext}')
+            elif 'Application Selection' in data['Status']:     # new application selected
+                printAndLog('New Application Selected.')
+                sendCommand(xrf, bruker_query_currentapplication)
+                
+
+
+            
             #printAndLog(data)
 
 
@@ -344,8 +414,6 @@ def xrfListenLoop():
             printAndLog(f"Current Application: {data['Response']['Application']} | Current Method: {data['Response']['ActiveMethod']} | Methods Available: {data['Response']['MethodList']['Method']}")
 
 
-
-
         else: 
             #printAndLog(data)
             printAndLog(f'unknown data type: {datatype}')
@@ -353,9 +421,10 @@ def xrfListenLoop():
         time.sleep(0.05)
 
 
-
-
-
+def onInstrDisconnect():
+    messagebox.showwarning('Instrument Disconnected','Error: Connection to the XRF instrument has been lost. The software will be closed, and a log file will be saved.')
+    printAndLog('Connection to the XRF instrument was unexpectedly lost. Software will shut down and log will be backed up.')
+    onClosing()
 
 # GUI
 
@@ -393,7 +462,16 @@ def startAssayClicked():
 def listenLoopThreading():
     listen_thread1 = threading.Thread(target = xrfListenLoop).start()
 
-
+def onClosing():
+    if messagebox.askokcancel("Quit", "Do you want to quit?"):
+        if logFileArchivePath is not None:
+            printAndLog(f'Log File archived to: {logFileArchivePath}')
+            printAndLog('S1Control software Closed.')
+            shutil.copyfile(logFilePath,logFileArchivePath)
+        else:
+            printAndLog('Desired Log file archive path was unable to be found. The Log file has not been archived.')
+            printAndLog('S1Control software Closed.')
+        gui.destroy()
 
 
 # Fonts
@@ -450,7 +528,7 @@ button_assay = tk.Button(width = 15, textvariable = button_assay_text, font = co
 
 #button_startlistener = tk.Button(width = 15, text = "start listen", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = lambda:xrfListenLoop_Start(None)).pack(ipadx=8,ipady=2)
 
-button_getinstdef = tk.Button(width = 15, text = "get instdef", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = getInfoClicked).pack(ipadx=8,ipady=2)
+#button_getinstdef = tk.Button(width = 15, text = "get instdef", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = getInfoClicked).pack(ipadx=8,ipady=2)
 
 
 
@@ -465,13 +543,7 @@ button_getinstdef = tk.Button(width = 15, text = "get instdef", font = consolas1
 # Main (basically)
 logFileName = ""
 
-# Set PC user and name for log file
-try:
-    pc_user = os.getlogin()
-    pc_device = os.environ['COMPUTERNAME']
-except:
-    pc_user = 'Unkown User'
-    pc_device = 'Unknown Device'
+
 
 
 # Begin Instrument Connection
@@ -481,27 +553,9 @@ xrfListenLoop_Start(None)
 instrument_GetInfo()        # Get info from IDF for log file NAMING purposes
 time.sleep(0.3)
 
+initialiseLogFile()     # Must be called after instrument and listen loop are connected and started, and getinfo has been called once, and time has been allowed for loop to read all info into vars
 
-    # Create Log file using time/date/XRFserial      
-
-datetimeString = time.strftime("%Y%m%d-%H%M%S", time.localtime())
-logFileName = f'S1Control_Log_{datetimeString}_{instr_serialnumber}.txt'
-logFileStartTime = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-with open(logFileName, "x", encoding= 'utf-16') as logFile:
-    logFile.write(f'TIMESTAMP \tLog File Created: {logFileStartTime} by {pc_device}\{pc_user}, using S1Control {versionNum}. \n')
-    logFile.write('--------------------------------------------------------------------------------------------------------------------------------------------\n')
-
-
-    # Get info to add to Log file
-instrument_GetInfo()
-
-time.sleep(0.3)
-    # CLosing **** around idf, app, method info
-with open(logFileName, "a", encoding= 'utf-16') as logFile:
-    logFile.write('--------------------------------------------------------------------------------------------------------------------------------------------\n')
-
-
-
+gui.protocol("WM_DELETE_WINDOW", onClosing)
 gui.mainloop()
 
 
