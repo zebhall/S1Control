@@ -1,13 +1,7 @@
 # S1Control by ZH for PSS
-versionNum = 'v0.0.5'
-versionDate = '2022/11/24'
+versionNum = 'v0.0.6'
+versionDate = '2022/12/01'
 
-import socket
-import xmltodict
-import tkinter as tk
-from tkinter import ttk, messagebox, filedialog, font 
-from tkinter.ttk import Progressbar, Treeview
-from concurrent import futures
 import os
 import sys
 import threading
@@ -16,7 +10,14 @@ import hashlib
 import pandas as pd
 import json
 import shutil
-import pathlib
+import socket
+import xmltodict
+import tkinter as tk
+from tkinter import ttk, messagebox, filedialog, font 
+from tkinter.ttk import Progressbar, Treeview
+from concurrent import futures
+import struct
+
 
 
 
@@ -28,6 +29,7 @@ xrf =  socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
 # BRUKER API COMMANDS to be used with sendCommand
 bruker_query_loginstate = '<Query parameter="Login State"/>'
+bruker_query_armedstate = '<Query parameter="Armed State"/>'
 bruker_query_instdef = '<Query parameter="Instrument Definition"/>'
 bruker_query_allapplications = '<Query parameter="Applications"/>'
 bruker_query_currentapplication = '<Query parameter="ActiveApplication">Include Methods</Query>'
@@ -35,6 +37,11 @@ bruker_query_methodsforcurrentapplication = '<Query parameter="Method"></Query>'
 bruker_command_login = '<Command>Login</Command>'
 bruker_command_assaystart = '<Command parameter="Assay">Start</Command>'
 bruker_command_assaystop = '<Command parameter="Assay">Stop</Command>'
+#bruker_configure_setsystemtime = 
+bruker_configure_transmitstatusenable = '<Configure parameter="Transmit Statusmsg">Yes</Configure>'     #Enable transmission of trigger pull/release and assay start/stop status messages
+bruker_configure_transmitelementalresultsenable = '<Configure parameter="Transmit Results" grades="No" elements="Yes">Yes</Configure>'      #Enable transmission of elemental results, disables transmission of grade ID / passfail results
+bruker_configure_transmitspectraenable = '<Configure parameter="Transmit Spectra">Yes</Configure>'
+bruker_configure_transmitspectradisable = '<Configure parameter="Transmit Spectra">No</Configure>'
 
 
 
@@ -51,6 +58,8 @@ def instrument_Disconnect():
     printAndLog('Instrument Connection Closed.')
 
 def instrument_StartAssay():
+    global spectra
+    spectra = []
     sendCommand(xrf, bruker_command_assaystart)
 
 def instrument_StopAssay():
@@ -58,6 +67,29 @@ def instrument_StopAssay():
 
 def instrument_Login():
     sendCommand(xrf, bruker_command_login)
+
+def instrument_QueryLoginState():
+    sendCommand(xrf, bruker_query_loginstate)
+
+def instrument_QueryArmedState():
+    sendCommand(xrf, bruker_query_armedstate)
+
+def instrument_ConfigureSystemTime():
+    currenttime = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())  #time should be format 2015-11-02 09:02:35
+    set_time_command = f'<Configure parameter="System Time">{currenttime}</Configure>'      
+    sendCommand(xrf, set_time_command)
+
+def instrument_ConfigureTransmitSpectraEnable():
+    sendCommand(xrf,bruker_configure_transmitspectraenable)
+
+def instrument_ConfigureTransmitSpectraDisable():
+    sendCommand(xrf,bruker_configure_transmitspectradisable)
+    
+
+def instrument_SetImportantStartupConfigurables():
+    sendCommand(xrf,bruker_configure_transmitstatusenable)              #Enable transmission of trigger pull/release and assay start/stop status messages
+    sendCommand(xrf,bruker_configure_transmitelementalresultsenable)    #Enable transmission of elemental results, disables transmission of grade ID / passfail results
+    instrument_ConfigureTransmitSpectraDisable()                        #
 
 
 
@@ -104,25 +136,9 @@ def recvData(s):
     data = recvChunks(s, data_size)
     footer = recvChunks(s, 4)
 
-    if (header[4:6] == b'\x01\x80'):            # 1 - COOKED SPECTRUM
-        datatype = '1'
-        return data, datatype
-
-    if (header[4:6] == b'\x02\x80'):          # 2 - RESULTS SET (don't really know when this is used?)
-        datatype = '2'
-        return data, datatype
-
-    if (header[4:6] == b'\x03\x80'):          # 3 - RAW SPECTRUM
-        datatype = '3'
-        return data, datatype
-
-    if (header[4:6] == b'\x04\x80'):          # 4 - PDZ FILENAME
-        datatype = '4'
-        return data, datatype
-
     if (header[4:6] == b'\x17\x80'):          # 5 - XML PACKET (Usually results?)
         datatype = '5'
-        data = data.decode("utf-8").replace('\n','').replace('\r','').replace('\t','')
+        data = data.decode("utf-8")#.replace('\n','').replace('\r','').replace('\t','')
         data = xmltodict.parse(data)
         if ('Response' in data) and ('@status' in data['Response']) and ('#text' in data['Response']):  # and ('ogged in ' in data['Response']['#text']):
             datatype = '5a'                     # 5a - XML PACKET, 'success, assay start' 'success, Logged in' etc response
@@ -133,14 +149,36 @@ def recvData(s):
         
         return data, datatype
 
-    if (header[4:6] == b'\x18\x80'):          # 6 - STATUS CHANGE     (i.e. trigger pulled/released, assay start/stop/complete, phase change, etc.)
+    elif (header[4:6] == b'\x01\x80'):          # 1 - COOKED SPECTRUM
+        datatype = '1'
+        return data, datatype
+
+
+    elif (header[4:6] == b'\x02\x80'):          # 2 - RESULTS SET (don't really know when this is used?)    // Deprecated?
+        datatype = '2'
+        return data, datatype
+
+    elif (header[4:6] == b'\x03\x80'):          # 3 - RAW SPECTRUM  // Deprecated?
+        datatype = '3'
+        return data, datatype
+
+    elif (header[4:6] == b'\x04\x80'):          # 4 - PDZ FILENAME // Deprecated, no longer works :(
+        datatype = '4'
+        return data, datatype
+
+    elif (header[4:6] == b'\x18\x80'):          # 6 - STATUS CHANGE     (i.e. trigger pulled/released, assay start/stop/complete, phase change, etc.)
         datatype = '6'
         data = data.decode("utf-8").replace('\n','').replace('\r','').replace('\t','')
         data = xmltodict.parse(data)
         return data, datatype
 
+    elif (header[4:6] == b'\x0b\x80'):          # 7 - SPECTRUM ENERGY PACKET
+        datatype = '7'
+        return data, datatype
+
     else:                                       # 0 - UNKNOWN DATA
         datatype = '0'
+        print(f'****debug: unknown datatype. header = {header}, data = {data}')
         return data, datatype
 
     
@@ -247,6 +285,11 @@ def initialiseLogFile():
         logFile.write('--------------------------------------------------------------------------------------------------------------------------------------------\n')
 
 
+def instrument_GetStates():
+    instrument_QueryLoginState()
+    instrument_QueryArmedState()
+
+
 
 # XRF Listen Loop Functions
 
@@ -271,14 +314,14 @@ def xrfListenLoop():
             onInstrDisconnect()
 
         if datatype == '6':       # STATUS CHANGE
-            #msg = data.decode("utf-8").replace('\n','').replace('\r','').replace('\t','')#.replace('<?xml version="1.0" encoding="utf-8"?>','').replace('"','').removeprefix('<Status parameter=').removesuffix('</Status>')
-            #if msg[0] == '<':
-            #    msg = msg.replace('<','')
-            #msg = xmltodict.parse(msg)
+
             if '@parameter' in data['Status']:      #   basic status change
                 statusparam = data['Status']['@parameter']
                 statustext = data['Status']['#text']
                 printAndLog(f'Status Change: {statusparam} {statustext}')
+                if statusparam == 'Assay' and statustext == 'Complete':
+                    pass # CONTINUE TO NEXT REPEAT?
+                    
             elif 'Application Selection' in data['Status']:     # new application selected
                 printAndLog('New Application Selected.')
                 sendCommand(xrf, bruker_query_currentapplication)
@@ -290,19 +333,20 @@ def xrfListenLoop():
 
 
         elif datatype == '1':       # COOKED SPECTRUM
-            printAndLog('New cooked Spectrum')
-            #printAndLog(data)
+            txt, spectra = setSpectrum(data)
+            printAndLog(f'New cooked Spectrum: {txt}')
+            printAndLog(f'New cooked Spectrum: {spectra}')
 
-        elif datatype == '4':       # PDZ FILENAME
-            printAndLog('New PDZ!')
-            printAndLog(data)
+        elif datatype == '4':       # PDZ FILENAME // Deprecated, no longer works :(
+            printAndLog(f'New PDZ: {data}')
+
 
         elif datatype == '2':                     # RESULTS SET (don't really know when this is used?)
             #printAndLog(etree'.tostring(data, pretty_print=True))
             printAndLog(data)
 
         elif datatype == '3':       # RAW SPECTRA
-            data = hashlib.md5(data).hexdigest()
+            #data = hashlib.md5(data).hexdigest()
             printAndLog('Raw spectrum')
             #printAndLog(data)
         
@@ -394,36 +438,84 @@ def xrfListenLoop():
                 results = pd.DataFrame.from_dict(results_chemistry)
                 printAndLog(results)
 
+            elif ('InfoReport' in data):    # ERROR HAS OCCURRED
+                printAndLog(data)
             else:
                 printAndLog('non-idf xml packet.')
                 printAndLog(data)
         
-        elif datatype == '5a':      # 5a - XML PACKET, 'logged in' response etc
-            printAndLog(f"{data['Response']['@status']}: {data['Response']['#text']}")
+        elif datatype == '5a':      # 5a - XML PACKET, 'logged in' response etc, usually.
+            global instr_isarmed
+            global instr_isloggedin
+            try:
+                if 'login state' in data['Response']['@parameter']:
+                    if data['Response']['#text'] == 'Yes':
+                        instr_isloggedin = True
+                    elif data['Response']['#text'] == 'No':
+                        instr_isloggedin = False
+                        instr_isarmed = False
+                if 'armed state' in data['Response']['@parameter']:
+                    if data['Response']['#text'] == 'Yes':
+                        instr_isarmed = True
+                    elif data['Response']['#text'] == 'No':
+                        instr_isarmed = False
+                printAndLog(f"{data['Response']['@parameter']}: {data['Response']['#text']}")
+            except:
+                printAndLog(f"{data['Response']['@status']}: {data['Response']['#text']}")
+
 
         elif datatype == '5b':      # 5b - XML PACKET, Applications present response
             global instr_applicationspresent
-            instr_applicationspresent = data['Response']['ApplicationList']['Application']
-            printAndLog(f"Applications Available: {data['Response']['ApplicationList']['Application']}")
+            try:
+                instr_applicationspresent = data['Response']['ApplicationList']['Application']
+                printAndLog(f"Applications Available: {data['Response']['ApplicationList']['Application']}")
+            except:
+                printAndLog(f"Applications Available: Error: Not Found - Was the instrument busy when it was connected?")
 
         elif datatype == '5c':      # 5c - XML PACKET, Active Application and Methods present response
             global instr_currentapplication
             global instr_currentmethod
-            instr_currentapplication = data['Response']['Application']
-            instr_currentmethod = data['Response']['ActiveMethod']
-            printAndLog(f"Current Application: {data['Response']['Application']} | Current Method: {data['Response']['ActiveMethod']} | Methods Available: {data['Response']['MethodList']['Method']}")
+            try:
+                instr_currentapplication = data['Response']['Application']
+                instr_currentmethod = data['Response']['ActiveMethod']
+                printAndLog(f"Current Application: {data['Response']['Application']} | Current Method: {data['Response']['ActiveMethod']} | Methods Available: {data['Response']['MethodList']['Method']}")
+            except:
+                printAndLog(f"Current Application: Error: Not Found - Was the instrument busy when it was connected?")
 
+        elif datatype == '7':       # 7 - SPECTRUM ENERGY PACKET, contains the SpecEnergy structure, cal info (The instrument will transmit a SPECTRUM_ENERGY packet inmmediately before transmitting it’s associated COOKED_SPECTRUM packet. The SpecEnergy iPacketCount member contains an integer that associates the SpecEnergy values with the corresponding COOKED_SPECTRUM packet via the iPacket_Cnt member of the s1_cooked_header structure.)
+            pass
 
         else: 
-            #printAndLog(data)
-            printAndLog(f'unknown data type: {datatype}')
+            printAndLog(data)
         
+
         time.sleep(0.05)
+
+
+
+spectra = []
+
+def setSpectrum(data):
+    global spectra
+    a = {}
+    (a['fEVPerChannel'],a['iTDur'],a['iRaw_Cnts'],a['iValid_Cnts'],a['iADur'],a['iADead'],a['iAReset'],a['iALive'],a['iService'],
+        a['iReset_Cnt'],a['iPacket_Cnt'],a['Det_Temp'],a['Amb_Temp'],a['iRaw_Cnts_Acc'],a['iValid_Cnts_Acc'],a['iValid_CntsRng_Acc'],
+        a['iReset_Cnt_Acc'],a['fTDur'],a['fADur'],a['fADead'],a['fAReset'],a['fALive'],a['lVacuum_Acc'],a['lPacket_Cnt'],
+        a['iFilterNum'],a['fltElement1'],a['fltThickness1'],a['fltElement2'],a['fltThickness2'],a['fltElement3'],a['fltThickness3'],
+        a['sngHVADC'],a['sngCurADC'],a['Toggle'],a['PulseLength'],a['PulsePeriod'],a['Filter'],a['ExtActual'],a['Times2']) = struct.unpack('<f4xLLL4xLLLLLHH78xhH2xLLLLfffffLLihhhhhhff2xbbbbbb', data[0:208])  #originally, struct.unpack('<f4xLLL4xLLLLLHH78xhH2xLLLLfffffLLihhhhhhff2xbbbbbb', data[0:208])
+    txt = json.dumps(a)
+    a['data'] = list(map(lambda x: x[0], struct.iter_unpack('<L', data[208:])))
+    idx = len(spectra)-1
+    if idx<0 or a['lPacket_Cnt'] == 1:
+        spectra.append(a)
+    else:
+        spectra[idx] = a
+    return txt, spectra
 
 
 def onInstrDisconnect():
     messagebox.showwarning('Instrument Disconnected','Error: Connection to the XRF instrument has been lost. The software will be closed, and a log file will be saved.')
-    printAndLog('Connection to the XRF instrument was unexpectedly lost. Software will shut down and log will be backed up.')
+    printAndLog('Connection to the XRF instrument was unexpectedly lost. Software will shut down and log will be saved.')
     onClosing()
 
 # GUI
@@ -516,20 +608,34 @@ textfg1 = CHARCOAL
 
 
 # Frames
+ctrlframe = tk.LabelFrame(gui, width = 300, height = 300, pady = 5, padx = 5, fg = "#545454", font = consolas10, text = "Control")
+ctrlframe.grid(row=2, column=1, rowspan = 5, columnspan=2, sticky= tk.NSEW)
 
+infoframe = tk.LabelFrame(gui, width = 300, height = 300, pady = 5, padx = 5, fg = "#545454", font = consolas10, text = "Instrument Information")
+infoframe.grid(row=7, column=1, rowspan = 5, columnspan=2, sticky= tk.NSEW)
+
+spectraframe = tk.LabelFrame(gui, width = 300, height = 300, pady = 5, padx = 5, fg = "#545454", font = consolas10, text = "Spectra")
+spectraframe.grid(row=2, column=3, rowspan = 4, columnspan=7, sticky= tk.NSEW)
+
+resultsframe = tk.LabelFrame(gui, width = 300, height = 300, pady = 5, padx = 5, fg = "#545454", font = consolas10, text = "Results")
+resultsframe.grid(row=6, column=3, rowspan = 6, columnspan=7, sticky= tk.NSEW)
+
+statusframe = tk.LabelFrame(gui, width = 300, height = 300, pady = 5, padx = 5, fg = "#545454", font = consolas10, text = "Status")
+statusframe.grid(row=12, column=1, rowspan = 1, columnspan=10, sticky= tk.EW)
 
 
 # Buttons
-button_reconnect = tk.Button(width = 15, text = "Login", font = consolas10, fg = buttonfg1, bg = buttonbg1, command = loginClicked).pack(ipadx=8,ipady=2)
+button_reconnect = tk.Button(ctrlframe, width = 15, text = "Login", font = consolas10, fg = buttonfg1, bg = buttonbg1, command = loginClicked).pack(ipadx=8,ipady=2)
 
 button_assay_text = tk.StringVar()
 button_assay_text.set('Start Assay')
-button_assay = tk.Button(width = 15, textvariable = button_assay_text, font = consolas10, fg = buttonfg2, bg = buttonbg2, command = startAssayClicked).pack(ipadx=8,ipady=2)
+button_assay = tk.Button(ctrlframe, width = 15, textvariable = button_assay_text, font = consolas10, fg = buttonfg2, bg = buttonbg2, command = startAssayClicked).pack(ipadx=8,ipady=2)
 
 #button_startlistener = tk.Button(width = 15, text = "start listen", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = lambda:xrfListenLoop_Start(None)).pack(ipadx=8,ipady=2)
 
 #button_getinstdef = tk.Button(width = 15, text = "get instdef", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = getInfoClicked).pack(ipadx=8,ipady=2)
-
+button_enablespectra = tk.Button(ctrlframe, width = 15, text = "enable spectra", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = instrument_ConfigureTransmitSpectraEnable).pack(ipadx=8,ipady=2)
+button_disablespectra = tk.Button(ctrlframe, width = 15, text = "disable spectra", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = instrument_ConfigureTransmitSpectraDisable).pack(ipadx=8,ipady=2)
 
 
 # rest of gui here
@@ -554,6 +660,9 @@ instrument_GetInfo()        # Get info from IDF for log file NAMING purposes
 time.sleep(0.3)
 
 initialiseLogFile()     # Must be called after instrument and listen loop are connected and started, and getinfo has been called once, and time has been allowed for loop to read all info into vars
+
+instrument_GetStates()
+
 
 gui.protocol("WM_DELETE_WINDOW", onClosing)
 gui.mainloop()
