@@ -1,6 +1,6 @@
 # S1Control by ZH for PSS
-versionNum = 'v0.0.6'
-versionDate = '2022/12/01'
+versionNum = 'v0.0.7'
+versionDate = '2022/12/02'
 
 import os
 import sys
@@ -13,10 +13,13 @@ import shutil
 import socket
 import xmltodict
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog, font 
+from tkinter import ttk, messagebox, filedialog, font
 from tkinter.ttk import Progressbar, Treeview
 from concurrent import futures
 import struct
+import numpy as np
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 
 
 
@@ -34,6 +37,8 @@ bruker_query_instdef = '<Query parameter="Instrument Definition"/>'
 bruker_query_allapplications = '<Query parameter="Applications"/>'
 bruker_query_currentapplication = '<Query parameter="ActiveApplication">Include Methods</Query>'
 bruker_query_methodsforcurrentapplication = '<Query parameter="Method"></Query>'
+bruker_query_currentapplicationprefs = '<Query parameter="User Preferences"></Query>'       # UAP - incl everything
+bruker_query_currentapplicationphasetimes = '<Query parameter="Phase Times"/>'
 bruker_command_login = '<Command>Login</Command>'
 bruker_command_assaystart = '<Command parameter="Assay">Start</Command>'
 bruker_command_assaystop = '<Command parameter="Assay">Stop</Command>'
@@ -74,6 +79,12 @@ def instrument_QueryLoginState():
 def instrument_QueryArmedState():
     sendCommand(xrf, bruker_query_armedstate)
 
+def instrument_QueryCurrentApplicationPreferences():
+    sendCommand(xrf, bruker_query_currentapplicationprefs)
+
+def instrument_QueryCurrentApplicationPhaseTimes():
+    sendCommand(xrf, bruker_query_currentapplicationphasetimes)
+
 def instrument_ConfigureSystemTime():
     currenttime = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())  #time should be format 2015-11-02 09:02:35
     set_time_command = f'<Configure parameter="System Time">{currenttime}</Configure>'      
@@ -97,17 +108,25 @@ def printAndLog(data):
     if logFileName != "":
         print(data)
         with open(logFilePath, "a", encoding= 'utf-16') as logFile:
+            logbox.config(state = 'normal')
             logFile.write(time.strftime("%H:%M:%S", time.localtime()))
             logFile.write('\t')
             if type(data) is dict:
                 logFile.write(json.dumps(data))
+                logbox.insert('end',json.dumps(data))
             elif type(data) is str:
                 logFile.write(data) 
+                logbox.insert('end', data)
             elif type(data) is pd.DataFrame:
-                logFile.write(data.to_string().replace('\n','\n\t\t'))
+                logFile.write(data.to_string(index = False).replace('\n','\n\t\t'))
+                logbox.insert('end', data.to_string(index = False))
             else:
                 logFile.write(f'Error: Data type {type(data)} unable to be written to log.')
+                logbox.insert('end',(f'Error: Data type {type(data)} unable to be written to log.'))
             logFile.write("\n")
+            logbox.insert('end','\n')
+            logbox.see("end")
+            logbox.config(state = 'disabled')
 
 
     
@@ -307,6 +326,32 @@ def xrfListenLoop_Check():
         printAndLog('xrf listen loop broke')
 
 def xrfListenLoop():
+    global instr_currentapplication
+    global instr_currentmethod
+    global instr_model
+    global instr_serialnumber
+    global instr_buildnumber
+    global instr_detectormodel
+    global instr_detectortype
+    global instr_detectorresolution
+    global instr_detectormaxTemp
+    global instr_detectorminTemp
+    global instr_detectorwindowtype
+    global instr_detectorwindowthickness
+    global instr_sourcemanufacturer
+    global instr_sourcetargetZ
+    global instr_sourcetargetSymbol
+    global instr_sourcetargetName
+    global instr_sourcemaxV
+    global instr_sourceminV
+    global instr_sourcemaxI
+    global instr_sourceminI
+    global instr_sourcemaxP
+    global instr_isarmed
+    global instr_isloggedin
+    global instr_currentphases
+    global instr_currentphase
+
     while True:
         try:
             data, datatype = recvData(xrf)
@@ -319,8 +364,16 @@ def xrfListenLoop():
                 statusparam = data['Status']['@parameter']
                 statustext = data['Status']['#text']
                 printAndLog(f'Status Change: {statusparam} {statustext}')
+                if statusparam == 'Assay' and statustext == 'Start':
+                    instr_currentphase = 0
                 if statusparam == 'Assay' and statustext == 'Complete':
-                    pass # CONTINUE TO NEXT REPEAT?
+                    plotSpectra(spectra[-1]['data'], plotphasecolours[instr_currentphase])
+                    #instr_currentphase = 0
+                    pass # CONTINUE TO NEXT REPEAT? if repeat = yes then go
+                
+                elif statusparam == 'Phase Change':
+                    plotSpectra(spectra[-1]['data'], plotphasecolours[instr_currentphase])
+                    instr_currentphase += 1
                     
             elif 'Application Selection' in data['Status']:     # new application selected
                 printAndLog('New Application Selected.')
@@ -334,8 +387,9 @@ def xrfListenLoop():
 
         elif datatype == '1':       # COOKED SPECTRUM
             txt, spectra = setSpectrum(data)
-            printAndLog(f'New cooked Spectrum: {txt}')
+            #printAndLog(f'New cooked Spectrum Info: {txt}')
             printAndLog(f'New cooked Spectrum: {spectra}')
+
 
         elif datatype == '4':       # PDZ FILENAME // Deprecated, no longer works :(
             printAndLog(f'New PDZ: {data}')
@@ -351,28 +405,7 @@ def xrfListenLoop():
             #printAndLog(data)
         
         elif datatype == '5':       # XML PACKET
-            if ('Response' in data) and ('@parameter' in data['Response']) and (data['Response']['@parameter'] == 'instrument definition') and (data['Response']['@status'] == 'success'):
-                
-                global instr_model
-                global instr_serialnumber
-                global instr_buildnumber
-                global instr_detectormodel
-                global instr_detectortype
-                global instr_detectorresolution
-                global instr_detectormaxTemp
-                global instr_detectorminTemp
-                global instr_detectorwindowtype
-                global instr_detectorwindowthickness
-                global instr_sourcemanufacturer
-                global instr_sourcetargetZ
-                global instr_sourcetargetSymbol
-                global instr_sourcetargetName
-                global instr_sourcemaxV
-                global instr_sourceminV
-                global instr_sourcemaxI
-                global instr_sourceminI
-                global instr_sourcemaxP
-                
+            if ('Response' in data) and ('@parameter' in data['Response']) and (data['Response']['@parameter'] == 'instrument definition') and (data['Response']['@status'] == 'success'):               
                 #All IDF data:
                 vers_info = data['Response']['InstrumentDefinition']
 
@@ -427,7 +460,8 @@ def xrfListenLoop():
             elif ('Data' in data) and (data['Data']['Elements'] == None):
                 printAndLog('ERROR: Calculation Error has occurred, no results provided by instrument. Try Rebooting.')
 
-            elif ('Data' in data) and ('ElementData' in data['Data']['Elements']):      #Results packet?
+            # Results packet?
+            elif ('Data' in data) and ('ElementData' in data['Data']['Elements']):      
                 results_analysismode = data['Data']['AnalysisMode']
                 results_chemistry = list(map(lambda x: {
                     'Z': int(x['AtomicNumber']['#text']),
@@ -438,15 +472,33 @@ def xrfListenLoop():
                 results = pd.DataFrame.from_dict(results_chemistry)
                 printAndLog(results)
 
-            elif ('InfoReport' in data):    # ERROR HAS OCCURRED
+            # Phase timings for current application
+            elif ('Response' in data) and ('@parameter' in data['Response']) and (data['Response']['@parameter'] == 'phase times') and (data['Response']['@status'] == 'success'):
+                instr_currentapplication = data['Response']['Application']
+                phaselist = data['Response']['PhaseList']['Phase']
+                printAndLog(f'phaselist len = {len(phaselist)}')
+                phasenums = []
+                phasenames = []
+                phasedurations = []
+                for phase in phaselist:
+                    phasenums.append(phase['@number'])
+                    phasenames.append(phase['Name'])
+                    phasedurations.append(phase['Duration'])
+                
+                instr_currentphases = zip(phasenums,phasenames,phasedurations)
+                ui_UpdateCurrentAppAndPhases()
+
+
+            
+            # ERROR HAS OCCURRED
+            elif ('InfoReport' in data):    
                 printAndLog(data)
+
             else:
                 printAndLog('non-idf xml packet.')
                 printAndLog(data)
         
         elif datatype == '5a':      # 5a - XML PACKET, 'logged in' response etc, usually.
-            global instr_isarmed
-            global instr_isloggedin
             try:
                 if 'login state' in data['Response']['@parameter']:
                     if data['Response']['#text'] == 'Yes':
@@ -473,8 +525,6 @@ def xrfListenLoop():
                 printAndLog(f"Applications Available: Error: Not Found - Was the instrument busy when it was connected?")
 
         elif datatype == '5c':      # 5c - XML PACKET, Active Application and Methods present response
-            global instr_currentapplication
-            global instr_currentmethod
             try:
                 instr_currentapplication = data['Response']['Application']
                 instr_currentmethod = data['Response']['ActiveMethod']
@@ -498,11 +548,11 @@ spectra = []
 def setSpectrum(data):
     global spectra
     a = {}
-    (a['fEVPerChannel'],a['iTDur'],a['iRaw_Cnts'],a['iValid_Cnts'],a['iADur'],a['iADead'],a['iAReset'],a['iALive'],a['iService'],
-        a['iReset_Cnt'],a['iPacket_Cnt'],a['Det_Temp'],a['Amb_Temp'],a['iRaw_Cnts_Acc'],a['iValid_Cnts_Acc'],a['iValid_CntsRng_Acc'],
-        a['iReset_Cnt_Acc'],a['fTDur'],a['fADur'],a['fADead'],a['fAReset'],a['fALive'],a['lVacuum_Acc'],a['lPacket_Cnt'],
+    (a['fEVPerChannel'],a['iTDur'],a['iRaw_Cnts'],a['iValid_Cnts'],a['iADur'],a['iADead'],a['iAReset'],a['iALive'],
+        a['iPacket_Cnt'],a['Det_Temp'],a['Amb_Temp'],a['iRaw_Cnts_Acc'],a['iValid_Cnts_Acc'],
+        a['fTDur'],a['fADur'],a['fADead'],a['fAReset'],a['fALive'],a['lPacket_Cnt'],
         a['iFilterNum'],a['fltElement1'],a['fltThickness1'],a['fltElement2'],a['fltThickness2'],a['fltElement3'],a['fltThickness3'],
-        a['sngHVADC'],a['sngCurADC'],a['Toggle'],a['PulseLength'],a['PulsePeriod'],a['Filter'],a['ExtActual'],a['Times2']) = struct.unpack('<f4xLLL4xLLLLLHH78xhH2xLLLLfffffLLihhhhhhff2xbbbbbb', data[0:208])  #originally, struct.unpack('<f4xLLL4xLLLLLHH78xhH2xLLLLfffffLLihhhhhhff2xbbbbbb', data[0:208])
+        a['sngHVADC'],a['sngCurADC'],a['Toggle']) = struct.unpack('<f4xLLL4xLLLL6xH78xhHxxLL8xfffff4xLihhhhhhffxxbxxxxx', data[0:208])  #originally, struct.unpack('<f4xLLL4xLLLLLHH78xhH2xLLLLfffffLLihhhhhhff2xbbbbbb', data[0:208])
     txt = json.dumps(a)
     a['data'] = list(map(lambda x: x[0], struct.iter_unpack('<L', data[208:])))
     idx = len(spectra)-1
@@ -510,6 +560,7 @@ def setSpectrum(data):
         spectra.append(a)
     else:
         spectra[idx] = a
+    #plotSpectra(spectra[-1]['data'])
     return txt, spectra
 
 
@@ -524,13 +575,33 @@ gui = tk.Tk()
 gui.title("S1Control")
 #gui.wm_attributes('-toolwindow', 'True',)
 #gui.geometry('+5+5')
-gui.geometry('400x400')
+gui.geometry('1500x1000')
 iconpath = resource_path("pss.ico")
 gui.iconbitmap(iconpath)
 xrf_assayisrunning = 0
 
 
 # Functions for Widgets 
+
+bins = []
+bin = 0
+while len(bins) < 2048:
+    bins.append(bin)
+    bin += 1
+
+plotphasecolours = ['blue', 'red', 'green', 'pink', 'yellow']
+
+def plotSpectra(s, colour):
+    global spectratoolbar
+    global spectraplot
+    global fig
+    
+    spectraplot.plot(bins, s, color=colour,linewidth='1')
+    #spectraplot.xlim(0,50)
+    #spectraplot.ylim(bottom=0)
+    spectratoolbar.update()
+    spectracanvas.draw()
+
 
 def loginClicked():
     instrument_Login()
@@ -549,6 +620,12 @@ def startAssayClicked():
         instrument_StartAssay()
         button_assay_text.set('Stop Assay')
         xrf_assayisrunning = 1
+
+def ui_UpdateCurrentAppAndPhases():    #update application selected and phase timings in UI
+    global instr_currentphases
+    global instr_currentapplication
+    label_currentapplication_text.set(f'Current Application: {instr_currentapplication}')
+    pass
     
 
 def listenLoopThreading():
@@ -578,6 +655,7 @@ consolas10 = font.Font(family='Consolas', size=10)
 consolas10B = font.Font(family='Consolas', size=10, weight = 'bold')
 consolas09 = font.Font(family='Consolas', size=9)
 consolas08 = font.Font(family='Consolas', size=8)
+consolas07 = font.Font(family='Consolas', size=7)
 
 # Colour Assignments
 WHITEISH = "#FAFAFA"
@@ -609,33 +687,74 @@ textfg1 = CHARCOAL
 
 # Frames
 ctrlframe = tk.LabelFrame(gui, width = 300, height = 300, pady = 5, padx = 5, fg = "#545454", font = consolas10, text = "Control")
-ctrlframe.grid(row=2, column=1, rowspan = 5, columnspan=2, sticky= tk.NSEW)
+ctrlframe.grid(row=2, column=1, rowspan = 5, columnspan=2, pady = 0, padx = [8,4], sticky= tk.NSEW)
 
-infoframe = tk.LabelFrame(gui, width = 300, height = 300, pady = 5, padx = 5, fg = "#545454", font = consolas10, text = "Instrument Information")
-infoframe.grid(row=7, column=1, rowspan = 5, columnspan=2, sticky= tk.NSEW)
+infoframe = tk.LabelFrame(gui, width = 400, height = 300, pady = 5, padx = 5, fg = "#545454", font = consolas10, text = "Instrument Information")
+infoframe.grid(row=7, column=1, rowspan = 5, columnspan=2, pady = 0, padx = [8,4], sticky= tk.NSEW)
 
 spectraframe = tk.LabelFrame(gui, width = 300, height = 300, pady = 5, padx = 5, fg = "#545454", font = consolas10, text = "Spectra")
-spectraframe.grid(row=2, column=3, rowspan = 4, columnspan=7, sticky= tk.NSEW)
+spectraframe.grid(row=2, column=3, rowspan = 4, columnspan=7, pady = 0, padx = [4,8], sticky= tk.NSEW)
 
 resultsframe = tk.LabelFrame(gui, width = 300, height = 300, pady = 5, padx = 5, fg = "#545454", font = consolas10, text = "Results")
-resultsframe.grid(row=6, column=3, rowspan = 6, columnspan=7, sticky= tk.NSEW)
+resultsframe.grid(row=6, column=3, rowspan = 6, columnspan=7, pady = 0, padx = [4,8], sticky= tk.NSEW)
 
 statusframe = tk.LabelFrame(gui, width = 300, height = 300, pady = 5, padx = 5, fg = "#545454", font = consolas10, text = "Status")
-statusframe.grid(row=12, column=1, rowspan = 1, columnspan=10, sticky= tk.EW)
+statusframe.grid(row=12, column=1, rowspan = 1, columnspan=10, pady = 0, padx = [8,8], sticky= tk.EW)
 
 
 # Buttons
-button_reconnect = tk.Button(ctrlframe, width = 15, text = "Login", font = consolas10, fg = buttonfg1, bg = buttonbg1, command = loginClicked).pack(ipadx=8,ipady=2)
+button_reconnect = tk.Button(ctrlframe, width = 15, text = "Login", font = consolas10, fg = buttonfg1, bg = buttonbg1, command = loginClicked)
+button_reconnect.grid(row=1, column=1, padx=2, pady=2, ipadx=4, ipady=0, sticky=tk.NSEW)
 
 button_assay_text = tk.StringVar()
 button_assay_text.set('Start Assay')
-button_assay = tk.Button(ctrlframe, width = 15, textvariable = button_assay_text, font = consolas10, fg = buttonfg2, bg = buttonbg2, command = startAssayClicked).pack(ipadx=8,ipady=2)
+button_assay = tk.Button(ctrlframe, width = 15, textvariable = button_assay_text, font = consolas10, fg = buttonfg2, bg = buttonbg2, command = startAssayClicked)
+button_assay.grid(row=2, column=1, padx=2, pady=2, ipadx=4, ipady=0, sticky=tk.NSEW)
 
 #button_startlistener = tk.Button(width = 15, text = "start listen", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = lambda:xrfListenLoop_Start(None)).pack(ipadx=8,ipady=2)
 
 #button_getinstdef = tk.Button(width = 15, text = "get instdef", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = getInfoClicked).pack(ipadx=8,ipady=2)
-button_enablespectra = tk.Button(ctrlframe, width = 15, text = "enable spectra", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = instrument_ConfigureTransmitSpectraEnable).pack(ipadx=8,ipady=2)
-button_disablespectra = tk.Button(ctrlframe, width = 15, text = "disable spectra", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = instrument_ConfigureTransmitSpectraDisable).pack(ipadx=8,ipady=2)
+button_enablespectra = tk.Button(ctrlframe, width = 15, text = "enable spectra", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = instrument_ConfigureTransmitSpectraEnable)
+button_enablespectra.grid(row=3, column=1, padx=2, pady=2, ipadx=4, ipady=0, sticky=tk.NSEW)
+button_disablespectra = tk.Button(ctrlframe, width = 15, text = "disable spectra", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = instrument_ConfigureTransmitSpectraDisable)
+button_disablespectra.grid(row=4, column=1, padx=2, pady=2, ipadx=4, ipady=0, sticky=tk.NSEW)
+button_setsystemtime = tk.Button(ctrlframe, width = 15, text = "sync system time", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = instrument_ConfigureSystemTime)
+button_setsystemtime.grid(row=5, column=1, padx=2, pady=2, ipadx=4, ipady=0, sticky=tk.NSEW)
+
+button_getapplicationprefs = tk.Button(ctrlframe, width = 25, text = "get current app prefs", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = instrument_QueryCurrentApplicationPreferences)
+button_getapplicationprefs.grid(row=6, column=1, padx=2, pady=2, ipadx=4, ipady=0, sticky=tk.NSEW)
+
+button_getapplicationphasetimes = tk.Button(ctrlframe, width = 25, text = "get current phase times", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = instrument_QueryCurrentApplicationPhaseTimes)
+button_getapplicationphasetimes.grid(row=7, column=1, padx=2, pady=2, ipadx=4, ipady=0, sticky=tk.NSEW)
+
+
+# Current Instrument Info stuff
+label_currentapplication_text = tk.StringVar()
+label_currentapplication_text.set('Current Application: ')
+label_currentapplication = tk.Label(ctrlframe, textvariable=label_currentapplication_text, font = consolas10)
+label_currentapplication.grid(row=1, column=2, padx=2, pady=2, ipadx=4, ipady=0, sticky=tk.NSEW)
+
+# Log Box
+
+logbox_xscroll = tk.Scrollbar(infoframe, orient = 'horizontal')
+logbox_xscroll.grid(row = 3, column = 1, columnspan = 2, sticky = tk.NSEW)
+logbox_yscroll = tk.Scrollbar(infoframe, orient = 'vertical')
+logbox_yscroll.grid(row = 1, column = 3, columnspan = 1, rowspan= 2, sticky = tk.NSEW)
+logbox = tk.Text(infoframe, height = 30, width = 60, font = consolas08, bg = CHARCOAL, fg = WHITEISH, wrap = tk.NONE, xscrollcommand=logbox_xscroll.set, yscrollcommand=logbox_yscroll.set)
+logbox.grid(row = 1, column = 1, columnspan = 2, rowspan= 2, sticky = tk.NSEW)
+logbox.config(state = 'disabled')
+logbox_xscroll.config(command = logbox.xview)
+logbox_yscroll.config(command = logbox.yview)
+
+# Spectraframe Stuff
+fig = Figure(figsize = (10, 3), dpi = 100)
+spectraplot = fig.add_subplot(111)
+spectracanvas = FigureCanvasTkAgg(fig,master = spectraframe)
+spectracanvas.draw()
+spectratoolbar = NavigationToolbar2Tk(spectracanvas,spectraframe)
+spectracanvas.get_tk_widget().pack()
+
+
 
 
 # rest of gui here

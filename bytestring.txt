@@ -1,0 +1,17 @@
+<f4xLLL4xLLLL4x4xH x(20?) 4x4xxxxx x(46?) hHxxLL4x4xfffff4xLihhhhhhffxxbxxxxx
+
+<f4xLLL4xLLLL4x4xHx4x4xxxxxxhHxxLL4x4xfffff4xLihhhhhhffxxbxxxxx
+
+<f4xLLL4xLLLL4x4xH20x4x4xxxxx46xhHxxLL4x4xfffff4xLihhhhhhffxxbxxxxx
+
+<f4xLLL4xLLLLLHH78xhH2xLLLLfffffLLihhhhhhff2xbbbbbb
+
+
+
+working:
+
+(a['fEVPerChannel'],a['iTDur'],a['iRaw_Cnts'],a['iValid_Cnts'],a['iADur'],a['iADead'],a['iAReset'],a['iALive'],
+        a['iPacket_Cnt'],a['Det_Temp'],a['Amb_Temp'],a['iRaw_Cnts_Acc'],a['iValid_Cnts_Acc'],
+        a['fTDur'],a['fADur'],a['fADead'],a['fAReset'],a['fALive'],a['lPacket_Cnt'],
+        a['iFilterNum'],a['fltElement1'],a['fltThickness1'],a['fltElement2'],a['fltThickness2'],a['fltElement3'],a['fltThickness3'],
+        a['sngHVADC'],a['sngCurADC'],a['Toggle']) = struct.unpack('<f4xLLL4xLLLL6xH78xhHxxLL8xfffff4xLihhhhhhffxxbxxxxx', data[0:208])  #originally, struct.unpack('<f4xLLL4xLLLLLHH78xhH2xLLLLfffffLLihhhhhhff2xbbbbbb', data[0:208])
