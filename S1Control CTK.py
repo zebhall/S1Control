@@ -589,10 +589,14 @@ def onInstrDisconnect():
 
 # GUI
 
-gui = tk.Tk()
+ctk.set_appearance_mode("System")  # Modes: system (default), light, dark
+ctk.set_default_color_theme("blue")  # Themes: blue (default), dark-blue, green
+
+
+gui = ctk.CTk()
 gui.title("S1Control")
 #gui.wm_attributes('-toolwindow', 'True',)
-gui.geometry('+0+0')
+#gui.geometry('+0+0')
 #gui.geometry('1500x1000')
 iconpath = resource_path("pss.ico")
 gui.iconbitmap(iconpath)
@@ -689,6 +693,7 @@ consolas09 = font.Font(family='Consolas', size=9)
 consolas08 = font.Font(family='Consolas', size=8)
 consolas07 = font.Font(family='Consolas', size=7)
 plotfont = {'fontname':'Consolas'}
+segoe10 = ctk.CTkFont(family = 'Segoe UI', size = 14)
 
 # Colour Assignments
 WHITEISH = "#FAFAFA"
@@ -717,8 +722,8 @@ buttonfg3 = WHITEISH
 textfg1 = CHARCOAL
 
 # Styles
-Astyle = ttk.Style()
-Astyle.configure('my.TMenubutton', font = consolas10)
+# Astyle = ttk.Style()
+# Astyle.configure('my.TMenubutton', font = consolas10)
 
 
 # Frames
@@ -752,7 +757,7 @@ statusframe.grid(row=12, column=1, rowspan = 1, columnspan=10, pady = [0,8], pad
 
 
 # Buttons
-button_reconnect = tk.Button(ctrlframe, width = 15, text = "Login", font = consolas10, fg = buttonfg1, bg = buttonbg1, command = loginClicked)
+button_reconnect = ctk.CTkButton(ctrlframe, width = 15, text = "Login", font = segoe10, command = loginClicked)
 button_reconnect.grid(row=1, column=1, padx=2, pady=2, ipadx=4, ipady=0, sticky=tk.NSEW)
 
 button_assay_text = tk.StringVar()
