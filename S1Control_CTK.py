@@ -1,6 +1,6 @@
 # S1Control by ZH for PSS
-versionNum = 'v0.0.8'
-versionDate = '2022/12/06'
+versionNum = 'v0.0.9'
+versionDate = '2022/12/07'
 
 import os
 import sys
@@ -114,7 +114,7 @@ def printAndLog(data):
     if logFileName != "":
         print(data)
         with open(logFilePath, "a", encoding= 'utf-16') as logFile:
-            logbox.config(state = 'normal')
+            logbox.configure(state = 'normal')
             logFile.write(time.strftime("%H:%M:%S", time.localtime()))
             logFile.write('\t')
             if type(data) is dict:
@@ -127,12 +127,16 @@ def printAndLog(data):
                 logFile.write(data.to_string(index = False).replace('\n','\n\t\t'))
                 logbox.insert('end', data.to_string(index = False))
             else:
-                logFile.write(f'Error: Data type {type(data)} unable to be written to log.')
-                logbox.insert('end',(f'Error: Data type {type(data)} unable to be written to log.'))
+                try:
+                    logFile.write(data)
+                    logbox.insert('end', data)
+                except:
+                    logFile.write(f'Error: Data type {type(data)} unable to be written to log.')
+                    logbox.insert('end',(f'Error: Data type {type(data)} unable to be written to log.'))
             logFile.write("\n")
             logbox.insert('end','\n')
             logbox.see("end")
-            logbox.config(state = 'disabled')
+            logbox.configure(state = 'disabled')
 
 
     
@@ -378,7 +382,7 @@ def xrfListenLoop():
                     instr_currentphase = 0
 
                 elif statusparam == 'Assay' and statustext == 'Complete':
-                    plotSpectra(spectra[-1]['data'], plotphasecolours[instr_currentphase])
+                    plotSpectra(spectra[-1], specenergies[-1], plotphasecolours[instr_currentphase])
                     instr_assayrepeatsleft -= 1
                     if instr_assayrepeatsleft <= 0:
                         printAndLog('All Assays complete.')
@@ -389,7 +393,7 @@ def xrfListenLoop():
                     #instr_currentphase = 0
                 
                 elif statusparam == 'Phase Change':
-                    plotSpectra(spectra[-1]['data'], plotphasecolours[instr_currentphase])
+                    plotSpectra(spectra[-1], specenergies[-1], plotphasecolours[instr_currentphase])
                     instr_currentphase += 1
                     
             elif 'Application Selection' in data['Status']:     # new application selected
@@ -418,7 +422,8 @@ def xrfListenLoop():
 
         elif datatype == '3':       # RAW SPECTRA
             #data = hashlib.md5(data).hexdigest()
-            printAndLog('Raw spectrum')
+            printAndLog('Raw spectrum!')
+            txt, spectra = setSpectrum(data)
             #printAndLog(data)
         
         elif datatype == '5':       # XML PACKET
@@ -488,6 +493,7 @@ def xrfListenLoop():
                     data['Data']['Elements']['ElementData']))
                 results = pd.DataFrame.from_dict(results_chemistry)
                 printAndLog(results)
+                addToResultsTable(results, spectra[-1], specenergies[-1])
 
             # Phase timings for current application
             elif ('Response' in data) and ('@parameter' in data['Response']) and (data['Response']['@parameter'] == 'phase times') and (data['Response']['@status'] == 'success'):
@@ -551,6 +557,9 @@ def xrfListenLoop():
                 printAndLog(f"Current Application: Error: Not Found - Was the instrument busy when it was connected?")
 
         elif datatype == '7':       # 7 - SPECTRUM ENERGY PACKET, contains the SpecEnergy structure, cal info (The instrument will transmit a SPECTRUM_ENERGY packet inmmediately before transmitting it’s associated COOKED_SPECTRUM packet. The SpecEnergy iPacketCount member contains an integer that associates the SpecEnergy values with the corresponding COOKED_SPECTRUM packet via the iPacket_Cnt member of the s1_cooked_header structure.)
+            specenergies = setSpecEnergy(data)
+            printAndLog('spec energy packet')
+            printAndLog(specenergies[-1])
             pass
 
         else: 
@@ -562,6 +571,7 @@ def xrfListenLoop():
 
 
 spectra = []
+specenergies = []
 
 def setSpectrum(data):
     global spectra
@@ -581,6 +591,22 @@ def setSpectrum(data):
     #plotSpectra(spectra[-1]['data'])
     return txt, spectra
 
+def setSpecEnergy(data):
+    global specenergies
+    b = {}
+    (b['iPacketCount'],b['fEVChanStart'],b['fEVPerChannel']) = struct.unpack('<iff', data)
+    idx = len(specenergies)-1
+    if idx<0:
+        specenergies.append(b)
+    else:
+        specenergies[idx] = b
+
+    return specenergies
+
+def addToResultsTable(results, spectrum, specenergy):
+    pass
+
+
 
 def onInstrDisconnect():
     messagebox.showwarning('Instrument Disconnected','Error: Connection to the XRF instrument has been lost. The software will be closed, and a log file will be saved.')
@@ -589,7 +615,7 @@ def onInstrDisconnect():
 
 # GUI
 
-ctk.set_appearance_mode("System")  # Modes: system (default), light, dark
+ctk.set_appearance_mode("light")  # Modes: system (default), light, dark
 ctk.set_default_color_theme("blue")  # Themes: blue (default), dark-blue, green
 
 
@@ -614,12 +640,16 @@ while len(bins) < 2048:
 
 plotphasecolours = ['blue', 'red', 'green', 'pink', 'yellow']
 
-def plotSpectra(s, colour):
+def plotSpectra(spectrum, specenergy, colour):
     global spectratoolbar
     global spectra_ax
     global fig
+
+    counts = spectrum['data']
+    ev_channel_start = specenergy['fEVChanStart']     # starting ev of spectrum channel 1
+    ev_per_channel = specenergy['fEVPerChannel']
     
-    spectra_ax.plot(bins, s, color=colour,linewidth='0.5')
+    spectra_ax.plot(bins, counts, color=colour,linewidth='0.5')
     #spectraplot.xlim(0,50)
     #spectraplot.ylim(bottom=0)
     spectra_ax.autoscale_view(tight=True)
@@ -679,6 +709,9 @@ def onClosing():
         gui.destroy()
 
 
+def resultSelected():
+    pass
+
 # Fonts
 consolas24 = font.Font(family='Consolas', size=24)
 consolas20 = font.Font(family='Consolas', size=20)
@@ -693,7 +726,13 @@ consolas09 = font.Font(family='Consolas', size=9)
 consolas08 = font.Font(family='Consolas', size=8)
 consolas07 = font.Font(family='Consolas', size=7)
 plotfont = {'fontname':'Consolas'}
-segoe10 = ctk.CTkFont(family = 'Segoe UI', size = 14)
+ctk_segoe14B = ctk.CTkFont(family = 'Segoe UI', size = 14, weight= 'bold')
+ctk_segoe12B = ctk.CTkFont(family = 'Segoe UI', size = 12, weight= 'bold')
+ctk_consolas08 = ctk.CTkFont(family = 'Consolas', size = 8)
+ctk_consolas10 = ctk.CTkFont(family = 'Consolas', size = 10)
+ctk_consolas11 = ctk.CTkFont(family = 'Consolas', size = 11)
+ctk_consolas12 = ctk.CTkFont(family = 'Consolas', size = 12)
+
 
 # Colour Assignments
 WHITEISH = "#FAFAFA"
@@ -725,89 +764,103 @@ textfg1 = CHARCOAL
 # Astyle = ttk.Style()
 # Astyle.configure('my.TMenubutton', font = consolas10)
 
+guiStyle = ttk.Style()
+guiStyle.configure('mystyle.Treeview', highlightthickness=0, bd=0, font= consolas10)        # Modify the font of the body
+guiStyle.configure('mystyle.Treeview.Heading', font = consolas10B)                                    # Modify the font of the headings)
+
 
 # Frames
-BHSframe = tk.Frame(gui, width=1200)     # bottom
-BHSframe.pack(side = tk.BOTTOM, fill = 'x', expand = True, anchor = tk.S)
+#BHSframe = ctk.CTkFrame(gui, width=1200,corner_radius=0)     # bottom
+#BHSframe.grid(row=3,column=1, columnspan=3)
 
-LHSframe = tk.Frame(gui, width=200)
-LHSframe.pack(side = tk.LEFT, fill = 'both', expand = True, anchor = tk.NW)
+LHSframe = ctk.CTkFrame(gui, width=200, corner_radius=0)
+LHSframe.grid(row=0,column=0, rowspan=4, sticky = tk.NSEW)
 
-RHSframe = tk.Frame(gui, width=200)
-RHSframe.pack(side = tk.RIGHT, fill = 'both', expand = True, anchor = tk.NE)
+RHSframe = ctk.CTkFrame(gui, width=200, corner_radius=0, fg_color= 'transparent')
+RHSframe.grid(row=0,column=1, columnspan=3, rowspan=4, sticky = tk.NSEW)
 
 
-ctrlframe = tk.LabelFrame(LHSframe, width = 100, height = 50, pady = 5, padx = 5, fg = "#545454", font = consolas10, text = "Control Instrument")
-ctrlframe.grid(row=2, column=1, rowspan = 2, columnspan=2, pady = 0, padx = [8,4], sticky= tk.NSEW)
+#ctrlframe = tk.LabelFrame(LHSframe, width = 100, height = 50, pady = 5, padx = 5, fg = "#545454", font = consolas10, text = "Control Instrument")
+#ctrlframe.grid(row=2, column=1, rowspan = 2, columnspan=1, pady = 0, padx = [8,4], sticky= tk.NSEW)
 
-configframe = tk.LabelFrame(LHSframe, width = 100, height = 50, pady = 5, padx = 5, fg = "#545454", font = consolas10, text = "Configure Instrument")
-configframe.grid(row=4, column=1, rowspan = 2, columnspan=2, pady = 0, padx = [8,4], sticky= tk.NSEW)
+#configframe = tk.LabelFrame(LHSframe, width = 100, height = 50, pady = 5, padx = 5, fg = "#545454", font = consolas10, text = "Configure Instrument")
+#configframe.grid(row=4, column=1, rowspan = 2, columnspan=1, pady = 0, padx = [8,4], sticky= tk.NSEW)
 
-infoframe = tk.LabelFrame(LHSframe, width = 400, height = 50, pady = 5, padx = 5, fg = "#545454", font = consolas10, text = "Log")
-infoframe.grid(row=6, column=1, rowspan = 6, columnspan=2, pady = 0, padx = [8,4], sticky= tk.NSEW)
+#infoframe = tk.LabelFrame(LHSframe, width = 400, height = 50, pady = 5, padx = 5, fg = "#545454", font = consolas10, text = "Log")
+#infoframe.grid(row=6, column=1, rowspan = 6, columnspan=1, pady = 0, padx = [8,4], sticky= tk.NSEW)
 
-spectraframe = tk.LabelFrame(RHSframe, width = 300, height = 50, pady = 5, padx = 5, fg = "#545454", font = consolas10, text = "Spectra")
-spectraframe.grid(row=2, column=3, rowspan = 4, columnspan=7, pady = 0, padx = [4,8], sticky= tk.NSEW)
+spectraframe = ctk.CTkFrame(RHSframe, width = 300, height = 50, corner_radius = 5)
+spectraframe.grid(row=0, column=0, pady = 10, padx = 10, ipadx = 10, ipady = 5, sticky= tk.NSEW)
 
-resultsframe = tk.LabelFrame(RHSframe, width = 300, height = 50, pady = 5, padx = 5, fg = "#545454", font = consolas10, text = "Results")
-resultsframe.grid(row=6, column=3, rowspan = 6, columnspan=7, pady = 0, padx = [4,8], sticky= tk.NSEW)
+resultsframe = ctk.CTkFrame(RHSframe, width = 300, height = 50)
+resultsframe.grid(row=1, column=0, pady = 10, padx = 10, ipadx = 10, ipady = 10, sticky= tk.NSEW)
+resultsframe.grid_columnconfigure(0, weight=1)
 
-statusframe = tk.LabelFrame(BHSframe, width = 200, height = 50, pady = 5, padx = 5, fg = "#545454", font = consolas10, text = "Status")
-statusframe.grid(row=12, column=1, rowspan = 1, columnspan=10, pady = [0,8], padx = [8,8], sticky= tk.NSEW)
+#statusframe = tk.LabelFrame(BHSframe, width = 200, height = 50, pady = 5, padx = 5, fg = "#545454", font = consolas10, text = "Status")
+#statusframe.grid(row=12, column=1, rowspan = 1, columnspan=10, pady = [0,8], padx = [8,8], sticky= tk.NSEW)
 
+
+# Tabview for controls LHS
+ctrltabview = ctk.CTkTabview(LHSframe)
+ctrltabview.grid(row=1, column=1, padx=10, pady=[10, 5], sticky=tk.NSEW)
+ctrltabview.add('Assay Controls')
+ctrltabview.add('Instrument Settings')
+ctrltabview.tab('Assay Controls').grid_columnconfigure(0, weight=1)
+ctrltabview.tab('Instrument Settings').grid_columnconfigure(0, weight=1)
 
 # Buttons
-button_reconnect = ctk.CTkButton(ctrlframe, width = 15, text = "Login", font = segoe10, command = loginClicked)
-button_reconnect.grid(row=1, column=1, padx=2, pady=2, ipadx=4, ipady=0, sticky=tk.NSEW)
+# button_login = ctk.CTkButton(ctrlframe, width = 15, text = "Login", font = ctk_segoe14B, command = loginClicked)
+# button_login.grid(row=1, column=1, padx=2, pady=2, ipadx=4, ipady=0, sticky=tk.NSEW)
 
 button_assay_text = tk.StringVar()
 button_assay_text.set('Start Assay')
-button_assay = tk.Button(ctrlframe, width = 15, textvariable = button_assay_text, font = consolas10, fg = buttonfg2, bg = buttonbg2, command = startAssayClicked)
-button_assay.grid(row=2, column=1, padx=2, pady=2, ipadx=4, ipady=0, sticky=tk.NSEW)
+button_assay = ctk.CTkButton(ctrltabview.tab("Assay Controls"), width = 13, textvariable = button_assay_text, command = startAssayClicked)
+button_assay.grid(row=1, column=0, padx=4, pady=4, sticky=tk.NSEW)
 
 #button_startlistener = tk.Button(width = 15, text = "start listen", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = lambda:xrfListenLoop_Start(None)).pack(ipadx=8,ipady=2)
 
 #button_getinstdef = tk.Button(width = 15, text = "get instdef", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = getInfoClicked).pack(ipadx=8,ipady=2)
-button_enablespectra = tk.Button(configframe, width = 15, text = "Enable Spectra", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = instrument_ConfigureTransmitSpectraEnable)
-button_enablespectra.grid(row=4, column=1, padx=2, pady=2, ipadx=4, ipady=0, sticky=tk.NSEW)
-button_disablespectra = tk.Button(configframe, width = 15, text = "Disable Spectra", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = instrument_ConfigureTransmitSpectraDisable)
-button_disablespectra.grid(row=5, column=1, padx=2, pady=2, ipadx=4, ipady=0, sticky=tk.NSEW)
-button_setsystemtime = tk.Button(configframe, width = 15, text = "Sync System Time", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = instrument_ConfigureSystemTime)
-button_setsystemtime.grid(row=6, column=1, padx=2, pady=2, ipadx=4, ipady=0, sticky=tk.NSEW)
+button_enablespectra = ctk.CTkButton(ctrltabview.tab("Instrument Settings"), width = 13, text = "Enable Spectra Transmit", command = instrument_ConfigureTransmitSpectraEnable)
+button_enablespectra.grid(row=1, column=0, padx=4, pady=4, sticky=tk.NSEW)
+button_disablespectra = ctk.CTkButton(ctrltabview.tab("Instrument Settings"), width = 13, text = "Disable Spectra Transmit", command = instrument_ConfigureTransmitSpectraDisable)
+button_disablespectra.grid(row=2, column=0, padx=4, pady=4, sticky=tk.NSEW)
+button_setsystemtime = ctk.CTkButton(ctrltabview.tab("Instrument Settings"), width = 13, text = "Sync System Time", command = instrument_ConfigureSystemTime)
+button_setsystemtime.grid(row=1, column=1, padx=4, pady=4, sticky=tk.NSEW)
 
 #button_getapplicationprefs = tk.Button(configframe, width = 25, text = "get current app prefs", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = instrument_QueryCurrentApplicationPreferences)
 #button_getapplicationprefs.grid(row=7, column=1, padx=2, pady=2, ipadx=4, ipady=0, sticky=tk.NSEW)
 
-button_getapplicationphasetimes = tk.Button(configframe, width = 25, text = "Phase Times", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = instrument_QueryCurrentApplicationPhaseTimes)
-button_getapplicationphasetimes.grid(row=8, column=1, padx=2, pady=2, ipadx=4, ipady=0, sticky=tk.NSEW)
+button_getapplicationphasetimes = ctk.CTkButton(ctrltabview.tab("Instrument Settings"), width = 13, text = "Get Phase Times", command = instrument_QueryCurrentApplicationPhaseTimes)
+button_getapplicationphasetimes.grid(row=2, column=1, padx=4, pady=4, sticky=tk.NSEW)
 
 
 # Current Instrument Info stuff
 label_currentapplication_text = tk.StringVar()
 label_currentapplication_text.set('Current Application: ')
-label_currentapplication = tk.Label(configframe, textvariable=label_currentapplication_text, font = consolas10)
-label_currentapplication.grid(row=9, column=1, padx=2, pady=2, ipadx=4, ipady=0, sticky=tk.NSEW)
+label_currentapplication = tk.Label(ctrltabview.tab("Instrument Settings"), textvariable=label_currentapplication_text, font = consolas10)
+label_currentapplication.grid(row=9, column=0, padx=4, pady=4, columnspan = 2, sticky=tk.NSEW)
 
 # Consecutive Tests Section
-repeats_choice_var = tk.StringVar()
+repeats_choice_var = ctk.StringVar(value='Consective Tests')
 repeats_choice_list = ['1','2','3','4','5','6','7','8','9','10','15','20','50','100']
-dropdown_repeattests = ttk.OptionMenu(ctrlframe, repeats_choice_var, 'Consective Assays', *repeats_choice_list, command=repeatsChoiceMade, style='my.TMenubutton', direction='right')
-dropdown_repeattests['menu'].configure(font=consolas10)
-
-dropdown_repeattests.grid(row=3,column=1,padx=2, pady=2, ipadx=4, ipady=0, sticky=tk.NSEW)
+dropdown_repeattests = ctk.CTkOptionMenu(ctrltabview.tab("Assay Controls"), variable=repeats_choice_var, values=repeats_choice_list, command=repeatsChoiceMade)
+#dropdown_repeattests.set('Consective Assays')
+#dropdown_repeattests['menu'].configure(font=consolas10)
+dropdown_repeattests.grid(row=1,column=1,padx=4, pady=4, sticky=tk.NSEW)
 
 
 # Log Box
 
-logbox_xscroll = tk.Scrollbar(infoframe, orient = 'horizontal')
-logbox_xscroll.grid(row = 3, column = 1, columnspan = 2, sticky = tk.NSEW)
-logbox_yscroll = tk.Scrollbar(infoframe, orient = 'vertical')
-logbox_yscroll.grid(row = 1, column = 3, columnspan = 1, rowspan= 2, sticky = tk.NSEW)
-logbox = tk.Text(infoframe, height = 30, width = 40, font = consolas08, bg = CHARCOAL, fg = WHITEISH, wrap = tk.NONE, xscrollcommand=logbox_xscroll.set, yscrollcommand=logbox_yscroll.set)
-logbox.grid(row = 1, column = 1, columnspan = 2, rowspan= 2, sticky = tk.NSEW)
-logbox.config(state = 'disabled')
-logbox_xscroll.config(command = logbox.xview)
-logbox_yscroll.config(command = logbox.yview)
+#logbox_xscroll = tk.Scrollbar(infoframe, orient = 'horizontal')
+#logbox_xscroll.grid(row = 3, column = 1, columnspan = 2, sticky = tk.NSEW)
+#logbox_yscroll = tk.Scrollbar(infoframe, orient = 'vertical')
+#logbox_yscroll.grid(row = 1, column = 3, columnspan = 1, rowspan= 2, sticky = tk.NSEW)
+logbox = ctk.CTkTextbox(LHSframe, corner_radius=5, height = 250, width = 320, font = ctk_consolas11, wrap = tk.NONE)
+logbox.grid(row=2, column=1, padx=10, pady=5, sticky=tk.NSEW)
+#logbox.pack(side = tk.TOP, fill = 'both', expand = True, anchor = tk.N)
+logbox.configure(state = 'disabled')
+#logbox_xscroll.config(command = logbox.xview)
+#logbox_yscroll.config(command = logbox.yview)
 
 # Spectraframe Stuff
 
@@ -825,8 +878,33 @@ spectra_ax.autoscale_view()
 spectracanvas = FigureCanvasTkAgg(fig,master = spectraframe)
 
 spectracanvas.draw()
-spectratoolbar = NavigationToolbar2Tk(spectracanvas,spectraframe)
+spectratoolbar = NavigationToolbar2Tk(spectracanvas,spectraframe,pack_toolbar=False)
+spectratoolbar.config(background='#cfcfcf')
+spectratoolbar._message_label.config(background='#cfcfcf')
+spectratoolbar.pack(side=tk.BOTTOM, fill = 'x', padx = 10, pady = 5, ipadx = 5)
 spectracanvas.get_tk_widget().pack(side=tk.BOTTOM)
+for child in spectratoolbar.winfo_children():
+    child.config(background='#cfcfcf')
+
+
+
+# Results Frame Stuff
+resultsColumns = ('t_testnum', 't_time')
+resultsTable = Treeview(resultsframe, columns = resultsColumns, height = "12", selectmode = "browse", style = 'mystyle.Treeview', show = 'headings')
+resultsTable.grid(column=0, row=0, padx=[10,0], pady=10, sticky = tk.NSEW)
+
+resultsTable.heading('t_testnum', text = "#", anchor = tk.W)                  
+resultsTable.heading('t_time', text = "Time", anchor = tk.W)   
+
+resultsTable.column('t_testnum', minwidth = 20, width = 20, anchor = tk.W)
+resultsTable.column('t_time', minwidth = 20, width = 10, anchor = tk.W)
+
+resultsTableScrollbar = ctk.CTkScrollbar(resultsframe, command=resultsTable.yview)
+resultsTableScrollbar.grid(column=1, row=0, padx=[0,2], pady=10, sticky = tk.NS)
+
+resultsTable.configure(yscroll=resultsTableScrollbar.set)
+
+resultsTable.bind('<<TreeviewSelect>>', resultSelected)
 
 
 
@@ -849,8 +927,8 @@ logFileName = ""
 
 instrument_Connect()
 xrfListenLoop_Start(None)
-instrument_GetInfo()        # Get info from IDF for log file NAMING purposes
 instrument_GetStates()
+instrument_GetInfo()        # Get info from IDF for log file NAMING purposes
 time.sleep(0.3)
 
 initialiseLogFile()     # Must be called after instrument and listen loop are connected and started, and getinfo has been called once, and time has been allowed for loop to read all info into vars
