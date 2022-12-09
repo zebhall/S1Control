@@ -1,6 +1,6 @@
 # S1Control by ZH for PSS
-versionNum = 'v0.0.9'
-versionDate = '2022/12/07'
+versionNum = 'v0.1.0'
+versionDate = '2022/12/09'
 
 import os
 import sys
@@ -50,6 +50,7 @@ bruker_configure_transmitstatusenable = '<Configure parameter="Transmit Statusms
 bruker_configure_transmitelementalresultsenable = '<Configure parameter="Transmit Results" grades="No" elements="Yes">Yes</Configure>'      #Enable transmission of elemental results, disables transmission of grade ID / passfail results
 bruker_configure_transmitspectraenable = '<Configure parameter="Transmit Spectra">Yes</Configure>'
 bruker_configure_transmitspectradisable = '<Configure parameter="Transmit Spectra">No</Configure>'
+bruker_configure_transmitstatusmessagesenable = '<Configure parameter="Transmit Statusmsg">Yes</Configure>'
 
 
 
@@ -104,8 +105,9 @@ def instrument_ConfigureTransmitSpectraDisable():
 
 
 def instrument_SetImportantStartupConfigurables():
-    instrument_ConfigureTransmitSpectraEnable()             #Enable transmission of trigger pull/release and assay start/stop status messages
+    sendCommand(xrf,bruker_configure_transmitstatusmessagesenable)      # enable transmission of trigger pull, assay complete messages, etc. necessary for basic function.
     sendCommand(xrf,bruker_configure_transmitelementalresultsenable)    #Enable transmission of elemental results, disables transmission of grade ID / passfail results
+    instrument_ConfigureTransmitSpectraEnable()                         #Enable transmission of trigger pull/release and assay start/stop status messages
     #printAndLog('Instrument Transmit settings have been configured automatically to allow program functionality.')
 
 
@@ -361,7 +363,12 @@ def xrfListenLoop():
     global instr_isloggedin
     global instr_currentphases
     global instr_currentphase
+    global instr_phasecount
     global instr_assayrepeatsleft
+    global instr_applicationspresent
+    global instr_currentassayspectra
+    global instr_currentassayspecenergies
+    global instr_currentassayresults
 
 
     while True:
@@ -382,7 +389,21 @@ def xrfListenLoop():
                     instr_currentphase = 0
 
                 elif statusparam == 'Assay' and statustext == 'Complete':
-                    plotSpectra(spectra[-1], specenergies[-1], plotphasecolours[instr_currentphase])
+                    instr_currentassayspectra.append(spectra[-1])
+                    instr_currentassayspecenergies.append(specenergies[-1])
+                    plotSpectrum(spectra[-1], specenergies[-1], plotphasecolours[instr_currentphase])
+
+
+                    # add full assay with all phases to table and catalogue. this 'assay complete' response is usually recieved at very end of assay, when all other values are in place.
+                    try:
+                        addAssayToTable(instr_currentapplication, instr_currentassayresults, instr_currentassayspectra, instr_currentassayspecenergies)
+                    except:
+                        printAndLog('Error: Assay results and spectra were unable to be saved to the table. Was the assay too short to have results?')
+
+                    #reset variables for next assay
+                    instr_currentassayspectra = []
+                    instr_currentassayspecenergies = []
+
                     instr_assayrepeatsleft -= 1
                     if instr_assayrepeatsleft <= 0:
                         printAndLog('All Assays complete.')
@@ -393,7 +414,10 @@ def xrfListenLoop():
                     #instr_currentphase = 0
                 
                 elif statusparam == 'Phase Change':
-                    plotSpectra(spectra[-1], specenergies[-1], plotphasecolours[instr_currentphase])
+                    instr_currentassayspectra.append(spectra[-1])
+                    instr_currentassayspecenergies.append(specenergies[-1])
+
+                    plotSpectrum(spectra[-1], specenergies[-1], plotphasecolours[instr_currentphase])
                     instr_currentphase += 1
                     
             elif 'Application Selection' in data['Status']:     # new application selected
@@ -484,16 +508,16 @@ def xrfListenLoop():
 
             # Results packet?
             elif ('Data' in data) and ('ElementData' in data['Data']['Elements']):      
-                results_analysismode = data['Data']['AnalysisMode']
-                results_chemistry = list(map(lambda x: {
+                instr_currentassayresults_analysismode = data['Data']['AnalysisMode']
+                instr_currentassayresults_chemistry = list(map(lambda x: {
                     'Z': int(x['AtomicNumber']['#text']),
                     'Name': x['Compound'],
                     'Concentration': float(x['Concentration']),
                     'Error(1SD)': x['Error']},
                     data['Data']['Elements']['ElementData']))
-                results = pd.DataFrame.from_dict(results_chemistry)
-                printAndLog(results)
-                addToResultsTable(results, spectra[-1], specenergies[-1])
+                instr_currentassayresults = pd.DataFrame.from_dict(instr_currentassayresults_chemistry)
+                printAndLog(instr_currentassayresults)
+                
 
             # Phase timings for current application
             elif ('Response' in data) and ('@parameter' in data['Response']) and (data['Response']['@parameter'] == 'phase times') and (data['Response']['@status'] == 'success'):
@@ -503,13 +527,19 @@ def xrfListenLoop():
                 phasenums = []
                 phasenames = []
                 phasedurations = []
-                for phase in phaselist:
-                    phasenums.append(phase['@number'])
-                    phasenames.append(phase['Name'])
-                    phasedurations.append(phase['Duration'])
-                
-                instr_currentphases = zip(phasenums,phasenames,phasedurations)
-                printAndLog(f'Current Phases: {list(instr_currentphases)}')
+                try:
+                    for phase in phaselist:
+                        phasenums.append(phase['@number'])
+                        phasenames.append(phase['Name'])
+                        phasedurations.append(phase['Duration'])
+                except:
+                    phasenums.append(phaselist['@number'])
+                    phasenames.append(phaselist['Name'])
+                    phasedurations.append(phaselist['Duration'])
+
+                instr_currentphases = list(zip(phasenums,phasenames,phasedurations))
+                instr_phasecount = len(instr_currentphases)
+                printAndLog(f'Current Phases: {instr_currentphases}')
                 ui_UpdateCurrentAppAndPhases()
 
 
@@ -535,13 +565,17 @@ def xrfListenLoop():
                         instr_isarmed = True
                     elif data['Response']['#text'] == 'No':
                         instr_isarmed = False
+                if 'Application successfully set to' in data['Response']['#text']:
+                    instrument_QueryCurrentApplicationPhaseTimes()
+                    #ui_UpdateCurrentAppAndPhases()
+
                 printAndLog(f"{data['Response']['@parameter']}: {data['Response']['#text']}")
             except:
                 printAndLog(f"{data['Response']['@status']}: {data['Response']['#text']}")
+            
 
 
         elif datatype == '5b':      # 5b - XML PACKET, Applications present response
-            global instr_applicationspresent
             try:
                 instr_applicationspresent = data['Response']['ApplicationList']['Application']
                 printAndLog(f"Applications Available: {data['Response']['ApplicationList']['Application']}")
@@ -558,8 +592,6 @@ def xrfListenLoop():
 
         elif datatype == '7':       # 7 - SPECTRUM ENERGY PACKET, contains the SpecEnergy structure, cal info (The instrument will transmit a SPECTRUM_ENERGY packet inmmediately before transmitting it’s associated COOKED_SPECTRUM packet. The SpecEnergy iPacketCount member contains an integer that associates the SpecEnergy values with the corresponding COOKED_SPECTRUM packet via the iPacket_Cnt member of the s1_cooked_header structure.)
             specenergies = setSpecEnergy(data)
-            printAndLog('spec energy packet')
-            printAndLog(specenergies[-1])
             pass
 
         else: 
@@ -572,6 +604,8 @@ def xrfListenLoop():
 
 spectra = []
 specenergies = []
+instr_currentassayspectra = []
+instr_currentassayspecenergies = []
 
 def setSpectrum(data):
     global spectra
@@ -603,8 +637,28 @@ def setSpecEnergy(data):
 
     return specenergies
 
-def addToResultsTable(results, spectrum, specenergy):
-    pass
+assay_catalogue = []
+assay_catalogue_num = 1
+
+def addAssayToTable(assay_application:str, assay_results:pd.DataFrame, assay_spectra:list, assay_specenergies:list):
+    global assay_catalogue
+    global assay_catalogue_num
+
+    assay_time = time.strftime("%H:%M:%S", time.localtime())
+
+    # make new 'assay' var with results, spectra, time etc
+    assay = [assay_catalogue_num, assay_time, assay_application, assay_results, assay_spectra, assay_specenergies]
+
+    # add assay with all relevant info to catalogue for later recall
+    assay_catalogue.append(assay)
+    
+    # add entry to assays table
+    assaysTable.insert(parent = '',index='end',iid = assay_catalogue_num, values = [assay_catalogue_num, assay_time, assay_application])
+
+    # increment catalogue index number for next assay
+    assay_catalogue_num+=1
+
+
 
 
 
@@ -623,7 +677,7 @@ gui = ctk.CTk()
 gui.title("S1Control")
 #gui.wm_attributes('-toolwindow', 'True',)
 #gui.geometry('+0+0')
-#gui.geometry('1500x1000')
+gui.geometry('1380x855')
 iconpath = resource_path("pss.ico")
 gui.iconbitmap(iconpath)
 instr_assayisrunning = 0
@@ -632,29 +686,58 @@ instr_assayrepeatsleft = 1
 
 # Functions for Widgets 
 
-bins = []
-bin = 0
-while len(bins) < 2048:
-    bins.append(bin)
-    bin += 1
+def assaySelected(event):
+    selection = tables[0].item(tables[0].selection())
+    selected_assay_catalogue_num = selection['values'][0]
+    selected_assay_application = selection['values'][2]
+    assay = assay_catalogue[selected_assay_catalogue_num-1]
+    plotAssay(assay)
+
+
+
+
+    pass
+
+total_spec_channels = 2048
+spec_channels = np.array(list(range(1, total_spec_channels+1)))
 
 plotphasecolours = ['blue', 'red', 'green', 'pink', 'yellow']
 
-def plotSpectra(spectrum, specenergy, colour):
+def plotSpectrum(spectrum, specenergy, colour):
     global spectratoolbar
     global spectra_ax
     global fig
 
     counts = spectrum['data']
-    ev_channel_start = specenergy['fEVChanStart']     # starting ev of spectrum channel 1
-    ev_per_channel = specenergy['fEVPerChannel']
-    
+
+    ev_channel_start = specenergy['fEVChanStart']           # starting ev of spectrum channel 1
+    ev_per_channel = specenergy['fEVPerChannel']     
+
+    bins = spec_channels * ev_per_channel
+    bins = bins + ev_channel_start 
+    bins = bins / 1000       # TO GET keV instead of eV
+
+    ########################################
+    # TO DO: USE EV PER CHANNEL ETC for bins
+    ########################################
+
     spectra_ax.plot(bins, counts, color=colour,linewidth='0.5')
     #spectraplot.xlim(0,50)
     #spectraplot.ylim(bottom=0)
     spectra_ax.autoscale_view(tight=True)
     spectratoolbar.update()
     spectracanvas.draw()
+
+def plotAssay(assay):
+    spectra_ax.cla()
+    # assay[4] should be spectra (list), one entry per phase
+    # assay[5] should be specenergies(list), same as above
+    colouridx = 0
+    for s, e, in zip(assay[4],assay[5]):
+        plotSpectrum(s, e, plotphasecolours[colouridx])
+        colouridx +=1
+    printAndLog(f'Assay {assay[0]} plotted.')
+
 
 
 def loginClicked():
@@ -681,16 +764,133 @@ def endOfAssaysReset():     # Assumes this is called when assay is completed and
     if button_assay_text.get() == 'Stop Assay':
         button_assay_text.set('Start Assay')
 
+
+phasetimelabels = []
+phasetimeentries = []
+phasetime1_stringvar = ctk.StringVar()
+phasetime2_stringvar = ctk.StringVar()
+phasetime3_stringvar = ctk.StringVar()
+phasename1_stringvar = ctk.StringVar()
+phasename2_stringvar = ctk.StringVar()
+phasename3_stringvar = ctk.StringVar()
+
+ui_firsttime = 1
+
 def ui_UpdateCurrentAppAndPhases():    #update application selected and phase timings in UI
     global instr_currentphases
     global instr_currentapplication
+    global ui_firsttime
+    global dropdown_application
+    global dropdown_method
+    global p1_entry
+    global p2_entry
+    global p3_entry
+    global p1_label
+    global p2_label
+    global p3_label
+    global applyphasetimes
+
+
+    phasecount = len(instr_currentphases)
+
+    if ui_firsttime == 1:
+        dropdown_application = ctk.CTkOptionMenu(ctrltabview.tab("Assay Controls"), variable=applicationselected_stringvar, values=instr_applicationspresent, command=applicationChoiceMade)
+        dropdown_application.grid(row=2,column=0,padx=4, pady=4, columnspan = 2, sticky=tk.NSEW)
+        # label_currentapplication_text.set(f'Current Application: ')
+        label_currentapplication = ctk.CTkLabel(phaseframe, textvariable=label_currentapplication_text)
+        label_currentapplication.grid(row=0, column=0, padx=8, pady=4, columnspan = 2, sticky=tk.NSEW)
+
+        p1_label = ctk.CTkLabel(phaseframe, textvariable=phasename1_stringvar)
+        p1_label.grid(row = 1, column = 0, padx=[8,4], pady=4, sticky=tk.NSEW)
+        p2_label = ctk.CTkLabel(phaseframe, textvariable=phasename2_stringvar)
+        p2_label.grid(row = 2, column = 0, padx=[8,4], pady=4, sticky=tk.NSEW)
+        p3_label = ctk.CTkLabel(phaseframe, textvariable=phasename3_stringvar)
+        p3_label.grid(row = 3, column = 0, padx=[8,4], pady=4, sticky=tk.NSEW)
+        p1_entry = ctk.CTkEntry(phaseframe, textvariable=phasetime1_stringvar)
+        p1_entry.grid(row = 1, column = 1, padx=4, pady=4, sticky=tk.NSEW)
+        p2_entry = ctk.CTkEntry(phaseframe, textvariable=phasetime2_stringvar)
+        p2_entry.grid(row = 2, column = 1, padx=4, pady=4, sticky=tk.NSEW)
+        p3_entry = ctk.CTkEntry(phaseframe, textvariable=phasetime3_stringvar)
+        p3_entry.grid(row = 3, column = 1, padx=4, pady=4, sticky=tk.NSEW)
+
+        applyphasetimes = ctk.CTkButton(phaseframe, width = 7, text = 'Apply', command = savePhaseTimes)
+        applyphasetimes.grid(row = 1, column = 2, rowspan = phasecount, padx=4, pady=4, sticky=tk.NSEW)
+
+        ui_firsttime = 0
+    
+
+    p1_label.grid_remove()
+    p2_label.grid_remove()
+    p3_label.grid_remove()
+    p1_entry.grid_remove()
+    p2_entry.grid_remove()
+    p3_entry.grid_remove()
+
+    #dropdown_application.configure(values=instr_applicationspresent)
+    applicationselected_stringvar.set(instr_currentapplication)
     label_currentapplication_text.set(f'Current Application: {instr_currentapplication}')
-    pass
+
+    # for widget in phaseframe.winfo_children():    #first remove all prev widgets in phaseframe
+    #     widget.destroy()
+
+    if phasecount>=1:
+        phasetime1_stringvar.set(instr_currentphases[0][2])
+        phasename1_stringvar.set(instr_currentphases[0][1])
+        p1_label.grid()
+        p1_entry.grid()
+
+    if phasecount>=2:
+        phasetime2_stringvar.set(instr_currentphases[1][2])  
+        phasename2_stringvar.set(instr_currentphases[1][1])      
+        p2_label.grid()
+        p2_entry.grid()
+
+    if phasecount>=3:
+        p3_label.grid()
+        p3_entry.grid()
+        phasetime3_stringvar.set(instr_currentphases[2][2])
+        phasename3_stringvar.set(instr_currentphases[2][1])
+
+    applyphasetimes.grid_configure(rowspan = phasecount)
+
+    #gui.update()
+
+
+
 
 def repeatsChoiceMade(val):
     global instr_assayrepeatsleft
     printAndLog(f'Consecutive Tests Selected: {val}')
     instr_assayrepeatsleft = int(val)
+
+def applicationChoiceMade(val):
+    cmd = f'<Configure parameter="Application">{val}</Configure>'
+    sendCommand(xrf,cmd)
+
+
+def savePhaseTimes():
+    global instr_currentphases
+    phasecount = len(instr_currentphases)
+    msg = '<Configure parameter="Phase Times"><PhaseList>'
+    len_1 = int(phasetime1_stringvar.get())
+    len_2 = int(phasetime2_stringvar.get())
+    len_3 = int(phasetime3_stringvar.get())
+    num_1 = instr_currentphases[0][0]
+    num_2 = instr_currentphases[1][0]
+    num_3 = instr_currentphases[2][0]
+    msg_end = '</PhaseList></Configure>'    
+    if phasecount>=1:
+        ph1 = f'<Phase number="{num_1}" enabled="Yes"><Duration unlimited="No">{len_1}</Duration></Phase>'
+        msg = msg+ph1
+    if phasecount>=2:
+        ph2 = f'<Phase number="{num_2}" enabled="Yes"><Duration unlimited="No">{len_2}</Duration></Phase>'
+        msg = msg+ph2
+    if phasecount>=3:
+        ph3 = f'<Phase number="{num_3}" enabled="Yes"><Duration unlimited="No">{len_3}</Duration></Phase>'
+        msg = msg+ph3
+    msg = msg+msg_end
+    sendCommand(xrf,msg)
+    
     
 
 def listenLoopThreading():
@@ -709,8 +909,7 @@ def onClosing():
         gui.destroy()
 
 
-def resultSelected():
-    pass
+
 
 # Fonts
 consolas24 = font.Font(family='Consolas', size=24)
@@ -789,12 +988,21 @@ RHSframe.grid(row=0,column=1, columnspan=3, rowspan=4, sticky = tk.NSEW)
 #infoframe = tk.LabelFrame(LHSframe, width = 400, height = 50, pady = 5, padx = 5, fg = "#545454", font = consolas10, text = "Log")
 #infoframe.grid(row=6, column=1, rowspan = 6, columnspan=1, pady = 0, padx = [8,4], sticky= tk.NSEW)
 
-spectraframe = ctk.CTkFrame(RHSframe, width = 300, height = 50, corner_radius = 5)
+spectraframe = ctk.CTkFrame(RHSframe, width = 700, height = 50, corner_radius = 5)
 spectraframe.grid(row=0, column=0, pady = 10, padx = 10, ipadx = 10, ipady = 5, sticky= tk.NSEW)
 
-resultsframe = ctk.CTkFrame(RHSframe, width = 300, height = 50)
+resultsframe = ctk.CTkFrame(RHSframe, width = 700, height = 300)
 resultsframe.grid(row=1, column=0, pady = 10, padx = 10, ipadx = 10, ipady = 10, sticky= tk.NSEW)
-resultsframe.grid_columnconfigure(0, weight=1)
+# resultsframe.grid_columnconfigure(0, weight=1)
+# resultsframe.grid_rowconfigure(0, weight=1)
+
+tableframe = tk.Frame(resultsframe, width = 550, height = 300)
+tableframe.grid(row=0, column=0, padx=[10,0], pady=[10,0], ipadx = 0, ipady = 0, sticky= tk.NSEW)
+# tableframe.grid_columnconfigure(0, weight=1)
+# tableframe.grid_rowconfigure(0, weight=1)
+tableframe.pack_propagate(0)
+
+
 
 #statusframe = tk.LabelFrame(BHSframe, width = 200, height = 50, pady = 5, padx = 5, fg = "#545454", font = consolas10, text = "Status")
 #statusframe.grid(row=12, column=1, rowspan = 1, columnspan=10, pady = [0,8], padx = [8,8], sticky= tk.NSEW)
@@ -808,11 +1016,14 @@ ctrltabview.add('Instrument Settings')
 ctrltabview.tab('Assay Controls').grid_columnconfigure(0, weight=1)
 ctrltabview.tab('Instrument Settings').grid_columnconfigure(0, weight=1)
 
+phaseframe = ctk.CTkFrame(ctrltabview.tab("Assay Controls"))
+phaseframe.grid(row=3, column=0, columnspan = 2, rowspan = 2, padx=4, pady=4, sticky=tk.NSEW)
+
 # Buttons
 # button_login = ctk.CTkButton(ctrlframe, width = 15, text = "Login", font = ctk_segoe14B, command = loginClicked)
 # button_login.grid(row=1, column=1, padx=2, pady=2, ipadx=4, ipady=0, sticky=tk.NSEW)
 
-button_assay_text = tk.StringVar()
+button_assay_text = ctk.StringVar()
 button_assay_text.set('Start Assay')
 button_assay = ctk.CTkButton(ctrltabview.tab("Assay Controls"), width = 13, textvariable = button_assay_text, command = startAssayClicked)
 button_assay.grid(row=1, column=0, padx=4, pady=4, sticky=tk.NSEW)
@@ -835,10 +1046,9 @@ button_getapplicationphasetimes.grid(row=2, column=1, padx=4, pady=4, sticky=tk.
 
 
 # Current Instrument Info stuff
-label_currentapplication_text = tk.StringVar()
-label_currentapplication_text.set('Current Application: ')
-label_currentapplication = tk.Label(ctrltabview.tab("Instrument Settings"), textvariable=label_currentapplication_text, font = consolas10)
-label_currentapplication.grid(row=9, column=0, padx=4, pady=4, columnspan = 2, sticky=tk.NSEW)
+label_currentapplication_text = ctk.StringVar()
+applicationselected_stringvar = ctk.StringVar(value='Application')
+instr_applicationspresent = []
 
 # Consecutive Tests Section
 repeats_choice_var = ctk.StringVar(value='Consective Tests')
@@ -870,7 +1080,7 @@ fig.set_facecolor('#f0f0f0')
 plt.style.use('seaborn-paper')
 plt.rcParams["font.family"] = "Consolas"
 spectra_ax = fig.add_subplot(111)
-spectra_ax.set_xlim(xmin=0, xmax=2100)
+spectra_ax.set_xlim(xmin=0, xmax=50)
 #spectra_ax.set_ylim(ymin=0)
 spectra_ax.autoscale_view()
 #spectra_ax.axhline(y=0, color='k')
@@ -882,29 +1092,53 @@ spectratoolbar = NavigationToolbar2Tk(spectracanvas,spectraframe,pack_toolbar=Fa
 spectratoolbar.config(background='#cfcfcf')
 spectratoolbar._message_label.config(background='#cfcfcf')
 spectratoolbar.pack(side=tk.BOTTOM, fill = 'x', padx = 10, pady = 5, ipadx = 5)
-spectracanvas.get_tk_widget().pack(side=tk.BOTTOM)
+spectracanvas.get_tk_widget().pack(side=tk.BOTTOM, fill = 'both', expand = True)
 for child in spectratoolbar.winfo_children():
     child.config(background='#cfcfcf')
 
 
 
-# Results Frame Stuff
-resultsColumns = ('t_testnum', 't_time')
-resultsTable = Treeview(resultsframe, columns = resultsColumns, height = "12", selectmode = "browse", style = 'mystyle.Treeview', show = 'headings')
-resultsTable.grid(column=0, row=0, padx=[10,0], pady=10, sticky = tk.NSEW)
+# Assays Frame Stuff
+assaysColumns = ('t_num', 't_time', 't_app')
+assaysTable = Treeview(tableframe, columns = assaysColumns, height = "14",  selectmode = "browse", style = 'mystyle.Treeview')
+assaysTable.pack(side="top", fill="both", expand=True)
 
-resultsTable.heading('t_testnum', text = "#", anchor = tk.W)                  
-resultsTable.heading('t_time', text = "Time", anchor = tk.W)   
+assaysTable.heading('t_num', text = "Assay #", anchor = tk.W)                  
+assaysTable.heading('t_time', text = "Time", anchor = tk.W)   
+assaysTable.heading('t_app', text = "Application", anchor = tk.W) 
 
-resultsTable.column('t_testnum', minwidth = 20, width = 20, anchor = tk.W)
-resultsTable.column('t_time', minwidth = 20, width = 10, anchor = tk.W)
+assaysTable.column('t_num', minwidth = 0, width = 20, anchor = tk.W)
+assaysTable.column('t_time', minwidth = 0, width = 30, anchor = tk.W)
+assaysTable.column('t_app', minwidth = 0, width = 50, anchor = tk.W)
 
-resultsTableScrollbar = ctk.CTkScrollbar(resultsframe, command=resultsTable.yview)
-resultsTableScrollbar.grid(column=1, row=0, padx=[0,2], pady=10, sticky = tk.NS)
+# assaysTableScrollbarY = ttk.Scrollbar(resultsframe, command=assaysTable.yview)
+# assaysTableScrollbarY.grid(column=1, row=0, padx=[0,2], pady=0, sticky = tk.NS)
 
-resultsTable.configure(yscroll=resultsTableScrollbar.set)
+# resultsTableScrollbarX = ttk.Scrollbar(resultsframe, orient = 'horizontal', command=assaysTable.xview)
+# resultsTableScrollbarX.grid(column=0, row=1, padx=0, pady=[0,2], sticky = tk.EW)
 
-resultsTable.bind('<<TreeviewSelect>>', resultSelected)
+assaysTableScrollbarY = ctk.CTkScrollbar(resultsframe, command=assaysTable.yview)
+assaysTableScrollbarY.grid(column=1, row=0, padx=[0,2], pady=[8,0], sticky = tk.NS)
+
+# resultsTableScrollbarX = ctk.CTkScrollbar(resultsframe, orientation= 'horizontal', command=assaysTable.xview)
+# resultsTableScrollbarX.grid(column=0, row=1, padx=0, pady=[0,2], sticky = tk.EW)
+
+assaysTable.configure(yscrollcommand=assaysTableScrollbarY.set)
+# assaysTable.configure(xscrollcommand=resultsTableScrollbarX.set)
+
+assaysTable.bind('<<TreeviewSelect>>', assaySelected)
+assaysTable.configure(show = 'headings')
+
+tables = []
+tables.append(assaysTable)
+
+# Resultsbox stuff
+
+resultsbox = ctk.CTkTextbox(resultsframe, corner_radius=5, height = 250, width = 400, wrap = tk.NONE)
+resultsbox.grid(row=0, column=2, padx=[10,0], pady=[10,0], ipadx = 0, ipady = 0, sticky= tk.NSEW)
+#logbox.pack(side = tk.TOP, fill = 'both', expand = True, anchor = tk.N)
+resultsbox.configure(state = 'disabled')
+
 
 
 
@@ -938,6 +1172,7 @@ if instr_isloggedin == False:
     instrument_Login()
 
 instrument_SetImportantStartupConfigurables()
+instrument_QueryCurrentApplicationPhaseTimes()
 
 
 gui.protocol("WM_DELETE_WINDOW", onClosing)
