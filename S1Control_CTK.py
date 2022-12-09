@@ -125,9 +125,10 @@ def printAndLog(data):
             elif type(data) is str:
                 logFile.write(data) 
                 logbox.insert('end', data)
-            elif type(data) is pd.DataFrame:
+            elif type(data) is pd.DataFrame:    # Because results are printed normally to resultsbox, this should now print results table to log but NOT console.
                 logFile.write(data.to_string(index = False).replace('\n','\n\t\t'))
-                logbox.insert('end', data.to_string(index = False))
+                #logbox.insert('end', data.to_string(index = False))
+                logbox.insert('end', 'Assay Results written to log file.')
             else:
                 try:
                     logFile.write(data)
@@ -321,6 +322,9 @@ def instrument_GetStates():
     instrument_QueryArmedState()
 
 
+plotLiveSpectra = True     # used for choosing whether live spectra should be plotted
+
+
 
 # XRF Listen Loop Functions
 
@@ -369,6 +373,8 @@ def xrfListenLoop():
     global instr_currentassayspectra
     global instr_currentassayspecenergies
     global instr_currentassayresults
+    global instr_DANGER_stringvar
+    global instr_assayisrunning
 
 
     while True:
@@ -386,9 +392,13 @@ def xrfListenLoop():
                 printAndLog(f'Status Change: {statusparam} {statustext}')
 
                 if statusparam == 'Assay' and statustext == 'Start':
+                    instr_assayisrunning = True
                     instr_currentphase = 0
+                    if plotLiveSpectra:
+                        clearCurrentSpectra()
 
                 elif statusparam == 'Assay' and statustext == 'Complete':
+                    instr_assayisrunning = False
                     instr_currentassayspectra.append(spectra[-1])
                     instr_currentassayspecenergies.append(specenergies[-1])
                     plotSpectrum(spectra[-1], specenergies[-1], plotphasecolours[instr_currentphase])
@@ -414,11 +424,17 @@ def xrfListenLoop():
                     #instr_currentphase = 0
                 
                 elif statusparam == 'Phase Change':
+                    instr_assayisrunning = True
                     instr_currentassayspectra.append(spectra[-1])
                     instr_currentassayspecenergies.append(specenergies[-1])
-
-                    plotSpectrum(spectra[-1], specenergies[-1], plotphasecolours[instr_currentphase])
+                    if plotLiveSpectra:
+                        plotSpectrum(spectra[-1], specenergies[-1], plotphasecolours[instr_currentphase])
                     instr_currentphase += 1
+                
+                elif statusparam == 'Armed' and statustext == 'No':
+                    instr_isarmed = False
+                elif statusparam == 'Armed' and statustext == 'Yes':
+                    instr_isarmed = True
                     
             elif 'Application Selection' in data['Status']:     # new application selected
                 printAndLog('New Application Selected.')
@@ -516,7 +532,7 @@ def xrfListenLoop():
                     'Error(1SD)': x['Error']},
                     data['Data']['Elements']['ElementData']))
                 instr_currentassayresults = pd.DataFrame.from_dict(instr_currentassayresults_chemistry)
-                printAndLog(instr_currentassayresults)
+                #printAndLog(instr_currentassayresults)
                 
 
             # Phase timings for current application
@@ -565,6 +581,7 @@ def xrfListenLoop():
                         instr_isarmed = True
                     elif data['Response']['#text'] == 'No':
                         instr_isarmed = False
+
                 if 'Application successfully set to' in data['Response']['#text']:
                     instrument_QueryCurrentApplicationPhaseTimes()
                     #ui_UpdateCurrentAppAndPhases()
@@ -596,8 +613,8 @@ def xrfListenLoop():
 
         else: 
             printAndLog(data)
-        
 
+        #statusUpdateCheck()
         time.sleep(0.05)
 
 
@@ -655,11 +672,14 @@ def addAssayToTable(assay_application:str, assay_results:pd.DataFrame, assay_spe
     # add entry to assays table
     assaysTable.insert(parent = '',index='end',iid = assay_catalogue_num, values = [assay_catalogue_num, assay_time, assay_application])
 
+    # plot, display, and print to log
+    plotAssay(assay)
+    displayResults(assay)
+    printAndLog(assay_results)
+    printAndLog(f'Assay # {assay_catalogue_num} processed sucessfully.')
+
     # increment catalogue index number for next assay
     assay_catalogue_num+=1
-
-
-
 
 
 def onInstrDisconnect():
@@ -676,15 +696,64 @@ ctk.set_default_color_theme("blue")  # Themes: blue (default), dark-blue, green
 gui = ctk.CTk()
 gui.title("S1Control")
 #gui.wm_attributes('-toolwindow', 'True',)
-#gui.geometry('+0+0')
-gui.geometry('1380x855')
+gui.geometry('+5+5')
+#gui.geometry('1380x855')
 iconpath = resource_path("pss.ico")
 gui.iconbitmap(iconpath)
-instr_assayisrunning = 0
+
+instr_isarmed = False
+instr_isloggedin = False
+instr_assayisrunning = False
 instr_assayrepeatsleft = 1
 
 
 # Functions for Widgets 
+
+def statusUpdateCheckerLoop_Start(event):
+    global status_thread
+    status_thread = threading.Thread(target=statusUpdateChecker)
+    status_thread.daemon = True
+    status_thread.start()
+    gui.after(30, statusUpdateCheckerLoop_Check)
+
+def statusUpdateCheckerLoop_Check():
+    if status_thread.is_alive():
+        gui.after(20, statusUpdateCheckerLoop_Check)
+    else:
+        printAndLog('status checker loop machine broke')
+
+def statusUpdateChecker():
+    global instr_assayisrunning
+    global instr_isarmed
+    global instr_isloggedin
+    global instr_DANGER_stringvar
+    global statuslabel
+    while True:
+        if instr_isloggedin == False:
+            instr_DANGER_stringvar.set('Not Logged In')
+            statuslabel.configure(text_color = WHITEISH) 
+            statuslabel.configure(fg_color = '#3A3A3A')
+            statusframe.configure(fg_color = '#3A3A3A')
+
+        elif instr_isarmed == False:
+            instr_DANGER_stringvar.set('Not Armed')
+            statuslabel.configure(text_color = WHITEISH) 
+            statuslabel.configure(fg_color = '#4D4D4D') 
+            statusframe.configure(fg_color = '#4D4D4D')
+
+        elif instr_assayisrunning == True:
+            instr_DANGER_stringvar.set('WARNING: X-RAYS')
+            statuslabel.configure(text_color = WHITEISH) 
+            statuslabel.configure(fg_color = '#D42525')
+            statusframe.configure(fg_color = '#D42525')
+
+        else:
+            instr_DANGER_stringvar.set('Ready')
+            statuslabel.configure(text_color = WHITEISH) 
+            statuslabel.configure(fg_color = '#33AF56')
+            statusframe.configure(fg_color = '#33AF56')
+        time.sleep(0.2)
+
 
 def assaySelected(event):
     selection = tables[0].item(tables[0].selection())
@@ -692,11 +761,8 @@ def assaySelected(event):
     selected_assay_application = selection['values'][2]
     assay = assay_catalogue[selected_assay_catalogue_num-1]
     plotAssay(assay)
+    displayResults(assay)
 
-
-
-
-    pass
 
 total_spec_channels = 2048
 spec_channels = np.array(list(range(1, total_spec_channels+1)))
@@ -728,17 +794,30 @@ def plotSpectrum(spectrum, specenergy, colour):
     spectratoolbar.update()
     spectracanvas.draw()
 
-def plotAssay(assay):
+
+def clearCurrentSpectra():
+    global spectra_ax
     spectra_ax.cla()
+
+
+def plotAssay(assay):
+    clearCurrentSpectra()
     # assay[4] should be spectra (list), one entry per phase
     # assay[5] should be specenergies(list), same as above
     colouridx = 0
     for s, e, in zip(assay[4],assay[5]):
         plotSpectrum(s, e, plotphasecolours[colouridx])
         colouridx +=1
-    printAndLog(f'Assay {assay[0]} plotted.')
+    #printAndLog(f'Assay {assay[0]} plotted.')
 
 
+def displayResults(assay):
+    global resultsbox
+    data = assay[3]
+    resultsbox.configure(state = 'normal')
+    resultsbox.delete(1.0,tk.END)
+    resultsbox.insert('end', data.to_string(index = False))
+    resultsbox.configure(state = 'disabled')
 
 def loginClicked():
     instrument_Login()
@@ -752,15 +831,15 @@ def startAssayClicked():
     if instr_assayisrunning:
         instrument_StopAssay()
         button_assay_text.set('Start Assay')
-        instr_assayisrunning = 0
+        instr_assayisrunning = False
     else:
         instrument_StartAssay()
         button_assay_text.set('Stop Assay')
-        instr_assayisrunning = 1
+        instr_assayisrunning = True
 
 def endOfAssaysReset():     # Assumes this is called when assay is completed and no repeats remain to be done
     global instr_assayisrunning
-    instr_assayisrunning = 0
+    instr_assayisrunning = False
     if button_assay_text.get() == 'Stop Assay':
         button_assay_text.set('Start Assay')
 
@@ -813,8 +892,8 @@ def ui_UpdateCurrentAppAndPhases():    #update application selected and phase ti
         p3_entry = ctk.CTkEntry(phaseframe, textvariable=phasetime3_stringvar)
         p3_entry.grid(row = 3, column = 1, padx=4, pady=4, sticky=tk.NSEW)
 
-        applyphasetimes = ctk.CTkButton(phaseframe, width = 7, text = 'Apply', command = savePhaseTimes)
-        applyphasetimes.grid(row = 1, column = 2, rowspan = phasecount, padx=4, pady=4, sticky=tk.NSEW)
+        applyphasetimes = ctk.CTkButton(phaseframe, width = 10, text = 'Apply', command = savePhaseTimes)
+        applyphasetimes.grid(row = 1, column = 2, rowspan = phasecount, padx=4, pady=4, ipadx=4, sticky=tk.NSEW)
 
         ui_firsttime = 0
     
@@ -892,11 +971,6 @@ def savePhaseTimes():
     sendCommand(xrf,msg)
     
     
-
-def listenLoopThreading():
-    listen_thread1 = threading.Thread(target = xrfListenLoop)
-    listen_thread1.start()
-
 def onClosing():
     if messagebox.askokcancel("Quit", "Do you want to quit?"):
         if logFileArchivePath is not None:
@@ -931,6 +1005,9 @@ ctk_consolas08 = ctk.CTkFont(family = 'Consolas', size = 8)
 ctk_consolas10 = ctk.CTkFont(family = 'Consolas', size = 10)
 ctk_consolas11 = ctk.CTkFont(family = 'Consolas', size = 11)
 ctk_consolas12 = ctk.CTkFont(family = 'Consolas', size = 12)
+ctk_consolas12B = ctk.CTkFont(family = 'Consolas', size = 12, weight = 'bold')
+ctk_consolas18B = ctk.CTkFont(family = 'Consolas', size = 18, weight = 'bold')
+ctk_consolas20B = ctk.CTkFont(family = 'Consolas', size = 20, weight = 'bold')
 
 
 # Colour Assignments
@@ -969,48 +1046,48 @@ guiStyle.configure('mystyle.Treeview.Heading', font = consolas10B)              
 
 
 # Frames
-#BHSframe = ctk.CTkFrame(gui, width=1200,corner_radius=0)     # bottom
-#BHSframe.grid(row=3,column=1, columnspan=3)
+# LHSframe = ctk.CTkFrame(gui, width=340, corner_radius=0)
+# LHSframe.grid(row=0,column=0, rowspan=4, sticky = tk.NSEW)
+LHSframe = ctk.CTkFrame(gui, width=340, corner_radius=0)
+LHSframe.pack(side=tk.LEFT, anchor = tk.W, fill = 'y', expand = False, padx = 0, pady = 0, ipadx = 0)
 
-LHSframe = ctk.CTkFrame(gui, width=200, corner_radius=0)
-LHSframe.grid(row=0,column=0, rowspan=4, sticky = tk.NSEW)
+# RHSframe = ctk.CTkFrame(gui, width=200, corner_radius=0, fg_color= 'transparent')
+# RHSframe.grid(row=0,column=1, columnspan=3, rowspan=4, sticky = tk.NSEW)
+RHSframe = ctk.CTkFrame(gui, corner_radius=0, fg_color= 'transparent')
+RHSframe.pack(side=tk.RIGHT, anchor = tk.W, fill = 'both', expand = True, padx = 0, pady = 0, ipadx = 0)
 
-RHSframe = ctk.CTkFrame(gui, width=200, corner_radius=0, fg_color= 'transparent')
-RHSframe.grid(row=0,column=1, columnspan=3, rowspan=4, sticky = tk.NSEW)
-
-
-#ctrlframe = tk.LabelFrame(LHSframe, width = 100, height = 50, pady = 5, padx = 5, fg = "#545454", font = consolas10, text = "Control Instrument")
-#ctrlframe.grid(row=2, column=1, rowspan = 2, columnspan=1, pady = 0, padx = [8,4], sticky= tk.NSEW)
-
-#configframe = tk.LabelFrame(LHSframe, width = 100, height = 50, pady = 5, padx = 5, fg = "#545454", font = consolas10, text = "Configure Instrument")
-#configframe.grid(row=4, column=1, rowspan = 2, columnspan=1, pady = 0, padx = [8,4], sticky= tk.NSEW)
-
-#infoframe = tk.LabelFrame(LHSframe, width = 400, height = 50, pady = 5, padx = 5, fg = "#545454", font = consolas10, text = "Log")
-#infoframe.grid(row=6, column=1, rowspan = 6, columnspan=1, pady = 0, padx = [8,4], sticky= tk.NSEW)
-
+# spectraframe = ctk.CTkFrame(RHSframe, width = 700, height = 50, corner_radius = 5)
+# spectraframe.grid(row=0, column=0, pady = 10, padx = 10, ipadx = 10, ipady = 5, sticky= tk.NSEW)
 spectraframe = ctk.CTkFrame(RHSframe, width = 700, height = 50, corner_radius = 5)
-spectraframe.grid(row=0, column=0, pady = 10, padx = 10, ipadx = 10, ipady = 5, sticky= tk.NSEW)
+spectraframe.pack(side=tk.TOP, fill = 'both', anchor = tk.N, expand = True, padx = 8, pady = [8,4], ipadx = 4, ipady = 4)
 
+# resultsframe = ctk.CTkFrame(RHSframe, width = 700, height = 300)
+# resultsframe.grid(row=1, column=0, pady = 10, padx = 10, ipadx = 10, ipady = 10, sticky= tk.NSEW)
 resultsframe = ctk.CTkFrame(RHSframe, width = 700, height = 300)
-resultsframe.grid(row=1, column=0, pady = 10, padx = 10, ipadx = 10, ipady = 10, sticky= tk.NSEW)
-# resultsframe.grid_columnconfigure(0, weight=1)
-# resultsframe.grid_rowconfigure(0, weight=1)
+resultsframe.pack(side=tk.BOTTOM, fill = 'x', anchor = tk.SW, expand = False, padx = 8, pady = [4,8], ipadx = 4, ipady = 4)
 
+
+# tableframe = tk.Frame(resultsframe, width = 550, height = 300)
+# tableframe.grid(row=0, column=0, padx=[10,0], pady=[10,0], ipadx = 0, ipady = 0, sticky= tk.NSEW)
 tableframe = tk.Frame(resultsframe, width = 550, height = 300)
-tableframe.grid(row=0, column=0, padx=[10,0], pady=[10,0], ipadx = 0, ipady = 0, sticky= tk.NSEW)
-# tableframe.grid_columnconfigure(0, weight=1)
-# tableframe.grid_rowconfigure(0, weight=1)
+tableframe.pack(side=tk.LEFT, fill = 'both', anchor = tk.SW, expand = False, padx = [8,0], pady = 8, ipadx = 0, ipady = 0)
 tableframe.pack_propagate(0)
 
 
+# Status Frame stuff
 
-#statusframe = tk.LabelFrame(BHSframe, width = 200, height = 50, pady = 5, padx = 5, fg = "#545454", font = consolas10, text = "Status")
-#statusframe.grid(row=12, column=1, rowspan = 1, columnspan=10, pady = [0,8], padx = [8,8], sticky= tk.NSEW)
+statusframe = ctk.CTkFrame(LHSframe, width=50, height = 30, corner_radius=5)
+statusframe.pack(side = tk.BOTTOM, anchor = tk.S, fill = 'x', expand = False, padx=8, pady=[4, 8])
+instr_DANGER_stringvar = tk.StringVar()
+statuslabel = ctk.CTkLabel(statusframe, textvariable = instr_DANGER_stringvar, font= ctk_consolas18B)
+statuslabel.pack(side = tk.TOP, fill = 'both', anchor = tk.N, expand = True, padx = 2, pady = 2)
+
 
 
 # Tabview for controls LHS
-ctrltabview = ctk.CTkTabview(LHSframe)
-ctrltabview.grid(row=1, column=1, padx=10, pady=[10, 5], sticky=tk.NSEW)
+ctrltabview = ctk.CTkTabview(LHSframe, height = 300)
+#ctrltabview.grid(row=1, column=1, padx=10, pady=[10, 5], sticky=tk.NSEW)
+ctrltabview.pack(side = tk.TOP, anchor = tk.N, fill = 'x', expand = False, padx=8, pady=[8, 4])
 ctrltabview.add('Assay Controls')
 ctrltabview.add('Instrument Settings')
 ctrltabview.tab('Assay Controls').grid_columnconfigure(0, weight=1)
@@ -1020,12 +1097,9 @@ phaseframe = ctk.CTkFrame(ctrltabview.tab("Assay Controls"))
 phaseframe.grid(row=3, column=0, columnspan = 2, rowspan = 2, padx=4, pady=4, sticky=tk.NSEW)
 
 # Buttons
-# button_login = ctk.CTkButton(ctrlframe, width = 15, text = "Login", font = ctk_segoe14B, command = loginClicked)
-# button_login.grid(row=1, column=1, padx=2, pady=2, ipadx=4, ipady=0, sticky=tk.NSEW)
-
 button_assay_text = ctk.StringVar()
 button_assay_text.set('Start Assay')
-button_assay = ctk.CTkButton(ctrltabview.tab("Assay Controls"), width = 13, textvariable = button_assay_text, command = startAssayClicked)
+button_assay = ctk.CTkButton(ctrltabview.tab("Assay Controls"), width = 13, textvariable = button_assay_text, font= ctk_segoe14B, command = startAssayClicked)
 button_assay.grid(row=1, column=0, padx=4, pady=4, sticky=tk.NSEW)
 
 #button_startlistener = tk.Button(width = 15, text = "start listen", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = lambda:xrfListenLoop_Start(None)).pack(ipadx=8,ipady=2)
@@ -1051,11 +1125,9 @@ applicationselected_stringvar = ctk.StringVar(value='Application')
 instr_applicationspresent = []
 
 # Consecutive Tests Section
-repeats_choice_var = ctk.StringVar(value='Consective Tests')
+repeats_choice_var = ctk.StringVar(value='Consecutive Tests')
 repeats_choice_list = ['1','2','3','4','5','6','7','8','9','10','15','20','50','100']
 dropdown_repeattests = ctk.CTkOptionMenu(ctrltabview.tab("Assay Controls"), variable=repeats_choice_var, values=repeats_choice_list, command=repeatsChoiceMade)
-#dropdown_repeattests.set('Consective Assays')
-#dropdown_repeattests['menu'].configure(font=consolas10)
 dropdown_repeattests.grid(row=1,column=1,padx=4, pady=4, sticky=tk.NSEW)
 
 
@@ -1065,8 +1137,8 @@ dropdown_repeattests.grid(row=1,column=1,padx=4, pady=4, sticky=tk.NSEW)
 #logbox_xscroll.grid(row = 3, column = 1, columnspan = 2, sticky = tk.NSEW)
 #logbox_yscroll = tk.Scrollbar(infoframe, orient = 'vertical')
 #logbox_yscroll.grid(row = 1, column = 3, columnspan = 1, rowspan= 2, sticky = tk.NSEW)
-logbox = ctk.CTkTextbox(LHSframe, corner_radius=5, height = 250, width = 320, font = ctk_consolas11, wrap = tk.NONE)
-logbox.grid(row=2, column=1, padx=10, pady=5, sticky=tk.NSEW)
+logbox = ctk.CTkTextbox(LHSframe, corner_radius=5, height = 250, width = 320, font = ctk_consolas11, text_color=WHITEISH, fg_color=CHARCOAL, wrap = tk.NONE)
+logbox.pack(side = tk.TOP, anchor = tk.N, fill = 'both', expand = True, padx=8, pady=[4, 4])
 #logbox.pack(side = tk.TOP, fill = 'both', expand = True, anchor = tk.N)
 logbox.configure(state = 'disabled')
 #logbox_xscroll.config(command = logbox.xview)
@@ -1074,11 +1146,13 @@ logbox.configure(state = 'disabled')
 
 # Spectraframe Stuff
 
-fig = Figure(figsize = (10, 4), dpi = 100)
+fig = Figure(figsize = (10, 4), dpi = 100, frameon=False)
 fig.subplots_adjust(left=0.07, bottom=0.08, right=0.99, top=0.97, wspace=None, hspace=None)
-fig.set_facecolor('#f0f0f0')
+fig.set_facecolor('#dbdbdb')
+fig.set_edgecolor('#dbdbdb')
 plt.style.use('seaborn-paper')
 plt.rcParams["font.family"] = "Consolas"
+plt.rcParams["font.sans-serif"] = "Helvetica"
 spectra_ax = fig.add_subplot(111)
 spectra_ax.set_xlim(xmin=0, xmax=50)
 #spectra_ax.set_ylim(ymin=0)
@@ -1089,12 +1163,13 @@ spectracanvas = FigureCanvasTkAgg(fig,master = spectraframe)
 
 spectracanvas.draw()
 spectratoolbar = NavigationToolbar2Tk(spectracanvas,spectraframe,pack_toolbar=False)
-spectratoolbar.config(background='#cfcfcf')
-spectratoolbar._message_label.config(background='#cfcfcf')
-spectratoolbar.pack(side=tk.BOTTOM, fill = 'x', padx = 10, pady = 5, ipadx = 5)
-spectracanvas.get_tk_widget().pack(side=tk.BOTTOM, fill = 'both', expand = True)
+
+spectratoolbar.config(background='#dbdbdb')
+spectratoolbar._message_label.config(background='#dbdbdb')
+spectratoolbar.pack(side=tk.BOTTOM, fill = 'x', padx = 8, pady = 4, ipadx = 5)
+spectracanvas.get_tk_widget().pack(side=tk.BOTTOM, fill = 'both', expand = True, padx = 8, pady = [8,0])
 for child in spectratoolbar.winfo_children():
-    child.config(background='#cfcfcf')
+    child.config(background='#dbdbdb')
 
 
 
@@ -1117,8 +1192,10 @@ assaysTable.column('t_app', minwidth = 0, width = 50, anchor = tk.W)
 # resultsTableScrollbarX = ttk.Scrollbar(resultsframe, orient = 'horizontal', command=assaysTable.xview)
 # resultsTableScrollbarX.grid(column=0, row=1, padx=0, pady=[0,2], sticky = tk.EW)
 
+# assaysTableScrollbarY = ctk.CTkScrollbar(resultsframe, command=assaysTable.yview)
+# assaysTableScrollbarY.grid(column=1, row=0, padx=[0,2], pady=[8,0], sticky = tk.NS)
 assaysTableScrollbarY = ctk.CTkScrollbar(resultsframe, command=assaysTable.yview)
-assaysTableScrollbarY.grid(column=1, row=0, padx=[0,2], pady=[8,0], sticky = tk.NS)
+assaysTableScrollbarY.pack(side = tk.LEFT, fill = 'y', expand = False, padx=[0,8], pady=8)
 
 # resultsTableScrollbarX = ctk.CTkScrollbar(resultsframe, orientation= 'horizontal', command=assaysTable.xview)
 # resultsTableScrollbarX.grid(column=0, row=1, padx=0, pady=[0,2], sticky = tk.EW)
@@ -1134,32 +1211,20 @@ tables.append(assaysTable)
 
 # Resultsbox stuff
 
-resultsbox = ctk.CTkTextbox(resultsframe, corner_radius=5, height = 250, width = 400, wrap = tk.NONE)
-resultsbox.grid(row=0, column=2, padx=[10,0], pady=[10,0], ipadx = 0, ipady = 0, sticky= tk.NSEW)
+# resultsbox = ctk.CTkTextbox(resultsframe, corner_radius=5, height = 250, width = 400, wrap = tk.NONE)
+# resultsbox.grid(row=0, column=2, padx=[10,0], pady=[10,0], ipadx = 0, ipady = 0, sticky= tk.NSEW)
+
+resultsbox = ctk.CTkTextbox(resultsframe, corner_radius=5, height = 250, width = 150, font = ctk_consolas11, wrap = tk.NONE)
+resultsbox.pack(side = tk.RIGHT, fill = 'both', expand = True, padx=8, pady=8)
 #logbox.pack(side = tk.TOP, fill = 'both', expand = True, anchor = tk.N)
 resultsbox.configure(state = 'disabled')
 
-
-
-
-
-# rest of gui here
-
-
-
-
-
-
-
-# Main (basically)
 logFileName = ""
-
-
-
 
 # Begin Instrument Connection
 
 instrument_Connect()
+statusUpdateCheckerLoop_Start(None)
 xrfListenLoop_Start(None)
 instrument_GetStates()
 instrument_GetInfo()        # Get info from IDF for log file NAMING purposes
@@ -1167,13 +1232,11 @@ time.sleep(0.3)
 
 initialiseLogFile()     # Must be called after instrument and listen loop are connected and started, and getinfo has been called once, and time has been allowed for loop to read all info into vars
 
-
 if instr_isloggedin == False:
     instrument_Login()
 
 instrument_SetImportantStartupConfigurables()
 instrument_QueryCurrentApplicationPhaseTimes()
-
 
 gui.protocol("WM_DELETE_WINDOW", onClosing)
 gui.mainloop()
