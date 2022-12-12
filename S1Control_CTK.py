@@ -1,6 +1,6 @@
 # S1Control by ZH for PSS
-versionNum = 'v0.1.0'
-versionDate = '2022/12/09'
+versionNum = 'v0.1.1'
+versionDate = '2022/12/12'
 
 import os
 import sys
@@ -752,7 +752,15 @@ def statusUpdateChecker():
             statuslabel.configure(text_color = WHITEISH) 
             statuslabel.configure(fg_color = '#33AF56')
             statusframe.configure(fg_color = '#33AF56')
+        
+        # print(f'assay is running: {instr_assayisrunning}')
+        # print(f'instr is armed: {instr_isarmed}')
+        # print(f'instr is logged in: {instr_isloggedin}')
+        # print(f'assay is running: {instr_assayisrunning}')
+
+
         time.sleep(0.2)
+    
 
 
 def assaySelected(event):
@@ -951,20 +959,26 @@ def savePhaseTimes():
     global instr_currentphases
     phasecount = len(instr_currentphases)
     msg = '<Configure parameter="Phase Times"><PhaseList>'
-    len_1 = int(phasetime1_stringvar.get())
-    len_2 = int(phasetime2_stringvar.get())
-    len_3 = int(phasetime3_stringvar.get())
-    num_1 = instr_currentphases[0][0]
-    num_2 = instr_currentphases[1][0]
-    num_3 = instr_currentphases[2][0]
+    # len_1 = int(phasetime1_stringvar.get())
+    # len_2 = int(phasetime2_stringvar.get())
+    # len_3 = int(phasetime3_stringvar.get())
+    # num_1 = instr_currentphases[0][0]
+    # num_2 = instr_currentphases[1][0]
+    # num_3 = instr_currentphases[2][0]
     msg_end = '</PhaseList></Configure>'    
     if phasecount>=1:
+        len_1 = int(phasetime1_stringvar.get())
+        num_1 = instr_currentphases[0][0]
         ph1 = f'<Phase number="{num_1}" enabled="Yes"><Duration unlimited="No">{len_1}</Duration></Phase>'
         msg = msg+ph1
     if phasecount>=2:
+        len_2 = int(phasetime2_stringvar.get())
+        num_2 = instr_currentphases[1][0]
         ph2 = f'<Phase number="{num_2}" enabled="Yes"><Duration unlimited="No">{len_2}</Duration></Phase>'
         msg = msg+ph2
     if phasecount>=3:
+        len_3 = int(phasetime3_stringvar.get())
+        num_3 = instr_currentphases[2][0]
         ph3 = f'<Phase number="{num_3}" enabled="Yes"><Duration unlimited="No">{len_3}</Duration></Phase>'
         msg = msg+ph3
     msg = msg+msg_end
@@ -1226,16 +1240,19 @@ logFileName = ""
 instrument_Connect()
 statusUpdateCheckerLoop_Start(None)
 xrfListenLoop_Start(None)
+time.sleep(0.1)
 instrument_GetStates()
+time.sleep(0.05)
 instrument_GetInfo()        # Get info from IDF for log file NAMING purposes
-time.sleep(0.312)
+time.sleep(0.3)
 
 initialiseLogFile()     # Must be called after instrument and listen loop are connected and started, and getinfo has been called once, and time has been allowed for loop to read all info into vars
 
 if instr_isloggedin == False:
     instrument_Login()
-
+time.sleep(0.05)
 instrument_SetImportantStartupConfigurables()
+time.sleep(0.05)
 instrument_QueryCurrentApplicationPhaseTimes()
 
 gui.protocol("WM_DELETE_WINDOW", onClosing)
