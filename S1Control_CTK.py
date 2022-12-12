@@ -1228,7 +1228,7 @@ statusUpdateCheckerLoop_Start(None)
 xrfListenLoop_Start(None)
 instrument_GetStates()
 instrument_GetInfo()        # Get info from IDF for log file NAMING purposes
-time.sleep(0.3)
+time.sleep(0.312)
 
 initialiseLogFile()     # Must be called after instrument and listen loop are connected and started, and getinfo has been called once, and time has been allowed for loop to read all info into vars
 
