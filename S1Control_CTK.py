@@ -1,5 +1,5 @@
 # S1Control by ZH for PSS
-versionNum = 'v0.1.2'
+versionNum = 'v0.1.3'
 versionDate = '2022/12/12'
 
 import os
@@ -17,6 +17,7 @@ import customtkinter as ctk
 from tkinter import ttk, messagebox, filedialog, font
 from tkinter.ttk import Progressbar, Treeview
 import struct
+import sqlalchemy
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
@@ -444,6 +445,7 @@ def xrfListenLoop():
                     instr_isarmed = False
                 elif statusparam == 'Armed' and statustext == 'Yes':
                     instr_isarmed = True
+                    instr_isloggedin = True
                     
             elif 'Application Selection' in data['Status']:     # new application selected
                 printAndLog('New Application Selected.')
@@ -542,9 +544,9 @@ def xrfListenLoop():
                 instr_currentassayresults_analysismode = data['Data']['AnalysisMode']
                 instr_currentassayresults_chemistry = list(map(lambda x: {
                     'Z': int(x['AtomicNumber']['#text']),
-                    'Name': x['Compound'],
-                    'Concentration': float(x['Concentration']),
-                    'Error(1SD)': x['Error']},
+                    'Compound': x['Compound'],
+                    'Concentration(%)': np.around(float(x['Concentration']), 4),
+                    'Error(1SD)': np.around(float(x['Error']), 4)},
                     data['Data']['Elements']['ElementData']))
                 instr_currentassayresults = pd.DataFrame.from_dict(instr_currentassayresults_chemistry)
                 #printAndLog(instr_currentassayresults)
@@ -584,32 +586,33 @@ def xrfListenLoop():
                 printAndLog(data)
         
         elif datatype == '5a':      # 5a - XML PACKET, 'logged in' response etc, usually.
-            try:
-                if 'login state' in data['Response']['@parameter']:
-                    if data['Response']['#text'] == 'Yes':
-                        instr_isloggedin = True
-                    elif data['Response']['#text'] == 'No':
-                        instr_isloggedin = False
-                        instr_isarmed = False
-                elif 'armed state' in data['Response']['@parameter']:
-                    if data['Response']['#text'] == 'Yes':
-                        instr_isarmed = True
-                    elif data['Response']['#text'] == 'No':
-                        instr_isarmed = False
+            if 'login state' in data['Response']['@parameter']:
+                if data['Response']['#text'] == 'Yes':
+                    instr_isloggedin = True
+                elif data['Response']['#text'] == 'No':
+                    instr_isloggedin = False
+                    instr_isarmed = False
 
-                elif 'Application successfully set to' in data['Response']['#text']:
-                    instrument_QueryCurrentApplicationPhaseTimes()
-                    #ui_UpdateCurrentAppAndPhases()
-                
-                elif data['Response']['@parameter'] == 'version':
-                    try:
-                        instr_softwareS1version = data['Response']['#text']
-                    except: instr_softwareS1version = 'UNKNOWN'
+            elif ('Logged in as' in data['Response']['#text']) and ('success' in data['Response']['@status']):
+                    instr_isloggedin = True
 
-                else: printAndLog(f"{data['Response']['@parameter']}: {data['Response']['#text']}")
-                
-            except:
-                printAndLog(f"{data['Response']['@status']}: {data['Response']['#text']}")
+            elif 'armed state' in data['Response']['@parameter']:
+                if data['Response']['#text'] == 'Yes':
+                    instr_isarmed = True
+                elif data['Response']['#text'] == 'No':
+                    instr_isarmed = False
+
+            elif 'Application successfully set to' in data['Response']['#text']:
+                instrument_QueryCurrentApplicationPhaseTimes()
+                #ui_UpdateCurrentAppAndPhases()
+            
+            elif data['Response']['@parameter'] == 'version':
+                try:
+                    instr_softwareS1version = data['Response']['#text']
+                except: instr_softwareS1version = 'UNKNOWN'
+
+            else: printAndLog(f"{data['Response']['@parameter']}: {data['Response']['#text']}")
+
             
 
 
