@@ -1,5 +1,5 @@
 # S1Control by ZH for PSS
-versionNum = 'v0.1.1'
+versionNum = 'v0.1.2'
 versionDate = '2022/12/12'
 
 import os
@@ -16,7 +16,6 @@ import tkinter as tk
 import customtkinter as ctk
 from tkinter import ttk, messagebox, filedialog, font
 from tkinter.ttk import Progressbar, Treeview
-from concurrent import futures
 import struct
 import numpy as np
 import matplotlib.pyplot as plt
@@ -42,6 +41,7 @@ bruker_query_currentapplication = '<Query parameter="ActiveApplication">Include 
 bruker_query_methodsforcurrentapplication = '<Query parameter="Method"></Query>'
 bruker_query_currentapplicationprefs = '<Query parameter="User Preferences"></Query>'       # UAP - incl everything
 bruker_query_currentapplicationphasetimes = '<Query parameter="Phase Times"/>'
+bruker_query_softwareversion = '<Query parameter="Version"/>'       # S1 version, eg 2.7.58.392
 bruker_command_login = '<Command>Login</Command>'
 bruker_command_assaystart = '<Command parameter="Assay">Start</Command>'
 bruker_command_assaystop = '<Command parameter="Assay">Stop</Command>'
@@ -90,6 +90,9 @@ def instrument_QueryCurrentApplicationPreferences():
 
 def instrument_QueryCurrentApplicationPhaseTimes():
     sendCommand(xrf, bruker_query_currentapplicationphasetimes)
+
+def instrument_QuerySoftwareVersion():
+    sendCommand(xrf, bruker_query_softwareversion)
 
 def instrument_ConfigureSystemTime():
     currenttime = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())  #time should be format 2015-11-02 09:02:35
@@ -244,6 +247,7 @@ def instrument_GetInfo():
     sendCommand(xrf, bruker_query_instdef)
     sendCommand(xrf, bruker_query_allapplications)
     sendCommand(xrf, bruker_query_currentapplication)
+    instrument_QuerySoftwareVersion()
     
 
 def printInstrumentInfo():
@@ -363,6 +367,11 @@ def xrfListenLoop():
     global instr_sourcemaxI
     global instr_sourceminI
     global instr_sourcemaxP
+    global instr_firmwareSUPversion
+    global instr_firmwareUUPversion
+    global instr_firmwareXILINXversion
+    global instr_firmwareOMAPkernelversion
+    global instr_softwareS1version
     global instr_isarmed
     global instr_isloggedin
     global instr_currentphases
@@ -503,7 +512,10 @@ def xrfListenLoop():
                 instr_sourcemaxI = vers_info['XrayTube']['OperatingLimits']['MaxAnodeCurrentInuA'] + 'μA'
                 instr_sourceminI = vers_info['XrayTube']['OperatingLimits']['MinAnodeCurrentInuA'] + 'μA'
                 instr_sourcemaxP = vers_info['XrayTube']['OperatingLimits']['MaxOutputPowerInmW'] + 'mW'
-
+                instr_firmwareSUPversion = vers_info['SUP']['FirmwareVersion']
+                instr_firmwareUUPversion = vers_info['UUP']['FirmwareVersion']
+                instr_firmwareXILINXversion = vers_info['DPP']['XilinxFirmwareVersion']
+                instr_firmwareOMAPkernelversion = vers_info['OMAP']['KernelVersion']
                 # a = globals()
                 # for i in a:
                 #     printAndLog(i, ':', a[i])
@@ -512,6 +524,9 @@ def xrfListenLoop():
                 printAndLog(f'Model: {instr_model}')
                 printAndLog(f'Serial Number: {instr_serialnumber}')
                 printAndLog(f'Build Number: {instr_buildnumber}')
+                try: printAndLog(f'Software: S1 Version {instr_softwareS1version}')
+                except: pass
+                printAndLog(f'Firmware: SuP {instr_firmwareSUPversion}, UuP {instr_firmwareUUPversion}')
                 printAndLog(f'Detector: {instr_detectormodel}')
                 printAndLog(f'Detector Specs: {instr_detectortype} - {instr_detectorwindowthickness} {instr_detectorwindowtype} window, {instr_detectorresolution} resolution, operating temps {instr_detectormaxTemp} - {instr_detectorminTemp}')
                 printAndLog(f'Source: {instr_sourcemanufacturer} {instr_sourcemaxP}')
@@ -576,17 +591,23 @@ def xrfListenLoop():
                     elif data['Response']['#text'] == 'No':
                         instr_isloggedin = False
                         instr_isarmed = False
-                if 'armed state' in data['Response']['@parameter']:
+                elif 'armed state' in data['Response']['@parameter']:
                     if data['Response']['#text'] == 'Yes':
                         instr_isarmed = True
                     elif data['Response']['#text'] == 'No':
                         instr_isarmed = False
 
-                if 'Application successfully set to' in data['Response']['#text']:
+                elif 'Application successfully set to' in data['Response']['#text']:
                     instrument_QueryCurrentApplicationPhaseTimes()
                     #ui_UpdateCurrentAppAndPhases()
+                
+                elif data['Response']['@parameter'] == 'version':
+                    try:
+                        instr_softwareS1version = data['Response']['#text']
+                    except: instr_softwareS1version = 'UNKNOWN'
 
-                printAndLog(f"{data['Response']['@parameter']}: {data['Response']['#text']}")
+                else: printAndLog(f"{data['Response']['@parameter']}: {data['Response']['#text']}")
+                
             except:
                 printAndLog(f"{data['Response']['@status']}: {data['Response']['#text']}")
             
@@ -1125,6 +1146,10 @@ button_disablespectra = ctk.CTkButton(ctrltabview.tab("Instrument Settings"), wi
 button_disablespectra.grid(row=2, column=0, padx=4, pady=4, sticky=tk.NSEW)
 button_setsystemtime = ctk.CTkButton(ctrltabview.tab("Instrument Settings"), width = 13, text = "Sync System Time", command = instrument_ConfigureSystemTime)
 button_setsystemtime.grid(row=1, column=1, padx=4, pady=4, sticky=tk.NSEW)
+
+button_gets1softwareversion = ctk.CTkButton(ctrltabview.tab("Instrument Settings"), width = 13, text = "Check Software Version", command = instrument_QuerySoftwareVersion)
+button_gets1softwareversion.grid(row=3, column=0, padx=4, pady=4, sticky=tk.NSEW)
+
 
 #button_getapplicationprefs = tk.Button(configframe, width = 25, text = "get current app prefs", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = instrument_QueryCurrentApplicationPreferences)
 #button_getapplicationprefs.grid(row=7, column=1, padx=2, pady=2, ipadx=4, ipady=0, sticky=tk.NSEW)
