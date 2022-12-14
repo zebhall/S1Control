@@ -1,6 +1,6 @@
 # S1Control by ZH for PSS
-versionNum = 'v0.1.3'
-versionDate = '2022/12/12'
+versionNum = 'v0.1.4'
+versionDate = '2022/12/14'
 
 import os
 import sys
@@ -17,7 +17,7 @@ import customtkinter as ctk
 from tkinter import ttk, messagebox, filedialog, font
 from tkinter.ttk import Progressbar, Treeview
 import struct
-import sqlalchemy
+# import sqlalchemy
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
@@ -69,6 +69,11 @@ def instrument_Disconnect():
 
 def instrument_StartAssay():
     global spectra
+    global instr_assayrepeatsselected
+    global instr_assayrepeatsleft
+    instr_assayrepeatsleft = instr_assayrepeatsselected
+    if instr_assayrepeatsselected > 1:
+        printAndLog(f'Starting Assays - {instr_assayrepeatsselected} consecutive selected.')
     spectra = []
     sendCommand(xrf, bruker_command_assaystart)
 
@@ -93,6 +98,8 @@ def instrument_QueryCurrentApplicationPhaseTimes():
     sendCommand(xrf, bruker_query_currentapplicationphasetimes)
 
 def instrument_QuerySoftwareVersion():
+    global s1ver_inlog
+    s1ver_inlog = False
     sendCommand(xrf, bruker_query_softwareversion)
 
 def instrument_ConfigureSystemTime():
@@ -385,6 +392,7 @@ def xrfListenLoop():
     global instr_currentassayresults
     global instr_DANGER_stringvar
     global instr_assayisrunning
+    global s1ver_inlog
 
 
     while True:
@@ -526,8 +534,11 @@ def xrfListenLoop():
                 printAndLog(f'Model: {instr_model}')
                 printAndLog(f'Serial Number: {instr_serialnumber}')
                 printAndLog(f'Build Number: {instr_buildnumber}')
-                try: printAndLog(f'Software: S1 Version {instr_softwareS1version}')
-                except: pass
+                try: 
+                    printAndLog(f'Software: S1 Version {instr_softwareS1version}')
+                    s1ver_inlog = True
+                except: 
+                    s1ver_inlog = False
                 printAndLog(f'Firmware: SuP {instr_firmwareSUPversion}, UuP {instr_firmwareUUPversion}')
                 printAndLog(f'Detector: {instr_detectormodel}')
                 printAndLog(f'Detector Specs: {instr_detectortype} - {instr_detectorwindowthickness} {instr_detectorwindowtype} window, {instr_detectorresolution} resolution, operating temps {instr_detectormaxTemp} - {instr_detectorminTemp}')
@@ -586,32 +597,51 @@ def xrfListenLoop():
                 printAndLog(data)
         
         elif datatype == '5a':      # 5a - XML PACKET, 'logged in' response etc, usually.
-            if 'login state' in data['Response']['@parameter']:
-                if data['Response']['#text'] == 'Yes':
-                    instr_isloggedin = True
-                elif data['Response']['#text'] == 'No':
-                    instr_isloggedin = False
-                    instr_isarmed = False
+            if '@parameter' in data['Response']:
+                if 'login state' in data['Response']['@parameter']:
+                    if data['Response']['#text'] == 'Yes':
+                        instr_isloggedin = True
+                    elif data['Response']['#text'] == 'No':
+                        instr_isloggedin = False
+                        instr_isarmed = False
 
-            elif ('Logged in as' in data['Response']['#text']) and ('success' in data['Response']['@status']):
-                    instr_isloggedin = True
+                elif 'armed state' in data['Response']['@parameter']:
+                    if data['Response']['#text'] == 'Yes':
+                        instr_isarmed = True
+                    elif data['Response']['#text'] == 'No':
+                        instr_isarmed = False
+                
+                elif data['Response']['@parameter'] == 'version':
+                    try: instr_softwareS1version = data['Response']['#text']
+                    except: instr_softwareS1version = 'UNKNOWN'
+                    try: 
+                        if s1ver_inlog == False:
+                            printAndLog(f'Software: S1 Version {instr_softwareS1version}')
+                            s1ver_inlog = True
+                    except: pass
 
-            elif 'armed state' in data['Response']['@parameter']:
-                if data['Response']['#text'] == 'Yes':
-                    instr_isarmed = True
-                elif data['Response']['#text'] == 'No':
-                    instr_isarmed = False
+                elif 'Application successfully set to' in data['Response']['#text']:
+                    try:
+                        s = data['Response']['#text'].split('::')[-1]     # gets app name from #text string like 'Configure:Application successfully set to::Geo'
+                        printAndLog(f"Application Changed to '{s}'")
+                    except: pass
+                    instrument_QueryCurrentApplicationPhaseTimes()
+                    #ui_UpdateCurrentAppAndPhases()
 
-            elif 'Application successfully set to' in data['Response']['#text']:
-                instrument_QueryCurrentApplicationPhaseTimes()
-                #ui_UpdateCurrentAppAndPhases()
+                else: 
+                    printAndLog(f"{data['Response']['@parameter']}: {data['Response']['#text']}")
+                    #print(data)
+
+
+            elif '@status' in data['Response']:
+
+                if ('Logged in as' in data['Response']['#text']) and ('success' in data['Response']['@status']):
+                        instr_isloggedin = True
+                        printAndLog(f"{data['Response']['@parameter']}: {data['Response']['#text']}")
+
+                else: printAndLog(f"{data['Response']['@parameter']}: {data['Response']['#text']}")
             
-            elif data['Response']['@parameter'] == 'version':
-                try:
-                    instr_softwareS1version = data['Response']['#text']
-                except: instr_softwareS1version = 'UNKNOWN'
-
-            else: printAndLog(f"{data['Response']['@parameter']}: {data['Response']['#text']}")
+            else: printAndLog(data)
 
             
 
@@ -970,9 +1000,11 @@ def ui_UpdateCurrentAppAndPhases():    #update application selected and phase ti
 
 
 def repeatsChoiceMade(val):
-    global instr_assayrepeatsleft
+    # global instr_assayrepeatsleft
+    global instr_assayrepeatsselected
     printAndLog(f'Consecutive Tests Selected: {val}')
-    instr_assayrepeatsleft = int(val)
+    instr_assayrepeatsselected = int(val)
+    # instr_assayrepeatsleft = int(val)
 
 def applicationChoiceMade(val):
     cmd = f'<Configure parameter="Application">{val}</Configure>'
