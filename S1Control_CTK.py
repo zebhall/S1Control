@@ -1,6 +1,6 @@
 # S1Control by ZH for PSS
-versionNum = 'v0.1.4'
-versionDate = '2022/12/14'
+versionNum = 'v0.1.5'
+versionDate = '2022/12/16'
 
 import os
 import sys
@@ -67,6 +67,7 @@ def instrument_Disconnect():
     xrf.close()
     printAndLog('Instrument Connection Closed.')
 
+instr_assayrepeatsselected = 1  #initial set
 def instrument_StartAssay():
     global spectra
     global instr_assayrepeatsselected
@@ -334,6 +335,11 @@ def instrument_GetStates():
     instrument_QueryArmedState()
 
 
+# def delay_func(t, func:function):
+#     time.sleep(t)
+
+    
+
 plotLiveSpectra = True     # used for choosing whether live spectra should be plotted
 
 
@@ -401,7 +407,8 @@ def xrfListenLoop():
         except:
             onInstrDisconnect()
 
-        if datatype == '6':       # STATUS CHANGE
+        # 6 - STATUS CHANGE
+        if datatype == '6':       
 
             if '@parameter' in data['Status']:      #   basic status change
                 statusparam = data['Status']['@parameter']
@@ -458,8 +465,8 @@ def xrfListenLoop():
             elif 'Application Selection' in data['Status']:     # new application selected
                 printAndLog('New Application Selected.')
                 sendCommand(xrf, bruker_query_currentapplication)
-                
-
+                gui.after(300,ui_UpdateCurrentAppAndPhases)            
+                # need to find way of queuing app checker
 
             
             #printAndLog(data)
@@ -485,7 +492,9 @@ def xrfListenLoop():
             txt, spectra = setSpectrum(data)
             #printAndLog(data)
         
-        elif datatype == '5':       # XML PACKET
+
+        # 5 - XML PACKET
+        elif datatype == '5':       
             if ('Response' in data) and ('@parameter' in data['Response']) and (data['Response']['@parameter'] == 'instrument definition') and (data['Response']['@status'] == 'success'):               
                 #All IDF data:
                 vers_info = data['Response']['InstrumentDefinition']
@@ -596,64 +605,86 @@ def xrfListenLoop():
                 printAndLog('non-idf xml packet.')
                 printAndLog(data)
         
-        elif datatype == '5a':      # 5a - XML PACKET, 'logged in' response etc, usually.
-            if '@parameter' in data['Response']:
-                if 'login state' in data['Response']['@parameter']:
-                    if data['Response']['#text'] == 'Yes':
-                        instr_isloggedin = True
-                    elif data['Response']['#text'] == 'No':
-                        instr_isloggedin = False
-                        instr_isarmed = False
+        # 5a - RESPONSE XML PACKET, 'logged in' response etc, usually.
+        elif datatype == '5a':      
+            if ('@parameter' in data['Response']) and ('login state' in data['Response']['@parameter']):
+                if data['Response']['#text'] == 'Yes':
+                    instr_isloggedin = True
+                elif data['Response']['#text'] == 'No':
+                    instr_isloggedin = False
+                    instr_isarmed = False
 
-                elif 'armed state' in data['Response']['@parameter']:
-                    if data['Response']['#text'] == 'Yes':
-                        instr_isarmed = True
-                    elif data['Response']['#text'] == 'No':
-                        instr_isarmed = False
-                
-                elif data['Response']['@parameter'] == 'version':
-                    try: instr_softwareS1version = data['Response']['#text']
-                    except: instr_softwareS1version = 'UNKNOWN'
-                    try: 
-                        if s1ver_inlog == False:
-                            printAndLog(f'Software: S1 Version {instr_softwareS1version}')
-                            s1ver_inlog = True
-                    except: pass
+            elif ('@parameter' in data['Response']) and ('armed state' in data['Response']['@parameter']):
+                if data['Response']['#text'] == 'Yes':
+                    print(data)
+                    instr_isarmed = True
+                elif data['Response']['#text'] == 'No':
+                    instr_isarmed = False
 
-                elif 'Application successfully set to' in data['Response']['#text']:
-                    try:
-                        s = data['Response']['#text'].split('::')[-1]     # gets app name from #text string like 'Configure:Application successfully set to::Geo'
-                        printAndLog(f"Application Changed to '{s}'")
-                    except: pass
-                    instrument_QueryCurrentApplicationPhaseTimes()
-                    #ui_UpdateCurrentAppAndPhases()
-
-                else: 
-                    printAndLog(f"{data['Response']['@parameter']}: {data['Response']['#text']}")
-                    #print(data)
-
-
-            elif '@status' in data['Response']:
-
-                if ('Logged in as' in data['Response']['#text']) and ('success' in data['Response']['@status']):
-                        instr_isloggedin = True
-                        printAndLog(f"{data['Response']['@parameter']}: {data['Response']['#text']}")
-
-                else: printAndLog(f"{data['Response']['@parameter']}: {data['Response']['#text']}")
+            # Response confirming app change
+            elif ('#text' in data['Response']) and ('Application successfully set to' in data['Response']['#text']):
+                try:
+                    s = data['Response']['#text'].split('::')[-1]     # gets app name from #text string like 'Configure:Application successfully set to::Geo'
+                    printAndLog(f"Application Changed to '{s}'")
+                except: pass
+                instrument_QueryCurrentApplicationPhaseTimes()
+                #ui_UpdateCurrentAppAndPhases()
             
-            else: printAndLog(data)
+            # phase times set response
+            elif ('@parameter' in data['Response']) and ('phase times' in data['Response']['@parameter']) and ('#text' in data['Response']):
+                printAndLog(f"{data['Response']['#text']}")
 
+            elif ('@parameter' in data['Response']) and (data['Response']['@parameter'] == 'version'):
+                try: instr_softwareS1version = data['Response']['#text']
+                except: instr_softwareS1version = 'UNKNOWN'
+                try: 
+                    if s1ver_inlog == False:
+                        printAndLog(f'Software: S1 Version {instr_softwareS1version}')
+                        s1ver_inlog = True
+                except: pass
             
+            # Secondary Response for Assay Start and Stop for some instruments??? Idk why, should NOT RELY ON
+            elif ('#text' in data['Response']) and ('Assay St' in data['Response']['#text']):
+                if data['Response']['#text'] == 'Assay Start':
+                    printAndLog('Response: Assay Start')
+                    instr_assayisrunning = True
+                elif data['Response']['#text'] == 'Assay Stop':
+                    printAndLog('Response: Assay Stop')
+                    instr_assayisrunning = False
+
+            # Response Success log in OR already logged in
+            elif ('#text' in data['Response']) and ('@status' in data['Response']) and ('ogged in as' in data['Response']['#text']) and ('success' in data['Response']['@status']):
+                instr_isloggedin = True
+                printAndLog(f"{data['Response']['@status']}: {data['Response']['#text']}")
+
+            # Transmit results configuration change response ({'Response': {'@parameter': 'transmit spectra', '@status': 'success', '#text': 'Transmit Spectra configuration updated'}})
+            elif ('@parameter' in data['Response']) and ('@status' in data['Response']) and ('#text' in data['Response']) and ('transmit' in data['Response']['@parameter']):
+                printAndLog(f"{data['Response']['@status']}: {data['Response']['#text']}")
+
+            # Catchall for OTHER unimportant responses confirming configure changes (like time and date set, etc) 
+            elif ('@text' in data['Response']) and ('Configure:' in data['Response']['#text']):
+                printAndLog(f"{data['Response']['@status']}: {data['Response']['#text']}")
 
 
-        elif datatype == '5b':      # 5b - XML PACKET, Applications present response
+            else: 
+                # try: printAndLog(f"{data['Response']['@parameter']}: {data['Response']['#text']}")
+                # except: pass
+                # try: printAndLog(f"{data['Response']['@status']}: {data['Response']['#text']}")   
+                # except:
+                #     printAndLog(data)
+                printAndLog(data)
+
+
+        # 5b - XML PACKET, Applications present response
+        elif datatype == '5b':      
             try:
                 instr_applicationspresent = data['Response']['ApplicationList']['Application']
                 printAndLog(f"Applications Available: {data['Response']['ApplicationList']['Application']}")
             except:
                 printAndLog(f"Applications Available: Error: Not Found - Was the instrument busy when it was connected?")
 
-        elif datatype == '5c':      # 5c - XML PACKET, Active Application and Methods present response
+        # 5c - XML PACKET, Active Application and Methods present response
+        elif datatype == '5c':      
             try:
                 instr_currentapplication = data['Response']['Application']
                 instr_currentmethod = data['Response']['ActiveMethod']
@@ -661,7 +692,9 @@ def xrfListenLoop():
             except:
                 printAndLog(f"Current Application: Error: Not Found - Was the instrument busy when it was connected?")
 
-        elif datatype == '7':       # 7 - SPECTRUM ENERGY PACKET, contains the SpecEnergy structure, cal info (The instrument will transmit a SPECTRUM_ENERGY packet inmmediately before transmitting it’s associated COOKED_SPECTRUM packet. The SpecEnergy iPacketCount member contains an integer that associates the SpecEnergy values with the corresponding COOKED_SPECTRUM packet via the iPacket_Cnt member of the s1_cooked_header structure.)
+
+        # 7 - SPECTRUM ENERGY PACKET, contains the SpecEnergy structure, cal info (The instrument will transmit a SPECTRUM_ENERGY packet inmmediately before transmitting it’s associated COOKED_SPECTRUM packet. The SpecEnergy iPacketCount member contains an integer that associates the SpecEnergy values with the corresponding COOKED_SPECTRUM packet via the iPacket_Cnt member of the s1_cooked_header structure.)
+        elif datatype == '7':       
             specenergies = setSpecEnergy(data)
             pass
 
@@ -852,7 +885,8 @@ def plotSpectrum(spectrum, specenergy, colour):
     spectra_ax.plot(bins, counts, color=colour,linewidth='0.5')
     #spectraplot.xlim(0,50)
     #spectraplot.ylim(bottom=0)
-    spectra_ax.autoscale_view(tight=True)
+    #spectra_ax.autoscale_view(tight=True)
+    spectra_ax.autoscale(enable=True)
     spectratoolbar.update()
     spectracanvas.draw()
 
@@ -1224,13 +1258,16 @@ fig = Figure(figsize = (10, 4), dpi = 100, frameon=False)
 fig.subplots_adjust(left=0.07, bottom=0.08, right=0.99, top=0.97, wspace=None, hspace=None)
 fig.set_facecolor('#dbdbdb')
 fig.set_edgecolor('#dbdbdb')
-plt.style.use('seaborn-paper')
+print(plt.style.available)
+#plt.style.use('seaborn-paper')
+plt.style.use('seaborn-whitegrid')
 plt.rcParams["font.family"] = "Consolas"
 plt.rcParams["font.sans-serif"] = "Helvetica"
 spectra_ax = fig.add_subplot(111)
 spectra_ax.set_xlim(xmin=0, xmax=50)
-#spectra_ax.set_ylim(ymin=0)
-spectra_ax.autoscale_view()
+#spectra_ax.set_ylim(ymin=0, ymax=50000)
+#spectra_ax.autoscale_view()
+spectra_ax.autoscale(enable=True,tight=True)
 #spectra_ax.axhline(y=0, color='k')
 #spectra_ax.axvline(x=0, color='k')
 spectracanvas = FigureCanvasTkAgg(fig,master = spectraframe)
@@ -1296,11 +1333,10 @@ resultsbox.configure(state = 'disabled')
 logFileName = ""
 
 # Begin Instrument Connection
-
 instrument_Connect()
 statusUpdateCheckerLoop_Start(None)
 xrfListenLoop_Start(None)
-time.sleep(0.1)
+time.sleep(0.2)
 instrument_GetStates()
 time.sleep(0.05)
 instrument_GetInfo()        # Get info from IDF for log file NAMING purposes
