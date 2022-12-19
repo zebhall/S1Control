@@ -1,4 +1,4 @@
 pyinstaller --onefile --windowed --clean --icon=pss.ico --add-data 'C:/Users/user/AppData/Local/Programs/Python/Python310/Lib/site-packages/customtkinter;customtkinter/' 'S1Control_CTK.py'
 
-pyinstaller S1Control_CTK.spec
+pyinstaller S1Control.spec
 
