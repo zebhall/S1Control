@@ -1,0 +1,30 @@
+2022/12/19
+to reduce bloated exe file sizes:
+
+1. before anything else, take a backup of all installed python modules. open cmd then
+	pip freeze > oldrequirements.txt		
+   this will create requirements.txt so you can reinstall all modules later.
+
+2. uninstall all modules
+	pip uninstall -r oldrequirements.txt -y
+
+3. reinstall pyinstaller
+	pip install pyinstaller
+
+4. try running .py file, see what requirements are needed, and install using pip
+
+5. once py file can run again, save copy of requirements for this program.
+	pip freeze > oldrequirements.txt
+
+6. build exe using pyinstaller as usual.
+
+7. afterwards, can install all old modules again if needed
+	pip install -r oldrequirements.txt
+
+
+
+
+
+
+(note: pywin32 might need to be installed manually before xerox and some others)
+	pip install --upgrade pywin32
