@@ -1,5 +1,5 @@
 # S1Control by ZH for PSS
-versionNum = 'v0.1.5'
+versionNum = 'v0.1.6'
 versionDate = '2022/12/16'
 
 import os
@@ -68,11 +68,12 @@ def instrument_Disconnect():
     printAndLog('Instrument Connection Closed.')
 
 instr_assayrepeatsselected = 1  #initial set
+
 def instrument_StartAssay():
-    global spectra
+    global spectra    
     global instr_assayrepeatsselected
-    global instr_assayrepeatsleft
-    instr_assayrepeatsleft = instr_assayrepeatsselected
+    #global instr_assayrepeatsleft
+    #instr_assayrepeatsleft = instr_assayrepeatsselected
     if instr_assayrepeatsselected > 1:
         printAndLog(f'Starting Assays - {instr_assayrepeatsselected} consecutive selected.')
     spectra = []
@@ -424,10 +425,11 @@ def xrfListenLoop():
 
                 elif statusparam == 'Assay' and statustext == 'Complete':
                     instr_assayisrunning = False
-                    instr_currentassayspectra.append(spectra[-1])
-                    instr_currentassayspecenergies.append(specenergies[-1])
-                    plotSpectrum(spectra[-1], specenergies[-1], plotphasecolours[instr_currentphase])
-
+                    try:
+                        instr_currentassayspectra.append(spectra[-1])
+                        instr_currentassayspecenergies.append(specenergies[-1])
+                        plotSpectrum(spectra[-1], specenergies[-1], plotphasecolours[instr_currentphase])
+                    except: printAndLog('Issue with Spectra experienced after completion of Assay.')
 
                     # add full assay with all phases to table and catalogue. this 'assay complete' response is usually recieved at very end of assay, when all other values are in place.
                     try:
@@ -450,10 +452,12 @@ def xrfListenLoop():
                 
                 elif statusparam == 'Phase Change':
                     instr_assayisrunning = True
-                    instr_currentassayspectra.append(spectra[-1])
-                    instr_currentassayspecenergies.append(specenergies[-1])
-                    if plotLiveSpectra:
-                        plotSpectrum(spectra[-1], specenergies[-1], plotphasecolours[instr_currentphase])
+                    try:
+                        instr_currentassayspectra.append(spectra[-1])
+                        instr_currentassayspecenergies.append(specenergies[-1])
+                        if plotLiveSpectra:
+                            plotSpectrum(spectra[-1], specenergies[-1], plotphasecolours[instr_currentphase])
+                    except: printAndLog('Issue with Spectra experienced after completion of Phase.')
                     instr_currentphase += 1
                 
                 elif statusparam == 'Armed' and statustext == 'No':
@@ -662,7 +666,7 @@ def xrfListenLoop():
                 printAndLog(f"{data['Response']['@status']}: {data['Response']['#text']}")
 
             # Catchall for OTHER unimportant responses confirming configure changes (like time and date set, etc) 
-            elif ('@text' in data['Response']) and ('Configure:' in data['Response']['#text']):
+            elif ('#text' in data['Response']) and ('Configure:' in data['Response']['#text']):
                 printAndLog(f"{data['Response']['@status']}: {data['Response']['#text']}")
 
 
@@ -924,6 +928,9 @@ def getInfoClicked():
 
 def startAssayClicked():
     global instr_assayisrunning
+    global instr_assayrepeatsselected
+    global instr_assayrepeatsleft
+    instr_assayrepeatsleft = instr_assayrepeatsselected
     if instr_assayisrunning:
         instrument_StopAssay()
         button_assay_text.set('Start Assay')
@@ -1194,16 +1201,21 @@ ctrltabview = ctk.CTkTabview(LHSframe, height = 300)
 ctrltabview.pack(side = tk.TOP, anchor = tk.N, fill = 'x', expand = False, padx=8, pady=[8, 4])
 ctrltabview.add('Assay Controls')
 ctrltabview.add('Instrument Settings')
+ctrltabview.add('About')
 ctrltabview.tab('Assay Controls').grid_columnconfigure(0, weight=1)
 ctrltabview.tab('Instrument Settings').grid_columnconfigure(0, weight=1)
+ctrltabview.tab('About').grid_columnconfigure(0, weight=1)
 
-phaseframe = ctk.CTkFrame(ctrltabview.tab("Assay Controls"))
+phaseframe = ctk.CTkFrame(ctrltabview.tab('Assay Controls'))
 phaseframe.grid(row=3, column=0, columnspan = 2, rowspan = 2, padx=4, pady=4, sticky=tk.NSEW)
 
+# About Section
+about_blurb1 = ctk.CTkLabel(ctrltabview.tab('About'), text=f'S1Control {versionNum} ({versionDate})\nCreated by Zeb Hall for Portable Spectral Services\nContact: service@portaspecs.com', justify = tk.LEFT, text_color=CHARCOAL)
+about_blurb1.grid(row=1, column=0, columnspan = 2, rowspan = 2, padx=4, pady=4, sticky=tk.NSEW)
 # Buttons
 button_assay_text = ctk.StringVar()
 button_assay_text.set('Start Assay')
-button_assay = ctk.CTkButton(ctrltabview.tab("Assay Controls"), width = 13, textvariable = button_assay_text, font= ctk_segoe14B, command = startAssayClicked)
+button_assay = ctk.CTkButton(ctrltabview.tab('Assay Controls'), width = 13, textvariable = button_assay_text, font= ctk_segoe14B, command = startAssayClicked)
 button_assay.grid(row=1, column=0, padx=4, pady=4, sticky=tk.NSEW)
 
 #button_startlistener = tk.Button(width = 15, text = "start listen", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = lambda:xrfListenLoop_Start(None)).pack(ipadx=8,ipady=2)
@@ -1258,7 +1270,7 @@ fig = Figure(figsize = (10, 4), dpi = 100, frameon=False)
 fig.subplots_adjust(left=0.07, bottom=0.08, right=0.99, top=0.97, wspace=None, hspace=None)
 fig.set_facecolor('#dbdbdb')
 fig.set_edgecolor('#dbdbdb')
-print(plt.style.available)
+#print(plt.style.available)
 #plt.style.use('seaborn-paper')
 plt.style.use('seaborn-whitegrid')
 plt.rcParams["font.family"] = "Consolas"
@@ -1341,9 +1353,9 @@ instrument_GetStates()
 time.sleep(0.05)
 instrument_GetInfo()        # Get info from IDF for log file NAMING purposes
 time.sleep(0.3)
-
 initialiseLogFile()     # Must be called after instrument and listen loop are connected and started, and getinfo has been called once, and time has been allowed for loop to read all info into vars
-
+try: gui.title(f"S1Control - {instr_serialnumber}")
+except: pass
 if instr_isloggedin == False:
     instrument_Login()
 time.sleep(0.05)
