@@ -995,7 +995,7 @@ def ui_UpdateCurrentAppAndPhases():    #update application selected and phase ti
         p3_entry = ctk.CTkEntry(phaseframe, textvariable=phasetime3_stringvar)
         p3_entry.grid(row = 3, column = 1, padx=4, pady=4, sticky=tk.NSEW)
 
-        applyphasetimes = ctk.CTkButton(phaseframe, width = 10, text = 'Apply', command = savePhaseTimes)
+        applyphasetimes = ctk.CTkButton(phaseframe, width = 10, text = 'Apply', command = savePhaseTimes) # font=ctk.CTkFont('arial', 20))
         applyphasetimes.grid(row = 1, column = 2, rowspan = phasecount, padx=4, pady=4, ipadx=4, sticky=tk.NSEW)
 
         ui_firsttime = 0
@@ -1154,6 +1154,7 @@ textfg1 = CHARCOAL
 guiStyle = ttk.Style()
 guiStyle.configure('mystyle.Treeview', highlightthickness=0, bd=0, font= consolas10)        # Modify the font of the body
 guiStyle.configure('mystyle.Treeview.Heading', font = consolas10B)                                    # Modify the font of the headings)
+
 
 
 # Frames

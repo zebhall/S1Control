@@ -1,0 +1,30 @@
+S1 CONTROL - TO DO
+
+	- convert results textbox to results treeview table
+		- add column sorting
+
+	- add potential-mineral lookup features from mineralPT
+		- click on elements rows in results view to filter minerals?
+
+	- add elemental lines to spectrum viewer
+		- popout periodic table?
+
+	- add colour key to spectrum viewer for multiple phases
+
+	- add loading bar for assay completion (and multiple assay progress)
+		- est. time remaining etc as sum(phasetimes) + 4s?
+
+	- add functionality to monitor tube current and voltage in realtime
+
+	- add live spectra (per second) functionality
+
+	- add 'edit info' field modification and entry functionality
+
+	- add auto-acknowledge of on-device warnings or inforeports
+		- add proper logging of inforeports
+
+	- create proper dataclass for assays (easier to add to in future)
+
+
+
+
