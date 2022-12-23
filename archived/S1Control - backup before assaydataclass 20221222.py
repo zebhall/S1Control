@@ -1,6 +1,6 @@
 # S1Control by ZH for PSS
-versionNum = 'v0.2.0'
-versionDate = '2022/12/23'
+versionNum = 'v0.1.7'
+versionDate = '2022/12/19'
 
 import os
 import sys
@@ -55,17 +55,6 @@ bruker_configure_transmitspectradisable = '<Configure parameter="Transmit Spectr
 bruker_configure_transmitstatusmessagesenable = '<Configure parameter="Transmit Statusmsg">Yes</Configure>'
 
 
-@dataclass
-class Assay:
-    index: str
-    time_finished: str
-    time_elapsed: str
-    application: str
-    results: pd.DataFrame
-    spectra: list
-    specenergies: list
-    legends: list
-
 
 def instrument_Connect():
     global xrf
@@ -102,12 +91,10 @@ instr_assayrepeatsselected = 1  #initial set
 
 def instrument_StartAssay():
     global spectra
-    global assay_catalogue_num
-    printAndLog(f'Starting Assay # {str(assay_catalogue_num).zfill(4)}')
+    printAndLog(f'Starting Assay...')
     unselectAllAssays()
     clearCurrentSpectra()
     clearResultsfromTable()
-    
     spectra = []
     sendCommand(xrf, bruker_command_assaystart)
 
@@ -430,13 +417,11 @@ def xrfListenLoop():
     global instr_applicationspresent
     global instr_currentassayspectra
     global instr_currentassayspecenergies
-    global instr_currentassaylegends
     global instr_currentassayresults
     global instr_DANGER_stringvar
     global instr_assayisrunning
     global s1ver_inlog
-    global assay_start_time
-    global assay_end_time
+
 
     while True:
         try:
@@ -454,34 +439,28 @@ def xrfListenLoop():
                 printAndLog(f'Status Change: {statusparam} {statustext}')
 
                 if statusparam == 'Assay' and statustext == 'Start':
-                    assay_start_time = time.time()
                     instr_assayisrunning = True
                     instr_currentphase = 0
                     if plotLiveSpectra:
                         clearCurrentSpectra()
 
                 elif statusparam == 'Assay' and statustext == 'Complete':
-                    assay_end_time = time.time()
                     instr_assayisrunning = False
-                    #print(spectra)
                     try:
                         instr_currentassayspectra.append(spectra[-1])
                         instr_currentassayspecenergies.append(specenergies[-1])
-                        legend = f"Phase {instr_currentphase+1}: {txt['sngHVADC']}kV, {txt['sngCurADC']}μA"
-                        instr_currentassaylegends.append(legend)
-                        plotSpectrum(spectra[-1], specenergies[-1], plotphasecolours[instr_currentphase],legend)
+                        plotSpectrum(spectra[-1], specenergies[-1], plotphasecolours[instr_currentphase])
                     except: printAndLog('Issue with Spectra experienced after completion of Assay.')
 
                     # add full assay with all phases to table and catalogue. this 'assay complete' response is usually recieved at very end of assay, when all other values are in place.
-                    #try:
-                    completeAssay(instr_currentapplication, instr_currentassayresults, instr_currentassayspectra, instr_currentassayspecenergies, instr_currentassaylegends)
-                    #except:
-                        #printAndLog('Error: Assay results and spectra were unable to be saved to the table. Was the assay too short to have results?')
+                    try:
+                        addAssayToTable(instr_currentapplication, instr_currentassayresults, instr_currentassayspectra, instr_currentassayspecenergies)
+                    except:
+                        printAndLog('Error: Assay results and spectra were unable to be saved to the table. Was the assay too short to have results?')
 
                     #reset variables for next assay
                     instr_currentassayspectra = []
                     instr_currentassayspecenergies = []
-                    instr_currentassaylegends = []
 
                     instr_assayrepeatsleft -= 1
                     if instr_assayrepeatsleft <= 0:
@@ -494,14 +473,12 @@ def xrfListenLoop():
                 
                 elif statusparam == 'Phase Change':
                     instr_assayisrunning = True
-                    #try:
-                    instr_currentassayspectra.append(spectra[-1])
-                    instr_currentassayspecenergies.append(specenergies[-1])
-                    legend = f"Phase {instr_currentphase+1}: {txt['sngHVADC']}kV, {txt['sngCurADC']}μA"
-                    instr_currentassaylegends.append(legend)
-                    if plotLiveSpectra:
-                        plotSpectrum(spectra[-1], specenergies[-1], plotphasecolours[instr_currentphase],legend)
-                    #except: printAndLog('Issue with Spectra experienced after completion of Phase.')
+                    try:
+                        instr_currentassayspectra.append(spectra[-1])
+                        instr_currentassayspecenergies.append(specenergies[-1])
+                        if plotLiveSpectra:
+                            plotSpectrum(spectra[-1], specenergies[-1], plotphasecolours[instr_currentphase])
+                    except: printAndLog('Issue with Spectra experienced after completion of Phase.')
                     instr_currentphase += 1
                 
                 elif statusparam == 'Armed' and statustext == 'No':
@@ -756,6 +733,17 @@ def xrfListenLoop():
         time.sleep(0.05)
 
 
+@dataclass
+class Assay:
+    id: int
+    time: str
+    application: str
+    results: pd.DataFrame
+    spectra: list
+    specenergies: list
+
+
+
 
 
 
@@ -763,7 +751,6 @@ spectra = []
 specenergies = []
 instr_currentassayspectra = []
 instr_currentassayspecenergies = []
-instr_currentassaylegends = []
 
 def setSpectrum(data):
     global spectra
@@ -773,7 +760,7 @@ def setSpectrum(data):
         a['fTDur'],a['fADur'],a['fADead'],a['fAReset'],a['fALive'],a['lPacket_Cnt'],
         a['iFilterNum'],a['fltElement1'],a['fltThickness1'],a['fltElement2'],a['fltThickness2'],a['fltElement3'],a['fltThickness3'],
         a['sngHVADC'],a['sngCurADC'],a['Toggle']) = struct.unpack('<f4xLLL4xLLLL6xH78xhHxxLL8xfffff4xLihhhhhhffxxbxxxxx', data[0:208])  #originally, struct.unpack('<f4xLLL4xLLLLLHH78xhH2xLLLLfffffLLihhhhhhff2xbbbbbb', data[0:208])
-    txt = a
+    txt = json.dumps(a)
     a['data'] = list(map(lambda x: x[0], struct.iter_unpack('<L', data[208:])))
     idx = len(spectra)-1
     if idx<0 or a['lPacket_Cnt'] == 1:
@@ -798,173 +785,29 @@ def setSpecEnergy(data):
 assay_catalogue = []
 assay_catalogue_num = 1
 
-def completeAssay(assay_application:str, assay_results:pd.DataFrame, assay_spectra:list, assay_specenergies:list, assay_legends:list):
+def addAssayToTable(assay_application:str, assay_results:pd.DataFrame, assay_spectra:list, assay_specenergies:list):
     global assay_catalogue
     global assay_catalogue_num
-    global assay_start_time
-    global assay_end_time
 
-    newassay = Assay(index = str(assay_catalogue_num).zfill(4),
-                     time_finished = time.strftime("%H:%M:%S", time.localtime()),
-                     time_elapsed = f'{round((assay_end_time - assay_start_time),2)}s',
-                     application = assay_application,
-                     results = assay_results,
-                     spectra = assay_spectra,
-                     specenergies = assay_specenergies,
-                     legends=assay_legends
-                        )
-
-    assay_catalogue_num+=1
+    assay_time = time.strftime("%H:%M:%S", time.localtime())
 
     # make new 'assay' var with results, spectra, time etc
-    #assay = [assay_catalogue_num, assay_time, assay_application, assay_results, assay_spectra, assay_specenergies]
+    assay = [assay_catalogue_num, assay_time, assay_application, assay_results, assay_spectra, assay_specenergies]
 
     # add assay with all relevant info to catalogue for later recall
-    assay_catalogue.append(newassay)
+    assay_catalogue.append(assay)
     
     # add entry to assays table
-    assaysTable.insert(parent = '',index='end',iid = newassay.index, values = [newassay.index, newassay.application, newassay.time_finished, newassay.time_elapsed])
+    assaysTable.insert(parent = '',index='end',iid = assay_catalogue_num, values = [assay_catalogue_num, assay_time, assay_application])
 
     # plot, display, and print to log
-    plotAssay(newassay)
-    displayResults(newassay)
+    plotAssay(assay)
+    displayResults(assay)
     printAndLog(assay_results)
-    printAndLog(f'Assay # {newassay.index} processed sucessfully ({newassay.time_elapsed})')
+    printAndLog(f'Assay # {assay_catalogue_num} processed sucessfully.')
 
     # increment catalogue index number for next assay
-    
-# COLOURS FOR ELEMENT GROUPS
-ALKALI_METALS = '#f7ab59'            #'goldenrod1'
-ALKALINE_EARTH_METALS = '#fccc95'    #'DarkOrange1'
-TRANSITION_METALS = '#6390FF'        #'RoyalBlue1'
-OTHER_METALS = '#93C9FB'     #'SteelBlue1'
-METALLOIDS = '#AB93FB'       #'light slate gray'
-NON_METALS = '#F993FB'       #'light goldenrod'
-HALOGENS = '#FBF593'         #'plum1'
-NOBLE_GASES = '#FF6A96'       #'MediumOrchid1'
-LANTHANIDES = '#e84f51'     #'firebrick1'
-ACTINIDES = '#5bd48f'        #'spring green'
-
-# ELEMENT LIST FOR BUTTONS - FORMAT IS (ATOMIC NUMBER, SYMBOL, NAME, PERIODIC TABLE ROW, PERIODIC TABLE COLUMN, CLASS for bg colour)
-element_info = [
-    (1, 'H', 'Hydrogen', 1, 1, NON_METALS),
-    (2, 'He', 'Helium', 1, 18, NOBLE_GASES),
-    (3, 'Li', 'Lithium', 2, 1, ALKALI_METALS),
-    (4, 'Be', 'Beryllium', 2, 2, ALKALINE_EARTH_METALS),
-    (5, 'B', 'Boron', 2, 13, METALLOIDS),
-    (6, 'C', 'Carbon', 2, 14, NON_METALS),
-    (7, 'N', 'Nitrogen', 2, 15, NON_METALS),
-    (8, 'O', 'Oxygen', 2, 16, NON_METALS),
-    (9, 'F', 'Fluorine', 2, 17, HALOGENS),
-    (10, 'Ne', 'Neon', 2, 18, NOBLE_GASES),
-    (11, 'Na', 'Sodium', 3, 1, ALKALI_METALS),
-    (12, 'Mg', 'Magnesium', 3, 2, ALKALINE_EARTH_METALS),
-    (13, 'Al', 'Aluminium', 3, 13, OTHER_METALS),
-    (14, 'Si', 'Silicon', 3, 14, METALLOIDS),
-    (15, 'P', 'Phosphorus', 3, 15, NON_METALS),
-    (16, 'S', 'Sulfur', 3, 16, NON_METALS),
-    (17, 'Cl', 'Chlorine', 3, 17, HALOGENS),
-    (18, 'Ar', 'Argon', 3, 18, NOBLE_GASES),
-    (19, 'K', 'Potassium', 4, 1, ALKALI_METALS),
-    (20, 'Ca', 'Calcium', 4, 2, ALKALINE_EARTH_METALS),
-    (21, 'Sc', 'Scandium', 4, 3, TRANSITION_METALS),
-    (22, 'Ti', 'Titanium', 4, 4, TRANSITION_METALS),
-    (23, 'V', 'Vanadium', 4, 5, TRANSITION_METALS),
-    (24, 'Cr', 'Chromium', 4, 6, TRANSITION_METALS),
-    (25, 'Mn', 'Manganese', 4, 7, TRANSITION_METALS),
-    (26, 'Fe', 'Iron', 4, 8, TRANSITION_METALS),
-    (27, 'Co', 'Cobalt', 4, 9, TRANSITION_METALS),
-    (28, 'Ni', 'Nickel', 4, 10, TRANSITION_METALS),
-    (29, 'Cu', 'Copper', 4, 11, TRANSITION_METALS),
-    (30, 'Zn', 'Zinc', 4, 12, TRANSITION_METALS),
-    (31, 'Ga', 'Gallium', 4, 13, OTHER_METALS),
-    (32, 'Ge', 'Germanium', 4, 14, METALLOIDS),
-    (33, 'As', 'Arsenic', 4, 15, METALLOIDS),
-    (34, 'Se', 'Selenium', 4, 16, NON_METALS),
-    (35, 'Br', 'Bromine', 4, 17, HALOGENS),
-    (36, 'Kr', 'Krypton', 4, 18, NOBLE_GASES),
-    (37, 'Rb', 'Rubidium', 5, 1, ALKALI_METALS),
-    (38, 'Sr', 'Strontium', 5, 2, ALKALINE_EARTH_METALS),
-    (39, 'Y', 'Yttrium', 5, 3, TRANSITION_METALS),
-    (40, 'Zr', 'Zirconium', 5, 4, TRANSITION_METALS),
-    (41, 'Nb', 'Niobium', 5, 5, TRANSITION_METALS),
-    (42, 'Mo', 'Molybdenum', 5, 6, TRANSITION_METALS),
-    (43, 'Tc', 'Technetium', 5, 7, TRANSITION_METALS),
-    (44, 'Ru', 'Ruthenium', 5, 8, TRANSITION_METALS),
-    (45, 'Rh', 'Rhodium', 5, 9, TRANSITION_METALS),
-    (46, 'Pd', 'Palladium', 5, 10, TRANSITION_METALS),
-    (47, 'Ag', 'Silver', 5, 11, TRANSITION_METALS),
-    (48, 'Cd', 'Cadmium', 5, 12, TRANSITION_METALS),
-    (49, 'In', 'Indium', 5, 13, OTHER_METALS),
-    (50, 'Sn', 'Tin', 5, 14, OTHER_METALS),
-    (51, 'Sb', 'Antimony', 5, 15, METALLOIDS),
-    (52, 'Te', 'Tellurium', 5, 16, METALLOIDS),
-    (53, 'I', 'Iodine', 5, 17, HALOGENS),
-    (54, 'Xe', 'Xenon', 5, 18, NOBLE_GASES),
-    (55, 'Cs', 'Caesium', 6, 1, ALKALI_METALS),
-    (56, 'Ba', 'Barium', 6, 2, ALKALINE_EARTH_METALS),
-    (57, 'La', 'Lanthanum', 6, 3, LANTHANIDES),
-    (58, 'Ce', 'Cerium', 9, 4, LANTHANIDES),
-    (59, 'Pr', 'Praseodymium', 9, 5, LANTHANIDES),
-    (60, 'Nd', 'Neodymium', 9, 6, LANTHANIDES),
-    (61, 'Pm', 'Promethium', 9, 7, LANTHANIDES),
-    (62, 'Sm', 'Samarium', 9, 8, LANTHANIDES),
-    (63, 'Eu', 'Europium', 9, 9, LANTHANIDES),
-    (64, 'Gd', 'Gadolinium', 9, 10, LANTHANIDES),
-    (65, 'Tb', 'Terbium', 9, 11, LANTHANIDES),
-    (66, 'Dy', 'Dysprosium', 9, 12, LANTHANIDES),
-    (67, 'Ho', 'Holmium', 9, 13, LANTHANIDES),
-    (68, 'Er', 'Erbium', 9, 14, LANTHANIDES),
-    (69, 'Tm', 'Thulium', 9, 15, LANTHANIDES),
-    (70, 'Yb', 'Ytterbium', 9, 16, LANTHANIDES),
-    (71, 'Lu', 'Lutetium', 9, 17, LANTHANIDES),
-    (72, 'Hf', 'Hafnium', 6, 4, TRANSITION_METALS),
-    (73, 'Ta', 'Tantalum', 6, 5, TRANSITION_METALS),
-    (74, 'W', 'Tungsten', 6, 6, TRANSITION_METALS),
-    (75, 'Re', 'Rhenium', 6, 7, TRANSITION_METALS),
-    (76, 'Os', 'Osmium', 6, 8, TRANSITION_METALS),
-    (77, 'Ir', 'Iridium', 6, 9, TRANSITION_METALS),
-    (78, 'Pt', 'Platinum', 6, 10, TRANSITION_METALS),
-    (79, 'Au', 'Gold', 6, 11, TRANSITION_METALS),
-    (80, 'Hg', 'Mercury', 6, 12, TRANSITION_METALS),
-    (81, 'Tl', 'Thallium', 6, 13, OTHER_METALS),
-    (82, 'Pb', 'Lead', 6, 14, OTHER_METALS),
-    (83, 'Bi', 'Bismuth', 6, 15, OTHER_METALS),
-    (84, 'Po', 'Polonium', 6, 16, METALLOIDS),
-    (85, 'At', 'Astatine', 6, 17, HALOGENS),
-    (86, 'Rn', 'Radon', 6, 18, NOBLE_GASES),
-    (87, 'Fr', 'Francium', 7, 1, ALKALI_METALS),
-    (88, 'Ra', 'Radium', 7, 2, ALKALINE_EARTH_METALS),
-    (89, 'Ac', 'Actinium', 7, 3, ACTINIDES),
-    (90, 'Th', 'Thorium', 10, 4, ACTINIDES),
-    (91, 'Pa', 'Protactinium', 10, 5, ACTINIDES),
-    (92, 'U', 'Uranium', 10, 6, ACTINIDES),
-    (93, 'Np', 'Neptunium', 10, 7, ACTINIDES),
-    (94, 'Pu', 'Plutonium', 10, 8, ACTINIDES),
-    (95, 'Am', 'Americium', 10, 9, ACTINIDES),
-    (96, 'Cm', 'Curium', 10, 10, ACTINIDES),
-    (97, 'Bk', 'Berkelium', 10, 11, ACTINIDES),
-    (98, 'Cf', 'Californium', 10, 12, ACTINIDES),
-    (99, 'Es', 'Einsteinium', 10, 13, ACTINIDES),
-    (100, 'Fm', 'Fermium', 10, 14, ACTINIDES),
-    (101, 'Md', 'Mendelevium', 10, 15, ACTINIDES),
-    (102, 'No', 'Nobelium', 10, 16, ACTINIDES),
-    (103, 'Lr', 'Lawrencium', 10, 17, ACTINIDES),
-    (104, 'Rf', 'Rutherfordium', 7, 4, TRANSITION_METALS),
-    (105, 'Db', 'Dubnium', 7, 5, TRANSITION_METALS),
-    (106, 'Sg', 'Seaborgium', 7, 6, TRANSITION_METALS),
-    (107, 'Bh', 'Bohrium', 7, 7, TRANSITION_METALS),
-    (108, 'Hs', 'Hassium', 7, 8, TRANSITION_METALS),
-    (109, 'Mt', 'Meitnerium', 7, 9, TRANSITION_METALS),
-    (110, 'Ds', 'Darmstadtium', 7, 10, TRANSITION_METALS),
-    (111, 'Rg', 'Roentgenium', 7, 11, TRANSITION_METALS),
-    (112, 'Cn', 'Copernicium', 7, 12, TRANSITION_METALS),
-    (113, 'Nh', 'Nihonium', 7, 13, OTHER_METALS),
-    (114, 'Fl', 'Flerovium', 7, 14, OTHER_METALS),
-    (115, 'Mc', 'Moscovium', 7, 15, OTHER_METALS),
-    (116, 'Lv', 'Livermorium', 7, 16, OTHER_METALS),
-    (117, 'Ts', 'Tennessine', 7, 17, HALOGENS),
-    (118, 'Og', 'Oganesson', 7, 18, NOBLE_GASES)]
+    assay_catalogue_num+=1
 
 
 def onInstrDisconnect():
@@ -1049,23 +892,22 @@ def statusUpdateChecker():
 
 
 def assaySelected(event):
-    selection = assaysTable.item(assaysTable.selection())
+    selection = tables[0].item(tables[0].selection())
     selected_assay_catalogue_num = selection['values'][0]
-    #selected_assay_application = selection['values'][2]
-    assay = assay_catalogue[int(selected_assay_catalogue_num)-1]
+    selected_assay_application = selection['values'][2]
+    assay = assay_catalogue[selected_assay_catalogue_num-1]
     plotAssay(assay)
     displayResults(assay)
 
 
 total_spec_channels = 2048
-#spec_channels = np.array(list(range(1, total_spec_channels+1)))
-spec_channels = np.array(list(range(0, total_spec_channels)))
+spec_channels = np.array(list(range(1, total_spec_channels+1)))
 
 plotphasecolours = ['blue', 'red', 'green', 'pink', 'yellow']
 plottedspectra = []
 plottedemissionlines = []
 
-def plotSpectrum(spectrum, specenergy, colour, spectrum_legend):
+def plotSpectrum(spectrum, specenergy, colour):
     global spectratoolbar
     global spectra_ax
     global fig
@@ -1081,12 +923,11 @@ def plotSpectrum(spectrum, specenergy, colour, spectrum_legend):
     bins = bins + ev_channel_start 
     bins = bins / 1000       # TO GET keV instead of eV
 
-    plottedspectrum = spectra_ax.plot(bins, counts, color=colour,linewidth=0.5, label=spectrum_legend)
-    spectra_ax.legend()
+    plottedspectrum = spectra_ax.plot(bins, counts, color=colour,linewidth=0.5)
     
     plottedspectra.append(plottedspectrum)  # adds spectrum to list of currently plotted spectra, for ease of removal later
 
-    #plotEmissionLines()
+    plotEmissionLines()
 
     #spectraplot.xlim(0,50)
     #spectraplot.ylim(bottom=0)
@@ -1103,8 +944,7 @@ def clearCurrentSpectra():
     for plottedspectrum in plottedspectra:
         plotref = plottedspectrum.pop(0)    # removes from list
         spectra_ax.lines.remove(plotref)
-    try: spectra_ax.get_legend().remove()
-    except: pass
+
     plottedspectra = []     # clears this list which is now probably full of empty refs?
     spectratoolbar.update()
     spectracanvas.draw()
@@ -1117,10 +957,9 @@ def plotEmissionLines():
     global plottedemissionlines
 
     energies = [6.40, 7.06]
+    max = (spectra_ax.get_ylim()[1])    #max height of emission lines will be at max of data
 
-    linemax = (max((spectra_ax.get_ylim()[1]),10_000))    #max height of emission lines will be at max of data OR 10000, whichever is higher
-
-    plottedemissionline = spectra_ax.vlines(energies, 0, linemax, 'grey', 'dashed', linewidth = 1)
+    plottedemissionline = spectra_ax.vlines(energies, 0, max, 'grey', 'dotted')
     plottedemissionlines.append(plottedemissionline)
 
     spectratoolbar.update()
@@ -1129,13 +968,11 @@ def plotEmissionLines():
 def clearCurrentEmissionLines():
     global spectra_ax
     global plottedemissionlines
-    try:
-        for plottedemissionline in plottedemissionlines:
-            lineref = plottedemissionline.pop(0)
-            spectra_ax.remove(lineref)
-        
-    except: pass
-
+    
+    for plottedemissionline in plottedemissionlines:
+        lineref = plottedemissionline.pop(0)
+        spectra_ax.remove(lineref)
+    
     spectratoolbar.update()
     spectracanvas.draw()
         
@@ -1146,14 +983,9 @@ def plotAssay(assay):
     # assay[4] should be spectra (list), one entry per phase
     # assay[5] should be specenergies(list), same as above
     colouridx = 0
-    for s, e, l, in zip(assay.spectra,assay.specenergies,assay.legends):
-        plotSpectrum(s, e, plotphasecolours[colouridx],l)
+    for s, e, in zip(assay[4],assay[5]):
+        plotSpectrum(s, e, plotphasecolours[colouridx])
         colouridx +=1
-
-
-    clearCurrentEmissionLines()
-    plotEmissionLines()
-
     #printAndLog(f'Assay {assay[0]} plotted.')
 
 
@@ -1173,7 +1005,7 @@ def clearResultsfromTable():     # Clears all data from results table
 def displayResults(assay):
     global resultsTable
     clearResultsfromTable()
-    data = assay.results
+    data = assay[3]
     for index, row in data.iterrows():
         resultsTable.insert(parent = '',index='end', values = [row[0],row[1],row[2],row[3]])
 
@@ -1375,19 +1207,6 @@ def onClosing():
             printAndLog('S1Control software Closed.')
         gui.destroy()
 
-buttonIDs = []
-
-def configureEmissionLinesClicked():
-    global buttonIDs
-    linecfgwindow = ctk.CTkToplevel()
-    linecfgwindow.geometry("400x300")
-    
-    # for e in element_info:
-    #     button = ctk.CTkButton(linecfgwindow, text=(str(e[0])+'\n'+e[1]), width=5, height=2, bg=e[5], font=consolas10, command=lambda Z=int(e[0]): toggleElement(Z))
-    #     button.grid(row=e[3], column=e[4], padx=1, pady=1, ipadx=0, ipady=0, sticky=tk.NSEW)
-    #     buttonIDs.append(button)
-    
-
 
 
 
@@ -1478,7 +1297,7 @@ resultsframe.pack(side=tk.BOTTOM, fill = 'x', anchor = tk.SW, expand = False, pa
 
 # tableframe = tk.Frame(resultsframe, width = 550, height = 300)
 # tableframe.grid(row=0, column=0, padx=[10,0], pady=[10,0], ipadx = 0, ipady = 0, sticky= tk.NSEW)
-assaytableframe = tk.Frame(resultsframe, width = 450, height = 300)
+assaytableframe = tk.Frame(resultsframe, width = 350, height = 300)
 assaytableframe.pack(side=tk.LEFT, fill = 'both', anchor = tk.SW, expand = False, padx = [8,0], pady = 8, ipadx = 0, ipady = 0)
 assaytableframe.pack_propagate(0)
 
@@ -1508,14 +1327,14 @@ phaseframe = ctk.CTkFrame(ctrltabview.tab('Assay Controls'))
 phaseframe.grid(row=3, column=0, columnspan = 2, rowspan = 2, padx=4, pady=4, sticky=tk.NSEW)
 
 # About Section
-about_blurb1 = ctk.CTkLabel(ctrltabview.tab('About'), text=f'S1Control {versionNum} ({versionDate})\nCreated by Zeb Hall for Portable Spectral Services\nContact: service@portaspecs.com', justify = tk.LEFT, font=ctk_consolas11, text_color=CHARCOAL)
+about_blurb1 = ctk.CTkLabel(ctrltabview.tab('About'), text=f'S1Control {versionNum} ({versionDate})\nCreated by Zeb Hall for Portable Spectral Services\nContact: service@portaspecs.com', justify = tk.LEFT, text_color=CHARCOAL)
 about_blurb1.grid(row=1, column=0, columnspan = 2, rowspan = 2, padx=4, pady=4, sticky=tk.NSEW)
 # Buttons
 button_assay_text = ctk.StringVar()
 button_assay_text.set('\u2BC8 Start Assay')
 #button_assay_text.set('\u2715 Stop Assay')
 #\u2BC0
-button_assay = ctk.CTkButton(ctrltabview.tab('Assay Controls'), width = 13, textvariable = button_assay_text, command = startAssayClicked)#, font = ctk_default_largeB,)
+button_assay = ctk.CTkButton(ctrltabview.tab('Assay Controls'), width = 13, textvariable = button_assay_text, font = ctk_default_largeB, command = startAssayClicked)
 button_assay.grid(row=1, column=0, padx=4, pady=4, sticky=tk.NSEW)
 
 #button_startlistener = tk.Button(width = 15, text = "start listen", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = lambda:xrfListenLoop_Start(None)).pack(ipadx=8,ipady=2)
@@ -1592,30 +1411,25 @@ spectratoolbar = NavigationToolbar2Tk(spectracanvas,spectraframe,pack_toolbar=Fa
 
 spectratoolbar.config(background='#dbdbdb')
 spectratoolbar._message_label.config(background='#dbdbdb')
-spectracanvas.get_tk_widget().pack(side=tk.TOP, fill = 'both', expand = True, padx = 8, pady = [8,0])
-spectratoolbar.pack(side=tk.LEFT, fill = 'x', padx = 8, pady = 4, ipadx = 5)
+spectratoolbar.pack(side=tk.BOTTOM, fill = 'x', padx = 8, pady = 4, ipadx = 5)
+spectracanvas.get_tk_widget().pack(side=tk.BOTTOM, fill = 'both', expand = True, padx = 8, pady = [8,0])
 for child in spectratoolbar.winfo_children():
     child.config(background='#dbdbdb')
 
-# Other Toolbar widgets
-button_configureemissionlines = ctk.CTkButton(spectraframe, width = 13, text = "Configure Emission Lines", command = configureEmissionLinesClicked)
-button_configureemissionlines.pack(side=tk.RIGHT, fill = 'x', padx = 8, pady = 4)
 
 
 # Assays Frame Stuff
-assaysColumns = ('t_num', 't_app', 't_time', 't_timeelapsed')
+assaysColumns = ('t_num', 't_time', 't_app')
 assaysTable = Treeview(assaytableframe, columns = assaysColumns, height = "14",  selectmode = "browse", style = 'mystyle.Treeview')
 assaysTable.pack(side="top", fill="both", expand=True)
 
-assaysTable.heading('t_num', text = "Assay", anchor = tk.W, command=lambda _col='t_num': treeview_sort_column(assaysTable, _col, False))                  
+assaysTable.heading('t_num', text = "Assay #", anchor = tk.W, command=lambda _col='t_num': treeview_sort_column(assaysTable, _col, False))                  
+assaysTable.heading('t_time', text = "Time", anchor = tk.W, command=lambda _col='t_time': treeview_sort_column(assaysTable, _col, False))   
 assaysTable.heading('t_app', text = "Application", anchor = tk.W, command=lambda _col='t_app': treeview_sort_column(assaysTable, _col, False)) 
-assaysTable.heading('t_time', text = "Time Completed", anchor = tk.W, command=lambda _col='t_time': treeview_sort_column(assaysTable, _col, False))
-assaysTable.heading('t_timeelapsed', text = "Elapsed", anchor = tk.W, command=lambda _col='t_timeelapsed': treeview_sort_column(assaysTable, _col, False))     
 
-assaysTable.column('t_num', minwidth = 50, width = 60, stretch = 0, anchor = tk.W)
-assaysTable.column('t_app', minwidth = 125, width = 100, stretch = 1, anchor = tk.W)
-assaysTable.column('t_time', minwidth = 100, width = 115, stretch = 0, anchor = tk.W)
-assaysTable.column('t_timeelapsed', minwidth = 80, width = 60, stretch = 0, anchor = tk.W)
+assaysTable.column('t_num', minwidth = 60, width = 60, stretch = 0, anchor = tk.W)
+assaysTable.column('t_time', minwidth = 100, width = 100, stretch = 0, anchor = tk.W)
+assaysTable.column('t_app', minwidth = 185, width = 0, stretch = 1, anchor = tk.W)
 
 # assaysTableScrollbarY = ttk.Scrollbar(resultsframe, command=assaysTable.yview)
 # assaysTableScrollbarY.grid(column=1, row=0, padx=[0,2], pady=0, sticky = tk.NS)

@@ -1,15 +1,15 @@
 S1 CONTROL - TO DO
 
-	- convert results textbox to results treeview table
+DONE	- convert results textbox to results treeview table
 		- add column sorting
 
 	- add potential-mineral lookup features from mineralPT
 		- click on elements rows in results view to filter minerals?
 
-	- add elemental lines to spectrum viewer
+HALF	- add elemental lines to spectrum viewer
 		- popout periodic table?
 
-	- add colour key to spectrum viewer for multiple phases
+	- add colour key / legend to spectrum viewer for multiple phases
 
 	- add loading bar for assay completion (and multiple assay progress)
 		- est. time remaining etc as sum(phasetimes) + 4s?
@@ -19,12 +19,28 @@ S1 CONTROL - TO DO
 	- add live spectra (per second) functionality
 
 	- add 'edit info' field modification and entry functionality
+		- checkbox to 'clear field after assay'
+		- option to upload a list of names to be used sequentially for this field
+			- text box, with SAVE/EDIT/CLEAR buttons? names sep by comma?
+			- 'runorder mode'
+			- when this mode is active, prompt user at end of scan with next 'name', and notification noise/popup?
 
 	- add auto-acknowledge of on-device warnings or inforeports
 		- add proper logging of inforeports
 
 	- create proper dataclass for assays (easier to add to in future)
 
+	- OPTION TO VIEW/CHANGE METHOD OF CURRENT APP
 
+	- Better Spectrometer mode support - configuration of all params, improve ui support for long phase string
 
+	- Add 'SECONDS' label after phase time entry box to improve clarity
 
+	- Change folder name search in auto instrument logs to look for s/n IN folder name, not literally s/n AS folder name. This allows adding on instr names to folder names for clarity
+
+DONE	- Add retrieval of spotsize from idf (5 or 8mm), and if changeable colli
+
+DONE	- Add error handling if initial connection to instrument fails, with small window before launch of main window.
+		- Wait and try again? or manual connection button
+
+DONE	- New icon to differentiate from std company logo (orange?)
