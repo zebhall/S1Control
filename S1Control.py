@@ -1,6 +1,6 @@
 # S1Control by ZH for PSS
-versionNum = 'v0.2.0'
-versionDate = '2022/12/23'
+versionNum = 'v0.2.1'
+versionDate = '2023/01/13'
 
 import os
 import sys
@@ -25,6 +25,7 @@ from matplotlib.figure import Figure
 from matplotlib import style
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 import xraydb
+from labellines import labelLine, labelLines
 
 
 
@@ -834,16 +835,16 @@ def completeAssay(assay_application:str, assay_results:pd.DataFrame, assay_spect
     # increment catalogue index number for next assay
     
 # COLOURS FOR ELEMENT GROUPS
-ALKALI_METALS = '#f7ab59'            #'goldenrod1'
-ALKALINE_EARTH_METALS = '#fccc95'    #'DarkOrange1'
-TRANSITION_METALS = '#6390FF'        #'RoyalBlue1'
-OTHER_METALS = '#93C9FB'     #'SteelBlue1'
-METALLOIDS = '#AB93FB'       #'light slate gray'
-NON_METALS = '#F993FB'       #'light goldenrod'
-HALOGENS = '#FBF593'         #'plum1'
-NOBLE_GASES = '#FF6A96'       #'MediumOrchid1'
+ALKALI_METALS = '#FC8B12'            #'goldenrod1'
+ALKALINE_EARTH_METALS = '#FAA23E'    #'DarkOrange1'
+TRANSITION_METALS = '#0084FF'        #'RoyalBlue1'
+OTHER_METALS = '#5F8DFF'     #'SteelBlue1'487BFA
+METALLOIDS = '#9778FE'       #'light slate gray'
+NON_METALS = '#FD81FF'       #'light goldenrod'
+HALOGENS = '#FF3CD0'         #'plum1'
+NOBLE_GASES = '#972EB4'       #'MediumOrchid1'
 LANTHANIDES = '#e84f51'     #'firebrick1'
-ACTINIDES = '#5bd48f'        #'spring green'
+ACTINIDES = '#1BCA66'        #'spring green'
 
 # ELEMENT LIST FOR BUTTONS - FORMAT IS (ATOMIC NUMBER, SYMBOL, NAME, PERIODIC TABLE ROW, PERIODIC TABLE COLUMN, CLASS for bg colour)
 element_info = [
@@ -1063,7 +1064,7 @@ spec_channels = np.array(list(range(0, total_spec_channels)))
 
 plotphasecolours = ['blue', 'red', 'green', 'pink', 'yellow']
 plottedspectra = []
-plottedemissionlines = []
+plottedemissionlineslist = []
 
 def plotSpectrum(spectrum, specenergy, colour, spectrum_legend):
     global spectratoolbar
@@ -1109,32 +1110,53 @@ def clearCurrentSpectra():
     spectratoolbar.update()
     spectracanvas.draw()
 
+emission_lines_to_plot = []
+extraticks = []
+extraticklabels = []
 
 def plotEmissionLines():
     global spectratoolbar
     global spectra_ax
     global fig
-    global plottedemissionlines
+    global plottedemissionlineslist
+    global emission_lines_to_plot
 
-    energies = [6.40, 7.06]
+    clearCurrentEmissionLines()
 
-    linemax = (max((spectra_ax.get_ylim()[1]),10_000))    #max height of emission lines will be at max of data OR 10000, whichever is higher
+    #energies = [6.40, 7.06]
 
-    plottedemissionline = spectra_ax.vlines(energies, 0, linemax, 'grey', 'dashed', linewidth = 1)
-    plottedemissionlines.append(plottedemissionline)
+    linemax = (max((spectra_ax.get_ylim()[1]+2000),10_000))    #max height of emission lines will be at max of data +2000, OR 10000, whichever is higher
 
+    for linedata in emission_lines_to_plot:
+        linelabel = linedata[0]
+        energy = linedata[1]
+        plottedemissionline = spectra_ax.axvline(x = energy, ymin = 0, ymax = 0.95, color = 'grey', linewidth = 0.5, label = linelabel)
+        plottedemissionlineslist.append(plottedemissionline)
+        # extraticks.append(energy)
+        # extraticklabels.append(linelabel)
+
+    
+    # spectra_ax.set_xticks(ticks = list(spectra_ax.get_xticks()).extend(extraticks), labels = (spectra_ax.get_xticklabels()).extend(extraticklabels))
+    
+    #labelLines(plottedemissionlineslist, align=True, yoffsets=1)
+
+    spectra_ax.legend()
     spectratoolbar.update()
     spectracanvas.draw()
 
 def clearCurrentEmissionLines():
     global spectra_ax
-    global plottedemissionlines
-    try:
-        for plottedemissionline in plottedemissionlines:
-            lineref = plottedemissionline.pop(0)
-            spectra_ax.remove(lineref)
-        
-    except: pass
+    global plottedemissionlineslist
+    #try:
+    for plottedemissionline in plottedemissionlineslist:
+        plottedemissionline.remove()
+        # lineref = plottedemissionlines.pop()
+        # spectra_ax.remove(lineref)
+    
+    plottedemissionlineslist = []
+    # except: 
+    #     print('error in clearing current emission lines')
+    #     pass
 
     spectratoolbar.update()
     spectracanvas.draw()
@@ -1375,17 +1397,73 @@ def onClosing():
             printAndLog('S1Control software Closed.')
         gui.destroy()
 
-buttonIDs = []
+emissionLineElementButtonIDs = []
+emissionLinesElementslist = []
+
+linecfg_firsttime = True
+linecfgwindows = []
 
 def configureEmissionLinesClicked():
-    global buttonIDs
-    linecfgwindow = ctk.CTkToplevel()
-    linecfgwindow.geometry("400x300")
-    
-    # for e in element_info:
-    #     button = ctk.CTkButton(linecfgwindow, text=(str(e[0])+'\n'+e[1]), width=5, height=2, bg=e[5], font=consolas10, command=lambda Z=int(e[0]): toggleElement(Z))
-    #     button.grid(row=e[3], column=e[4], padx=1, pady=1, ipadx=0, ipady=0, sticky=tk.NSEW)
-    #     buttonIDs.append(button)
+    global linecfg_firsttime
+    global linecfgwindows
+    global emissionLineElementButtonIDs
+    global iconpath
+    if linecfg_firsttime:
+        linecfg_firsttime = False
+        linecfgwindow = ctk.CTkToplevel()
+        linecfgwindow.geometry("700x380")
+        linecfgwindow.title('Select Element(s) to display Emission Lines:')
+        linecfgwindow.iconbitmap(iconpath)
+        linecfgwindows.append(linecfgwindow)
+        for col in range(1,19):
+            linecfgwindow.columnconfigure(col,weight=1,uniform='third')
+        for e in element_info:
+            button = ctk.CTkButton(linecfgwindow, text=(str(e[0])+'\n'+e[1]), width=5, height=2, fg_color=e[5], text_color=WHITEISH, font=ctk_consolas14B, command=lambda Z=int(e[0]): toggleEmissionLine(Z))
+            button.grid(row=e[3], column=e[4], padx=1, pady=1, ipadx=6, ipady=0, sticky=tk.NSEW)
+            emissionLineElementButtonIDs.append(button)
+        linecfgwindow.protocol("WM_DELETE_WINDOW", lineCfgOnClosing)
+    else:
+        #Brings back window from being withdrawn instead of fully creating again.
+        linecfgwindows[0].deiconify()
+
+def lineCfgOnClosing():
+    # .withdraw() hides, .deiconify() brings back.
+    linecfgwindows[0].withdraw()
+
+
+def toggleEmissionLine(Z):
+    global emissionLinesElementslist
+    global emissionLineElementButtonIDs
+    global emission_lines_to_plot
+    #lookup energies for Z, add to list called energies, then call plotemissionlines(energies) etc
+    button = emissionLineElementButtonIDs[Z-1]
+    origfgcolour = element_info[Z-1][5]
+    lines = [] # list of tuples eg ('Fe Ka', 6.40)
+    for name, line in xraydb.xray_lines(Z).items():
+        if name in ['Ka1','Ka2','Kb1','Kb2','La1','Lb1']:
+            ene = float(line.energy)/1000
+            linedata = [f'{elementZtoSymbol(Z)} {name}',ene]
+            lines.append(linedata)
+            #print(f'Adding line: {linedata}')
+
+    if button.cget("fg_color") == origfgcolour: # ADD TO PLOT LIST AND CHANGE COLOUR TO 'SELECTED'
+        button.configure(text_color = CHARCOAL)
+        button.configure(fg_color = WHITEISH)
+        for linedata in lines:
+            emission_lines_to_plot.append(linedata)
+
+    else:                                       # REMOVE FROM PLOT LIST AND CHANGE COLOUR BACK
+        button.configure(text_color = WHITEISH)
+        button.configure(fg_color = origfgcolour)
+        for linedata in lines:
+            emission_lines_to_plot.remove(linedata)
+        
+
+    # add to list of elements displayed
+    emissionLinesElementslist.append(Z)
+
+    #energies = [6.40, 7.06]
+    plotEmissionLines()
     
 
 
@@ -1413,6 +1491,8 @@ ctk_consolas11 = ctk.CTkFont(family = 'Consolas', size = 11)
 ctk_consolas12 = ctk.CTkFont(family = 'Consolas', size = 12)
 ctk_consolas12B = ctk.CTkFont(family = 'Consolas', size = 12, weight = 'bold')
 ctk_consolas13 = ctk.CTkFont(family = 'Consolas', size = 13)
+ctk_consolas14B = ctk.CTkFont(family = 'Consolas', size = 14, weight = 'bold')
+ctk_consolas15B = ctk.CTkFont(family = 'Consolas', size = 15, weight = 'bold')
 ctk_consolas18B = ctk.CTkFont(family = 'Consolas', size = 18, weight = 'bold')
 ctk_consolas20B = ctk.CTkFont(family = 'Consolas', size = 20, weight = 'bold')
 ctk_default_largeB = ctk.CTkFont(weight = 'bold')
