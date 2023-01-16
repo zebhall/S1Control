@@ -4,12 +4,12 @@ DONE	- convert results textbox to results treeview table
 		- add column sorting
 
 	- add potential-mineral lookup features from mineralPT
-		- click on elements rows in results view to filter minerals?
+		- click on elements rows in results view to filter minerals
 
-HALF	- add elemental lines to spectrum viewer
-		- popout periodic table?
+DONE	- add elemental lines to spectrum viewer
+DONE		- popout periodic table?
 
-	- add colour key / legend to spectrum viewer for multiple phases
+DONE	- add colour key / legend to spectrum viewer for multiple phases
 
 	- add loading bar for assay completion (and multiple assay progress)
 		- est. time remaining etc as sum(phasetimes) + 4s?
@@ -28,7 +28,7 @@ HALF	- add elemental lines to spectrum viewer
 	- add auto-acknowledge of on-device warnings or inforeports
 		- add proper logging of inforeports
 
-	- create proper dataclass for assays (easier to add to in future)
+DONE	- create proper dataclass for assays (easier to add to in future)
 
 	- OPTION TO VIEW/CHANGE METHOD OF CURRENT APP
 
@@ -44,3 +44,9 @@ DONE	- Add error handling if initial connection to instrument fails, with small 
 		- Wait and try again? or manual connection button
 
 DONE	- New icon to differentiate from std company logo (orange?)
+
+	- Add spectral anomaly identifier support to plot (click on peak for ID?)
+
+	- Monitor temp in real time
+		- Detector
+DONE		- Nose/General

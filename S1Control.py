@@ -41,6 +41,7 @@ bruker_query_methodsforcurrentapplication = '<Query parameter="Method"></Query>'
 bruker_query_currentapplicationprefs = '<Query parameter="User Preferences"></Query>'       # UAP - incl everything
 bruker_query_currentapplicationphasetimes = '<Query parameter="Phase Times"/>'
 bruker_query_softwareversion = '<Query parameter="Version"/>'       # S1 version, eg 2.7.58.392
+bruker_query_nosetemp = '<Query parameter="Nose Temperature"/>'
 bruker_command_login = '<Command>Login</Command>'
 bruker_command_assaystart = '<Command parameter="Assay">Start</Command>'
 bruker_command_assaystop = '<Command parameter="Assay">Stop</Command>'
@@ -132,6 +133,9 @@ def instrument_QuerySoftwareVersion():
     global s1ver_inlog
     s1ver_inlog = False
     sendCommand(xrf, bruker_query_softwareversion)
+
+def instrument_QueryNoseTemp():
+    sendCommand(xrf, bruker_query_nosetemp)
 
 def instrument_ConfigureSystemTime():
     currenttime = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())  #time should be format 2015-11-02 09:02:35
@@ -431,6 +435,7 @@ def xrfListenLoop():
     global instr_currentassayresults
     global instr_DANGER_stringvar
     global instr_assayisrunning
+    global instr_currentnosetemp
     global s1ver_inlog
     global assay_start_time
     global assay_end_time
@@ -464,11 +469,12 @@ def xrfListenLoop():
                     try:
                         instr_currentassayspectra.append(spectra[-1])
                         instr_currentassayspecenergies.append(specenergies[-1])
-                        legend = f"Phase {instr_currentphase+1}: {txt['sngHVADC']}kV, {txt['sngCurADC']}μA"
+                        legend = f"Phase {instr_currentphase+1}: {txt['sngHVADC']}kV, {round(float(txt['sngCurADC']),2)}μA"
                         instr_currentassaylegends.append(legend)
                         plotSpectrum(spectra[-1], specenergies[-1], plotphasecolours[instr_currentphase],legend)
                     except: printAndLog('Issue with Spectra experienced after completion of Assay.')
 
+                    instrument_QueryNoseTemp()
                     # add full assay with all phases to table and catalogue. this 'assay complete' response is usually recieved at very end of assay, when all other values are in place.
                     #try:
                     completeAssay(instr_currentapplication, instr_currentassayresults, instr_currentassayspectra, instr_currentassayspecenergies, instr_currentassaylegends)
@@ -494,7 +500,7 @@ def xrfListenLoop():
                     #try:
                     instr_currentassayspectra.append(spectra[-1])
                     instr_currentassayspecenergies.append(specenergies[-1])
-                    legend = f"Phase {instr_currentphase+1}: {txt['sngHVADC']}kV, {txt['sngCurADC']}μA"
+                    legend = f"Phase {instr_currentphase+1}: {txt['sngHVADC']}kV, {round(float(txt['sngCurADC']),2)}μA"
                     instr_currentassaylegends.append(legend)
                     if plotLiveSpectra:
                         plotSpectrum(spectra[-1], specenergies[-1], plotphasecolours[instr_currentphase],legend)
@@ -668,6 +674,10 @@ def xrfListenLoop():
                     instr_isarmed = True
                 elif data['Response']['#text'] == 'No':
                     instr_isarmed = False
+            
+            elif ('@parameter' in data['Response']) and ('nose temperature' in data['Response']['@parameter']):
+                instr_currentnosetemp = data['Response']['#text']
+                printAndLog(f'Nose Temperature: {instr_currentnosetemp}°C')
 
             # Response confirming app change
             elif ('#text' in data['Response']) and ('Application successfully set to' in data['Response']['#text']):
@@ -1636,6 +1646,9 @@ button_setsystemtime.grid(row=1, column=1, padx=4, pady=4, sticky=tk.NSEW)
 
 button_gets1softwareversion = ctk.CTkButton(ctrltabview.tab("Instrument Settings"), width = 13, text = "Check Software Version", command = instrument_QuerySoftwareVersion)
 button_gets1softwareversion.grid(row=3, column=0, padx=4, pady=4, sticky=tk.NSEW)
+
+button_getnosetemp = ctk.CTkButton(ctrltabview.tab("Instrument Settings"), width = 13, text = "Get Nose Temp", command = instrument_QueryNoseTemp)
+button_getnosetemp.grid(row=3, column=1, padx=4, pady=4, sticky=tk.NSEW)
 
 
 #button_getapplicationprefs = tk.Button(configframe, width = 25, text = "get current app prefs", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = instrument_QueryCurrentApplicationPreferences)
