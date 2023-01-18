@@ -1,5 +1,5 @@
 # S1Control by ZH for PSS
-versionNum = 'v0.3.1'
+versionNum = 'v0.3.2'
 versionDate = '2023/01/18'
 
 import os
@@ -25,7 +25,8 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolb
 
 
 
-XRF_IP = '192.168.137.139'
+XRF_IP = '192.168.137.139'      
+XRF_IP_ALTERNATE = '190.168.137.139' # In some VERY UNUSUAL cases, I have seen instuments come back from Bruker servicing with this IP changed to 190 instead of 192. Worth checking if it breaks.
 XRF_PORT = 55204
 xrf =  socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
@@ -78,7 +79,7 @@ def instrument_Connect():
                 time.sleep(0.1)
                 print(f'ping = {ping}')
                 connection_attempt_count += 1
-                if connection_attempt_count >= 50:
+                if connection_attempt_count >= 5:
                     if messagebox.askyesno(f'Connection Problem - S1Control {versionNum}', f'S1Control has still not recieved a response from the instrument at {XRF_IP}, and is still unable to connect. Would you like to continue trying to connect?'):
                         connection_attempt_count = 0
                     else:
