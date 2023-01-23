@@ -1,6 +1,6 @@
 # S1Control by ZH for PSS
-versionNum = 'v0.3.2'
-versionDate = '2023/01/18'
+versionNum = 'v0.3.3'
+versionDate = '2023/01/23'
 
 import os
 import sys
@@ -37,7 +37,7 @@ bruker_query_loginstate = '<Query parameter="Login State"/>'
 bruker_query_armedstate = '<Query parameter="Armed State"/>'
 bruker_query_instdef = '<Query parameter="Instrument Definition"/>'
 bruker_query_allapplications = '<Query parameter="Applications"/>'
-bruker_query_currentapplication = '<Query parameter="ActiveApplication">Include Methods</Query>'
+bruker_query_currentapplicationinclmethods = '<Query parameter="ActiveApplication">Include Methods</Query>'
 bruker_query_methodsforcurrentapplication = '<Query parameter="Method"></Query>'
 bruker_query_currentapplicationprefs = '<Query parameter="User Preferences"></Query>'       # UAP - incl everything
 bruker_query_currentapplicationphasetimes = '<Query parameter="Phase Times"/>'
@@ -70,7 +70,7 @@ def instrument_Connect():
     global xrf
 
     ping = os.system('ping -n 1 -w 40 '+XRF_IP)
-    print(f'ping = {ping}')
+    #print(f'ping = {ping}')
     if ping != 0:
         if messagebox.askyesno(f'Connection Problem - S1Control {versionNum}', f'S1Control has not recieved a response from the instrument at {XRF_IP}, and is unable to connect. Would you like to continue trying to connect?'):
             connection_attempt_count = 0
@@ -83,8 +83,12 @@ def instrument_Connect():
                     if messagebox.askyesno(f'Connection Problem - S1Control {versionNum}', f'S1Control has still not recieved a response from the instrument at {XRF_IP}, and is still unable to connect. Would you like to continue trying to connect?'):
                         connection_attempt_count = 0
                     else:
+                        raise SystemExit(0)
+                        closeAllThreads()
                         gui.destroy()
         else:
+            raise SystemExit(0)
+            closeAllThreads()
             gui.destroy()
 
     try:
@@ -150,13 +154,14 @@ def instrument_ConfigureTransmitSpectraDisable():
     sendCommand(xrf,bruker_configure_transmitspectradisable)
     
 
-
 def instrument_SetImportantStartupConfigurables():
     sendCommand(xrf,bruker_configure_transmitstatusmessagesenable)      # enable transmission of trigger pull, assay complete messages, etc. necessary for basic function.
     sendCommand(xrf,bruker_configure_transmitelementalresultsenable)    #Enable transmission of elemental results, disables transmission of grade ID / passfail results
     instrument_ConfigureTransmitSpectraEnable()                         #Enable transmission of trigger pull/release and assay start/stop status messages
     #printAndLog('Instrument Transmit settings have been configured automatically to allow program functionality.')
 
+def instrument_AcknowledgeError(TxMsgID):
+    sendCommand(xrf, f'<Acknowledge RxMsgID="{TxMsgID}" UserAcked="Yes"></Acknowledge>')
 
 
 def printAndLog(data):
@@ -209,6 +214,22 @@ def recvChunks(s, expected_len):
         recv_len = recv_len + len(chunk)
     return b''.join(chunks)
 
+# Consts for datatypes on recv
+COOKED_SPECTRUM = '1'
+RESULTS_SET = '2'
+RAW_SPECTRUM = '3'
+PDZ_FILENAME = '4'
+XML_PACKET = '5'
+XML_SUCCESS_RESPONSE = '5a'
+XML_APPS_PRESENT_RESPONSE = '5b'
+XML_ACTIVE_APP_RESPONSE = '5c'
+STATUS_CHANGE = '6'
+SPECTRUM_ENERGY_PACKET = '7'
+UNKNOWN_DATA = '0'
+
+
+
+
 def recvData(s):
     header = recvChunks(s, 10)
     data_size = int.from_bytes(header[6:10], 'little')
@@ -216,47 +237,46 @@ def recvData(s):
     footer = recvChunks(s, 4)
 
     if (header[4:6] == b'\x17\x80'):          # 5 - XML PACKET (Usually results?)
-        datatype = '5'
+        datatype = XML_PACKET
         data = data.decode("utf-8")#.replace('\n','').replace('\r','').replace('\t','')
         data = xmltodict.parse(data)
         if ('Response' in data) and ('@status' in data['Response']) and ('#text' in data['Response']):  # and ('ogged in ' in data['Response']['#text']):
-            datatype = '5a'                     # 5a - XML PACKET, 'success, assay start' 'success, Logged in' etc response
+            datatype = XML_SUCCESS_RESPONSE         # 5a - XML PACKET, 'success, assay start' 'success, Logged in' etc response
         elif ('Response' in data) and ('@parameter' in data['Response']) and (data['Response']['@parameter'] == 'applications'):
-            datatype = '5b'                     # 5b - XML PACKET, Applications present response
+            datatype = XML_APPS_PRESENT_RESPONSE    # 5b - XML PACKET, Applications present response
         elif ('Response' in data) and ('@parameter' in data['Response']) and (data['Response']['@parameter'] == 'activeapplication'):
-            datatype = '5c'                     # 5c - XML PACKET, Active Application and Methods present response
+            datatype = XML_ACTIVE_APP_RESPONSE      # 5c - XML PACKET, Active Application and Methods present response
         
         return data, datatype
 
     elif (header[4:6] == b'\x01\x80'):          # 1 - COOKED SPECTRUM
-        datatype = '1'
+        datatype = COOKED_SPECTRUM
         return data, datatype
 
-
     elif (header[4:6] == b'\x02\x80'):          # 2 - RESULTS SET (don't really know when this is used?)    // Deprecated?
-        datatype = '2'
+        datatype = RESULTS_SET
         return data, datatype
 
     elif (header[4:6] == b'\x03\x80'):          # 3 - RAW SPECTRUM  // Deprecated?
-        datatype = '3'
+        datatype = RAW_SPECTRUM
         return data, datatype
 
     elif (header[4:6] == b'\x04\x80'):          # 4 - PDZ FILENAME // Deprecated, no longer works :(
-        datatype = '4'
+        datatype = PDZ_FILENAME
         return data, datatype
 
     elif (header[4:6] == b'\x18\x80'):          # 6 - STATUS CHANGE     (i.e. trigger pulled/released, assay start/stop/complete, phase change, etc.)
-        datatype = '6'
+        datatype = STATUS_CHANGE
         data = data.decode("utf-8").replace('\n','').replace('\r','').replace('\t','')
         data = xmltodict.parse(data)
         return data, datatype
 
     elif (header[4:6] == b'\x0b\x80'):          # 7 - SPECTRUM ENERGY PACKET
-        datatype = '7'
+        datatype = SPECTRUM_ENERGY_PACKET
         return data, datatype
 
     else:                                       # 0 - UNKNOWN DATA
-        datatype = '0'
+        datatype = UNKNOWN_DATA
         print(f'****debug: unknown datatype. header = {header}, data = {data}')
         return data, datatype
 
@@ -302,7 +322,7 @@ def elementSymboltoName(sym:str):
 def instrument_GetInfo():
     sendCommand(xrf, bruker_query_instdef)
     sendCommand(xrf, bruker_query_allapplications)
-    sendCommand(xrf, bruker_query_currentapplication)
+    sendCommand(xrf, bruker_query_currentapplicationinclmethods)
     instrument_QuerySoftwareVersion()
     
 
@@ -433,6 +453,7 @@ instr_approxsingleassaytime = 0
 def xrfListenLoop():
     global instr_currentapplication
     global instr_currentmethod
+    global instr_methodsforcurrentapplication
     global instr_model
     global instr_serialnumber
     global instr_buildnumber
@@ -486,9 +507,12 @@ def xrfListenLoop():
             data, datatype = recvData(xrf)
         except:
             onInstrDisconnect()
+        
+        if thread_halt:
+            break
 
         # 6 - STATUS CHANGE
-        if datatype == '6':       
+        if datatype == STATUS_CHANGE:       
 
             if '@parameter' in data['Status']:      #   basic status change
                 statusparam = data['Status']['@parameter']
@@ -554,7 +578,7 @@ def xrfListenLoop():
                     legend = f"Phase {instr_currentphase+1}: {txt['sngHVADC']}kV, {round(float(txt['sngCurADC']),2)}μA"
                     instr_currentassaylegends.append(legend)
 
-                    printAndLog(f'Temps: Detector {instr_currentdettemp}°C, Ambient {instr_currentambtemp}°F')
+                    #printAndLog(f'Temps: Detector {instr_currentdettemp}°C, Ambient {instr_currentambtemp}°F')
 
                     if plotLiveSpectra:
                         plotSpectrum(spectra[-1], specenergies[-1], plotphasecolours[instr_currentphase],legend)
@@ -568,32 +592,32 @@ def xrfListenLoop():
                     instr_isarmed = True
                     instr_isloggedin = True
                     
-            elif 'Application Selection' in data['Status']:     # new application selected
+            elif 'Application Selection' in data['Status']:     # new application selected DOESN"T WORK? only plays if selected on instr screen?
                 printAndLog('New Application Selected.')
-                sendCommand(xrf, bruker_query_currentapplication)
-                gui.after(300,ui_UpdateCurrentAppAndPhases)            
+                sendCommand(xrf, bruker_query_currentapplicationinclmethods)
+                #gui.after(200,ui_UpdateCurrentAppAndPhases)            
                 # need to find way of queuing app checker
 
             
             #printAndLog(data)
 
 
-        elif datatype == '1':       # COOKED SPECTRUM
+        elif datatype == COOKED_SPECTRUM:       # COOKED SPECTRUM
             txt, spectra = setSpectrum(data)
             assay_phase_spectrumpacketcounter += 1
             #printAndLog(f'New cooked Spectrum Info: {txt}')
             #printAndLog(f'New cooked Spectrum: {spectra}')
 
 
-        elif datatype == '4':       # PDZ FILENAME // Deprecated, no longer works :(
+        elif datatype == PDZ_FILENAME:       # PDZ FILENAME // Deprecated, no longer works :(
             printAndLog(f'New PDZ: {data}')
 
 
-        elif datatype == '2':                     # RESULTS SET (don't really know when this is used?)
+        elif datatype == RESULTS_SET:                     # RESULTS SET (don't really know when this is used?)
             #printAndLog(etree'.tostring(data, pretty_print=True))
             printAndLog(data)
 
-        elif datatype == '3':       # RAW SPECTRA
+        elif datatype == RAW_SPECTRUM:       # RAW SPECTRA
             #data = hashlib.md5(data).hexdigest()
             printAndLog('Raw spectrum!')
             txt, spectra = setSpectrum(data)
@@ -601,7 +625,7 @@ def xrfListenLoop():
         
 
         # 5 - XML PACKET
-        elif datatype == '5':       
+        elif datatype == XML_PACKET:       
             if ('Response' in data) and ('@parameter' in data['Response']) and (data['Response']['@parameter'] == 'instrument definition') and (data['Response']['@status'] == 'success'):               
                 #All IDF data:
                 vers_info = data['Response']['InstrumentDefinition']
@@ -712,16 +736,38 @@ def xrfListenLoop():
 
 
             
-            # ERROR HAS OCCURRED
+            # INFO/WARNING - e.g. Sent when active app is changed or user adjusts settings in spectrometer mode setup screen. It displays the hardware configuration required by the active instrument setup.
             elif ('InfoReport' in data):    
-                printAndLog(data)
+                #printAndLog(data)
+                TxMsgID = data['InfoReport']['@TxMsgID']
+                UserAckable = data['InfoReport']['@UserAckable']  # 'Yes' or 'No'
+                InfoMsg = data['InfoReport']['#text']    # e.g. "Nose Door Open. Close it to Continue."
+                printAndLog(f'Instrument INFO/WARNING: {InfoMsg}')
+                if UserAckable == 'Yes':
+                    instrument_AcknowledgeError(TxMsgID)
+                    printAndLog('Info/Warning Acknowledgment Sent. Attempting to resume...')
+                else:
+                    printAndLog('Warning Message Cannot be Acknowledged Remotely. Please evaluate warning on instrument screen.')
+
+            # ERROR HAS OCCURRED
+            elif ('ErrorReport' in data):                   # Must respond to these. If an acknowledgement message is not received within 5 seconds ofthe initial transmission the message will be retransmitted. This process continues until an acknowledge is received or the message is transmitted 5 times.
+                TxMsgID = data['ErrorReport']['@TxMsgID']
+                UserAckable = data['ErrorReport']['@UserAckable']  # 'Yes' or 'No'
+                ErrorMsg = data['ErrorReport']['#text']    # e.g. "System temperature out of range."
+                printAndLog(f'Instrument ERROR: {ErrorMsg}')
+                if UserAckable == 'Yes':
+                    instrument_AcknowledgeError(TxMsgID)
+                    printAndLog('Error Acknowledgment Sent. Attempting to resume...')
+                else:
+                    printAndLog('Error Message Cannot be Acknowledged Remotely. Please evaluate error on instrument screen.')
+
 
             else:
                 printAndLog('non-idf xml packet.')
                 printAndLog(data)
         
         # 5a - RESPONSE XML PACKET, 'logged in' response etc, usually.
-        elif datatype == '5a':      
+        elif datatype == XML_SUCCESS_RESPONSE:      
             if ('@parameter' in data['Response']) and ('login state' in data['Response']['@parameter']):
                 if data['Response']['#text'] == 'Yes':
                     instr_isloggedin = True
@@ -746,6 +792,7 @@ def xrfListenLoop():
                     s = data['Response']['#text'].split('::')[-1]     # gets app name from #text string like 'Configure:Application successfully set to::Geo'
                     printAndLog(f"Application Changed to '{s}'")
                 except: pass
+                sendCommand(xrf, bruker_query_currentapplicationinclmethods)
                 instrument_QueryCurrentApplicationPhaseTimes()
                 #ui_UpdateCurrentAppAndPhases()
             
@@ -796,7 +843,7 @@ def xrfListenLoop():
 
 
         # 5b - XML PACKET, Applications present response
-        elif datatype == '5b':      
+        elif datatype == XML_APPS_PRESENT_RESPONSE:    
             try:
                 instr_applicationspresent = data['Response']['ApplicationList']['Application']
                 printAndLog(f"Applications Available: {data['Response']['ApplicationList']['Application']}")
@@ -804,25 +851,33 @@ def xrfListenLoop():
                 printAndLog(f"Applications Available: Error: Not Found - Was the instrument busy when it was connected?")
 
         # 5c - XML PACKET, Active Application and Methods present response
-        elif datatype == '5c':      
+        elif datatype == XML_ACTIVE_APP_RESPONSE:     
             try:
                 instr_currentapplication = data['Response']['Application']
                 instr_currentmethod = data['Response']['ActiveMethod']
-                printAndLog(f"Current Application: {data['Response']['Application']} | Current Method: {data['Response']['ActiveMethod']} | Methods Available: {data['Response']['MethodList']['Method']}")
+                instr_methodsforcurrentapplication = data['Response']['MethodList']['Method']
+                if isinstance(instr_methodsforcurrentapplication, str):
+                    instr_methodsforcurrentapplication = [instr_methodsforcurrentapplication]
+                printAndLog(f"Current Application: {instr_currentapplication} | Current Method: {instr_currentmethod} | Methods Available: {instr_methodsforcurrentapplication}")
             except:
                 printAndLog(f"Current Application: Error: Not Found - Was the instrument busy when it was connected?")
+            try:
+                methodselected_stringvar.set(instr_currentmethod)
+                dropdown_method.configure(values=instr_methodsforcurrentapplication)
+            except: print('error updating method dropdown')
 
 
         # 7 - SPECTRUM ENERGY PACKET, contains the SpecEnergy structure, cal info (The instrument will transmit a SPECTRUM_ENERGY packet inmmediately before transmitting it’s associated COOKED_SPECTRUM packet. The SpecEnergy iPacketCount member contains an integer that associates the SpecEnergy values with the corresponding COOKED_SPECTRUM packet via the iPacket_Cnt member of the s1_cooked_header structure.)
-        elif datatype == '7':       
+        elif datatype == SPECTRUM_ENERGY_PACKET:       
             specenergies = setSpecEnergy(data)
             pass
 
         else: 
             printAndLog(data)
-
+        
         #statusUpdateCheck()
         time.sleep(0.05)
+
 
 
 
@@ -1054,6 +1109,8 @@ def onInstrDisconnect():
 
 # GUI
 
+thread_halt = False
+
 ctk.set_appearance_mode("light")  # Modes: system (default), light, dark
 ctk.set_default_color_theme("blue")  # Themes: blue (default), dark-blue, green
 
@@ -1095,7 +1152,12 @@ def statusUpdateChecker():
     global statuslabel
     global xraysonbar
     global assayprogressbar
+
     while True:
+
+        if thread_halt:
+            break
+
         if instr_isloggedin == False:
             instr_DANGER_stringvar.set('Not Logged In')
             statuslabel.configure(text_color = WHITEISH, fg_color = '#3A3A3A') 
@@ -1128,19 +1190,16 @@ def statusUpdateChecker():
 
             assayprogressbar.set(current_assay_progress)
             
-
         else:
             instr_DANGER_stringvar.set('Ready')
             statuslabel.configure(text_color = WHITEISH, fg_color = '#33AF56') 
             statusframe.configure(fg_color = '#33AF56')
             xraysonbar.configure(progress_color = '#939BA2')
 
-        
         # print(f'assay is running: {instr_assayisrunning}')
         # print(f'instr is armed: {instr_isarmed}')
         # print(f'instr is logged in: {instr_isloggedin}')
         # print(f'assay is running: {instr_assayisrunning}')
-
 
         time.sleep(0.2)
     
@@ -1396,6 +1455,7 @@ ui_firsttime = 1
 def ui_UpdateCurrentAppAndPhases():    #update application selected and phase timings in UI
     global instr_currentphases
     global instr_currentapplication
+    global instr_methodsforcurrentapplication
     global ui_firsttime
     global dropdown_application
     global dropdown_method
@@ -1412,14 +1472,22 @@ def ui_UpdateCurrentAppAndPhases():    #update application selected and phase ti
 
 
     phasecount = len(instr_currentphases)
-
+    
     if ui_firsttime == 1:
-        dropdown_application = ctk.CTkOptionMenu(ctrltabview.tab("Assay Controls"), variable=applicationselected_stringvar, values=instr_applicationspresent, command=applicationChoiceMade, dynamic_resizing=False)
-        dropdown_application.grid(row=2,column=0,padx=4, pady=4, columnspan = 2, sticky=tk.NSEW)
+        label_application = ctk.CTkLabel(appmethodframe, text = 'Application ', anchor='w')
+        label_application.grid(row=2,column=0,padx=[8,4], pady=4, sticky=tk.NSEW)
+        dropdown_application = ctk.CTkOptionMenu(appmethodframe, variable=applicationselected_stringvar, values=instr_applicationspresent, command=applicationChoiceMade, dynamic_resizing=False)
+        dropdown_application.grid(row=2,column=1,padx=4, pady=4, columnspan = 2, sticky=tk.NSEW)
         # label_currentapplication_text.set(f'Current Application: ')
-        label_currentapplication = ctk.CTkLabel(phaseframe, textvariable=label_currentapplication_text, anchor='w')
-        label_currentapplication.grid(row=0, column=0, padx=8, pady=4, columnspan = 4, sticky=tk.NSEW)
+        # label_currentapplication = ctk.CTkLabel(phaseframe, textvariable=label_currentapplication_text, anchor='w')
+        # label_currentapplication.grid(row=0, column=0, padx=8, pady=4, columnspan = 4, sticky=tk.NSEW)
         phaseframe.columnconfigure(0, weight=1)
+        appmethodframe.columnconfigure(1, weight=1)
+
+        label_method = ctk.CTkLabel(appmethodframe, text = 'Method ', anchor='w')
+        label_method.grid(row=3,column=0,padx=[8,4], pady=4, sticky=tk.NSEW)
+        dropdown_method = ctk.CTkOptionMenu(appmethodframe, variable=methodselected_stringvar, values=instr_methodsforcurrentapplication, command=methodChoiceMade, dynamic_resizing=False)
+        dropdown_method.grid(row=3,column=1,padx=4, pady=4, columnspan = 4, sticky=tk.NSEW)
 
         p1_label = ctk.CTkLabel(phaseframe, width=5, textvariable=phasename1_stringvar, anchor='w')
         p1_label.grid(row = 1, column = 0, padx=[8,4], pady=4, sticky=tk.EW)
@@ -1445,7 +1513,6 @@ def ui_UpdateCurrentAppAndPhases():    #update application selected and phase ti
 
         ui_firsttime = 0
     
-
     p1_label.grid_remove()
     p2_label.grid_remove()
     p3_label.grid_remove()
@@ -1458,10 +1525,13 @@ def ui_UpdateCurrentAppAndPhases():    #update application selected and phase ti
 
     #dropdown_application.configure(values=instr_applicationspresent)
     applicationselected_stringvar.set(instr_currentapplication)
-    label_currentapplication_text.set(f'Current Application: {instr_currentapplication}')
+    methodselected_stringvar.set(instr_currentmethod)
+    #label_currentapplication_text.set(f'{instr_currentapplication} | {instr_currentmethod}')
 
     # for widget in phaseframe.winfo_children():    #first remove all prev widgets in phaseframe
     #     widget.destroy()
+
+    dropdown_method.configure(values=instr_methodsforcurrentapplication)
 
     if phasecount>=1:
         phasetime1_stringvar.set(instr_currentphases[0][2])
@@ -1495,7 +1565,7 @@ def ui_UpdateCurrentAppAndPhases():    #update application selected and phase ti
 
     applyphasetimes.grid_configure(rowspan = phasecount)
 
-    #gui.update()
+    gui.update()
 
 
 def unselectAllAssays():
@@ -1532,6 +1602,9 @@ def applicationChoiceMade(val):
     cmd = f'<Configure parameter="Application">{val}</Configure>'
     sendCommand(xrf,cmd)
 
+def methodChoiceMade(val):
+    cmd = f'<Configure parameter="Method">{val}</Configure>'
+    sendCommand(xrf,cmd)
 
 def savePhaseTimes():
     global instr_currentphases
@@ -1565,6 +1638,7 @@ def savePhaseTimes():
     
 def onClosing():
     if messagebox.askokcancel("Quit", "Do you want to quit?"):
+        closeAllThreads()
         if logFileArchivePath is not None:
             printAndLog(f'Log File archived to: {logFileArchivePath}')
             printAndLog('S1Control software Closed.')
@@ -1572,7 +1646,14 @@ def onClosing():
         else:
             printAndLog('Desired Log file archive path was unable to be found. The Log file has not been archived.')
             printAndLog('S1Control software Closed.')
+        raise SystemExit(0)
         gui.destroy()
+        instrument_Disconnect()
+
+
+def closeAllThreads():
+    global thread_halt
+    thread_halt = True
 
 emissionLineElementButtonIDs = []
 emissionLinesElementslist = []
@@ -1790,8 +1871,11 @@ ctrltabview.tab('Assay Controls').grid_columnconfigure(0, weight=1)
 ctrltabview.tab('Instrument Settings').grid_columnconfigure(0, weight=1)
 ctrltabview.tab('About').grid_columnconfigure(0, weight=1)
 
-phaseframe = ctk.CTkFrame(ctrltabview.tab('Assay Controls'))
-phaseframe.grid(row=3, column=0, columnspan = 2, rowspan = 2, padx=4, pady=4, sticky=tk.NSEW)
+appmethodframe = ctk.CTkFrame(ctrltabview.tab('Assay Controls'), fg_color= '#c5c5c5')
+appmethodframe.grid(row=2, column=0, columnspan = 2, rowspan = 2, padx=4, pady=4, sticky=tk.NSEW)
+
+phaseframe = ctk.CTkFrame(ctrltabview.tab('Assay Controls'), fg_color= '#c5c5c5')
+phaseframe.grid(row=4, column=0, columnspan = 2, rowspan = 2, padx=4, pady=4, sticky=tk.NSEW)
 
 # About Section
 about_blurb1 = ctk.CTkLabel(ctrltabview.tab('About'), text=f'S1Control {versionNum} ({versionDate})\nCreated by Zeb Hall for Portable Spectral Services\nContact: service@portaspecs.com', justify = tk.LEFT, font=ctk_consolas11, text_color=CHARCOAL)
@@ -1829,9 +1913,11 @@ button_getnosetemp.grid(row=2, column=1, padx=4, pady=4, sticky=tk.NSEW)
 
 
 # Current Instrument Info stuff
-label_currentapplication_text = ctk.StringVar()
+# label_currentapplication_text = ctk.StringVar()
 applicationselected_stringvar = ctk.StringVar(value='Application')
+methodselected_stringvar = ctk.StringVar(value='Method')
 instr_applicationspresent = []
+instr_methodsforcurrentapplication = []
 
 # Consecutive Tests Section
 repeats_choice_var = ctk.StringVar(value='\u2B6F Consecutive')
@@ -1969,7 +2055,9 @@ tables.append(resultsTable)
 logFileName = ""
 
 # Begin Instrument Connection
+
 instrument_Connect()
+time.sleep(0.2)
 statusUpdateCheckerLoop_Start(None)
 xrfListenLoop_Start(None)
 time.sleep(0.2)
@@ -1990,7 +2078,7 @@ instrument_QueryCurrentApplicationPhaseTimes()
 gui.protocol("WM_DELETE_WINDOW", onClosing)
 gui.mainloop()
 
-
+closeAllThreads()   # called after gui mainloop has ended
 
 
 

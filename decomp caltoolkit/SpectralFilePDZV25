@@ -1,0 +1,881 @@
+// Decompiled with JetBrains decompiler
+// Type: SpectralFilePdzV25
+// Assembly: SpectrumFile, Version=1.1.0.0, Culture=neutral, PublicKeyToken=null
+// MVID: 1690A027-9222-4C70-A4CB-46289A1BBF30
+// Assembly location: C:\Program Files (x86)\Bruker\CalToolkit\SpectrumFile.dll
+// XML documentation location: C:\Program Files (x86)\Bruker\CalToolkit\SpectrumFile.xml
+
+using BrukerAXS.Handheld.ElementIDInterface;
+using BrukerAXS.Handheld.SpectrumFileInterface;
+using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.IO;
+using System.Linq;
+using System.Text;
+
+internal class SpectralFilePdzV25 : SpectralFile
+{
+  private const int c_pdzFileVersion = 25;
+  private const int c_fileHeaderLength = 14;
+  private const string c_fileTypeID = "pdz25";
+  private const int c_instrumentTypeXRF = 1;
+  private const int c_instrumentTypeLIBS = 2;
+  private const string c_fileExtension = ".pdz";
+  private const int c_maxSpectraPerFile = 1000;
+  private const int c_maxStringLen = 256;
+  private const int c_maxMiscItems = 100;
+  private readonly HashSet<Pdz25RecordTypes> _haveSeenRecords = new HashSet<Pdz25RecordTypes>();
+
+  public SpectralFilePdzV25(string filePath = null, SpectralFile src = null, string fatalError = null)
+  {
+    if (fatalError != null)
+    {
+      this.Type = SpectralFileType.Unintialized;
+      this.FatalError = fatalError;
+    }
+    else
+    {
+      this.Initialize(src, true);
+      if (string.IsNullOrEmpty(filePath))
+        return;
+      this.LoadedFromFile = filePath;
+    }
+  }
+
+  public SpectralFilePdzV25(SpectralFile src) => this.Initialize(src, false);
+
+  public override void LoadFromFile(string sampleID = null, int tubeTargetElement = 45) => this.LoadFromFile(sampleID, true);
+
+  public override bool TryLoadFromFile(string sampleID = null, int tubeTargetElement = 45) => this.LoadFromFile(sampleID, false);
+
+  public override void ChangeeVPerChannelGain(float newValue)
+  {
+    long fileSize;
+    List<long> gainPositionsInFile = this.FindGainPositionsInFile(out fileSize);
+    if (gainPositionsInFile.Count == 0 || fileSize == 0L)
+      return;
+    using (MemoryStream memoryStream = new MemoryStream((int) fileSize))
+    {
+      using (FileStream fileStream = new FileStream(this.LoadedFromFile, FileMode.Open, FileAccess.Read, FileShare.Read))
+      {
+        fileStream.CopyTo((Stream) memoryStream);
+        fileStream.Close();
+      }
+      using (BinaryWriter binaryWriter = new BinaryWriter((Stream) memoryStream, Encoding.Unicode))
+      {
+        foreach (long offset in gainPositionsInFile)
+        {
+          binaryWriter.Seek((int) offset, SeekOrigin.Begin);
+          binaryWriter.Write(newValue);
+        }
+        binaryWriter.Flush();
+        using (FileStream destination = new FileStream(this.LoadedFromFile, FileMode.Create, FileAccess.Write, FileShare.None))
+        {
+          memoryStream.Seek(0L, SeekOrigin.Begin);
+          memoryStream.CopyTo((Stream) destination);
+          destination.Close();
+        }
+      }
+    }
+    FileUtils.WaitForFileSettling();
+  }
+
+  public override void WriteToFile(string filePath)
+  {
+    this.CheckForFailedCreation(true);
+    this.CheckFileWritePath(ref filePath, ".pdz");
+    using (FileStream output = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None))
+    {
+      using (BinaryWriter fw = new BinaryWriter((Stream) output, Encoding.Unicode))
+      {
+        fw.Write((ushort) 25);
+        fw.Write(14U);
+        fw.Write("pdz25".ToCharArray());
+        fw.Write(1U);
+        this.WrapARecord(fw, new SpectralFilePdzV25.RecordCreator(this.WriteXRFInstrument));
+        this.WrapARecord(fw, new SpectralFilePdzV25.RecordCreator(this.WriteXRFAssaySummary));
+        int num = 1;
+        foreach (SpectrumInFile spectrum in this._spectra)
+          this.WriteXRFSpectrum(fw, spectrum, num++);
+        this.WrapARecord(fw, new SpectralFilePdzV25.RecordCreator(this.WriteCalculatedResults));
+        this.WrapARecord(fw, new SpectralFilePdzV25.RecordCreator(this.WriteUserCustomFields));
+        this.WrapARecord(fw, new SpectralFilePdzV25.RecordCreator(this.WriteMiscInformation));
+      }
+    }
+  }
+
+  public override ISpectralFile CreateNewFileFromSpectrum(int index) => (ISpectralFile) this.CreateNewFileFromSpectrumHelper((SpectralFile) new SpectralFilePdzV25((SpectralFile) this), index);
+
+  protected override void Initialize(SpectralFile src, bool copySpectra)
+  {
+    this.Type = SpectralFileType.PdzV25;
+    base.Initialize(src, copySpectra);
+    if (src == null || src.Type == this.Type)
+      return;
+    this.SpotSizeUsed = 8;
+  }
+
+  protected override SpectrumInFile CreateTypeSpecificSpectrumObject(SpectrumInFile src) => (SpectrumInFile) new SpectrumInFilePdzV25(src);
+
+  protected override SpectralFile PlusOperator(SpectralFile rhs)
+  {
+    this.CheckForFailedCreation(true);
+    SpectralFilePdzV25 spectralFilePdzV25 = new SpectralFilePdzV25();
+    spectralFilePdzV25.Combine((SpectralFile) this, rhs);
+    return (SpectralFile) spectralFilePdzV25;
+  }
+
+  private bool LoadFromFile(string sampleID, bool throwExceptionOnFailure)
+  {
+    if (this.CheckForFailedCreation(throwExceptionOnFailure) || !this.LoadFilePreCheck(throwExceptionOnFailure))
+      return false;
+    this.SampleID = sampleID;
+    this.AcquisitionDateTime = DateTime.MinValue;
+    int recordNumber = 1;
+    this._fileRecordDescriptions = new List<string>();
+    try
+    {
+      using (FileStream input = new FileStream(this.LoadedFromFile, FileMode.Open, FileAccess.Read, FileShare.Read))
+      {
+        using (BinaryReader fr = new BinaryReader((Stream) input, Encoding.Unicode))
+        {
+          (ushort _, uint _, uint instType, long streamLength) = this.ExtractAndVerifyFileHeader(fr);
+          if (instType != 1U && instType != 2U)
+            throw new FormatException(string.Format("Invalid instrument type ({0})", (object) instType));
+          if (instType == 2U)
+            this.InstrumentIsXRF = false;
+          this._fileRecordDescriptions.Add(string.Format("File length: {0}", (object) streamLength));
+          int num = 0;
+          while (fr.BaseStream.Position < streamLength)
+          {
+            (long recordStart, Pdz25RecordTypes recordType, long dataLength, long expectedEndPosition) = this.ProcessRecordHeader(fr, recordNumber, streamLength);
+            this.VerifyAllowedRecordTypeForInstrument(recordType);
+            this._fileRecordDescriptions.Add(string.Format("record {0}, {1}, start {2}, length {3}", (object) recordNumber, (object) recordType, (object) recordStart, (object) dataLength));
+            switch (recordType)
+            {
+              case Pdz25RecordTypes.XRFInstrument:
+                this.VerifyUnique(recordType, recordNumber);
+                this.ReadXRFInstrument(fr);
+                break;
+              case Pdz25RecordTypes.XRFAssaySummary:
+                this.VerifyDependentsSeen(recordType, Pdz25RecordTypes.XRFInstrument, recordNumber);
+                this.VerifyUnique(recordType, recordNumber);
+                this.ReadXRFAssaySummary(fr, expectedEndPosition);
+                break;
+              case Pdz25RecordTypes.XRFSpectrum:
+                this.VerifyDependentsSeen(recordType, Pdz25RecordTypes.XRFAssaySummary, recordNumber);
+                this.ReadXRFSpectrum(fr);
+                ++num;
+                break;
+              case Pdz25RecordTypes.XRFSpectrumPacket:
+                this.VerifyDependentsSeen(recordType, Pdz25RecordTypes.XRFAssaySummary, recordNumber);
+                this.ReadXRFSpectrumPacket(fr);
+                break;
+              case Pdz25RecordTypes.CalculatedResults:
+                this.VerifyDependentsSeen(recordType, Pdz25RecordTypes.XRFInstrument, recordNumber);
+                this.VerifyDependentsSeen(recordType, Pdz25RecordTypes.XRFAssaySummary, recordNumber);
+                this.VerifyUnique(recordType, recordNumber);
+                this.ReadCalculatedResults(fr);
+                break;
+              case Pdz25RecordTypes.CalculatedResultsDetails:
+                this.VerifyDependentsSeen(recordType, Pdz25RecordTypes.CalculatedResults, recordNumber);
+                this.ReadCalculatedResultsDetails(fr);
+                break;
+              case Pdz25RecordTypes.GradeIDResults:
+                this.VerifyDependentsSeen(recordType, Pdz25RecordTypes.XRFInstrument, recordNumber);
+                this.VerifyDependentsSeen(recordType, Pdz25RecordTypes.XRFAssaySummary, recordNumber);
+                this.VerifyUnique(recordType, recordNumber);
+                this.ReadGradeIDResults(fr);
+                break;
+              case Pdz25RecordTypes.PassFailResults:
+                this.ReadPassFailResults(fr);
+                break;
+              case Pdz25RecordTypes.UserCustomFields:
+                this.ReadUserCustomFields(fr);
+                break;
+              case Pdz25RecordTypes.AverageDetails:
+                this.ReadAverageDetails(fr);
+                break;
+              case Pdz25RecordTypes.FilterLayers:
+                this.VerifyDependentsSeen(recordType, Pdz25RecordTypes.XRFAssaySummary, recordNumber);
+                this.VerifyDependentsSeen(recordType, Pdz25RecordTypes.XRFSpectrum, recordNumber);
+                this.ReadFilterLayers(fr);
+                break;
+              case Pdz25RecordTypes.ImageDetails:
+                this.ReadImageDetails(fr);
+                break;
+              case Pdz25RecordTypes.GPSDetails:
+                this.VerifyDependentsSeen(recordType, Pdz25RecordTypes.XRFInstrument, recordNumber);
+                this.VerifyUnique(recordType, recordNumber);
+                this.ReadGPSDetails(fr);
+                break;
+              case Pdz25RecordTypes.MiscInformation:
+                this.ReadMiscInformation(fr);
+                break;
+              case Pdz25RecordTypes.TraceLog:
+                this.VerifyUnique(recordType, recordNumber);
+                this.ReadTraceLog(fr);
+                break;
+              case Pdz25RecordTypes.LibsAlloyResults:
+                this.VerifyUnique(recordType, recordNumber);
+                this.ReadLibsAlloyResults(fr);
+                break;
+              case Pdz25RecordTypes.LibsGradeIDResults:
+                this.VerifyUnique(recordType, recordNumber);
+                this.ReadLibsGradeIDResults(fr);
+                break;
+              case Pdz25RecordTypes.LibsAlloyMethod:
+                this.VerifyUnique(recordType, recordNumber);
+                this.ReadLibsAlloyMethod(fr);
+                break;
+              case Pdz25RecordTypes.LibsAlloySample:
+                this.VerifyUnique(recordType, recordNumber);
+                this.ReadLibsAlloySample(fr);
+                break;
+              default:
+                throw new FormatException(string.Format("Unknown record type {0} or in record number {1}", (object) recordType, (object) recordNumber));
+            }
+            this._haveSeenRecords.Add(recordType);
+            if (fr.BaseStream.Position != expectedEndPosition)
+              throw new InvalidDataException(string.Format("record number {0} type {1} mismatch between amount of data present ({2}) and expected ({3})", (object) recordNumber, (object) recordType, (object) dataLength, (object) (dataLength + (fr.BaseStream.Position - expectedEndPosition))));
+            ++recordNumber;
+          }
+          if (this.NumSpectra != num)
+            throw new InvalidDataException(string.Format("mismatch between NumSpectra ({0}) and XRFSpectrum seen ({1})", (object) this.NumSpectra, (object) num));
+        }
+        this.TotalElapsedTime = 0.0f;
+        foreach (SpectrumInFile spectrum in this._spectra)
+          this.TotalElapsedTime += spectrum.ElapsedClockTime;
+        if (this.InstrumentIsXRF)
+        {
+          if (this.XilinxFirmwareVersion > 0)
+          {
+            foreach (SpectrumInFile spectrum in this._spectra)
+              spectrum.XilinxFirmwareVersion = this.XilinxFirmwareVersion;
+          }
+        }
+      }
+    }
+    catch (Exception ex)
+    {
+      this.FatalError = string.Format("{0} while reading {1} in record number {2}", (object) ex.Message, (object) this.LoadedFromFile, (object) recordNumber);
+      if (throwExceptionOnFailure)
+        throw new Exception(this.FatalError, ex);
+    }
+    return this.FinishLoadFromFile();
+  }
+
+  private (ushort fileType, uint fileHeaderLen, uint instType, long streamLength) ExtractAndVerifyFileHeader(
+    BinaryReader fr)
+  {
+    ushort num1 = fr.ReadUInt16();
+    if (num1 != (ushort) 25)
+      throw new FormatException(string.Format("Invalid PDZ version ({0}), should be {1}", (object) num1, (object) 25));
+    uint num2 = fr.ReadUInt32();
+    if (num2 != 14U)
+      throw new FormatException(string.Format("Invalid File header record length ({0}), should be {1}", (object) num2, (object) 14));
+    string str = new string(fr.ReadChars(5));
+    if (str != "pdz25")
+      throw new FormatException(string.Format("Invalid File ID ({0}), should be {1}", (object) str, (object) "pdz25"));
+    uint num3 = fr.ReadUInt32();
+    long length = fr.BaseStream.Length;
+    return (num1, num2, num3, length);
+  }
+
+  private (long recordStart, Pdz25RecordTypes recordType, long dataLength, long expectedEndPosition) ProcessRecordHeader(
+    BinaryReader fr,
+    int recordNumber,
+    long streamLength)
+  {
+    long position = fr.BaseStream.Position;
+    int num1 = (int) fr.ReadInt16();
+    Pdz25RecordTypes pdz25RecordTypes = Enum.IsDefined(typeof (Pdz25RecordTypes), (object) num1) ? (Pdz25RecordTypes) num1 : throw new InvalidDataException(string.Format("Invalid record type for record number {0} type {1}", (object) recordNumber, (object) num1));
+    long num2 = (long) fr.ReadUInt32();
+    long num3 = fr.BaseStream.Position + num2;
+    if (num3 - 1L > streamLength)
+      throw new InvalidDataException("File too short, not enough data for record number" + string.Format(" {0} type {1}", (object) recordNumber, (object) pdz25RecordTypes));
+    int num4 = (int) pdz25RecordTypes;
+    long num5 = num2;
+    long num6 = num3;
+    return (position, (Pdz25RecordTypes) num4, num5, num6);
+  }
+
+  private void VerifyAllowedRecordTypeForInstrument(Pdz25RecordTypes recordType)
+  {
+    string str = (string) null;
+    switch (recordType)
+    {
+      case Pdz25RecordTypes.XRFInstrument:
+      case Pdz25RecordTypes.XRFAssaySummary:
+      case Pdz25RecordTypes.XRFSpectrum:
+      case Pdz25RecordTypes.XRFSpectrumPacket:
+      case Pdz25RecordTypes.CalculatedResults:
+      case Pdz25RecordTypes.CalculatedResultsDetails:
+      case Pdz25RecordTypes.GradeIDResults:
+      case Pdz25RecordTypes.PassFailResults:
+      case Pdz25RecordTypes.UserCustomFields:
+      case Pdz25RecordTypes.AverageDetails:
+      case Pdz25RecordTypes.FilterLayers:
+      case Pdz25RecordTypes.ImageDetails:
+      case Pdz25RecordTypes.GPSDetails:
+      case Pdz25RecordTypes.MiscInformation:
+      case Pdz25RecordTypes.TraceLog:
+        if (!this.InstrumentIsXRF)
+        {
+          str = "XRF";
+          break;
+        }
+        break;
+      case Pdz25RecordTypes.LibsAlloyResults:
+      case Pdz25RecordTypes.LibsGradeIDResults:
+      case Pdz25RecordTypes.LibsAlloyMethod:
+      case Pdz25RecordTypes.LibsAlloySample:
+        if (this.InstrumentIsXRF)
+        {
+          str = "LIBS";
+          break;
+        }
+        break;
+    }
+    if (str != null)
+      throw new FormatException(string.Format("Invalid record type ({0}) for {1} instrument", (object) recordType, (object) str));
+  }
+
+  private void VerifyUnique(Pdz25RecordTypes recordType, int recordNumber)
+  {
+    if (this._haveSeenRecords.Contains(recordType))
+      throw new FormatException(string.Format("Duplicate record type {0} in record number {1}", (object) recordType, (object) recordNumber));
+  }
+
+  private void VerifyDependentsSeen(
+    Pdz25RecordTypes recordType,
+    Pdz25RecordTypes dependsOnType,
+    int recordNumber)
+  {
+    if (!this._haveSeenRecords.Contains(dependsOnType))
+      throw new FormatException(string.Format("Record type {0} in record number {1} seen before dependent record type {2}", (object) recordType, (object) recordNumber, (object) dependsOnType));
+  }
+
+  private void WrapARecord(BinaryWriter fw, SpectralFilePdzV25.RecordCreator rc)
+  {
+    using (MemoryStream output = new MemoryStream())
+    {
+      using (BinaryWriter bw = new BinaryWriter((Stream) output, Encoding.Unicode))
+      {
+        Pdz25RecordTypes pdz25RecordTypes = rc(bw);
+        if (pdz25RecordTypes == Pdz25RecordTypes.Invalid)
+          return;
+        fw.Write((ushort) pdz25RecordTypes);
+        fw.Write((uint) output.Length);
+        output.Position = 0L;
+        output.CopyTo(fw.BaseStream);
+      }
+    }
+  }
+
+  private void ReadXRFInstrument(BinaryReader fr)
+  {
+    this.InstrumentSerialString = fr.ReadLengthAndUnicodeString();
+    this.InstrumentBuildString = fr.ReadLengthAndUnicodeString();
+    this.TubeTargetElement = (int) fr.ReadByte();
+    this._anodeTakeOffAngle = (double) fr.ReadByte();
+    this._sampleIncidenceAngle = (double) fr.ReadByte();
+    this.SampleTakeOffAngle = (float) fr.ReadByte();
+    this._beThicknessInMicroMeters = (double) fr.ReadInt16();
+    this.DetectorModel = fr.ReadLengthAndUnicodeString();
+    this.TubeType = fr.ReadLengthAndUnicodeString();
+    this.SpotSizeUsed = (int) fr.ReadByte();
+    this.SpotSizeRequested = (int) fr.ReadByte();
+    this.CollimatorType = fr.ReadLengthAndUnicodeString();
+    // ISSUE: variable of the null type
+    __Null local;
+    string baseboardFW = (string) (local = null);
+    string headerFW = (string) local;
+    string xraySrcFW = (string) local;
+    string dppFW = (string) local;
+    string uuPFW = (string) local;
+    string suPFW = (string) local;
+    string xilinxFW = (string) local;
+    string brukerS1 = (string) local;
+    uint num = fr.ReadUInt32();
+    for (uint index = 0; index < num; ++index)
+    {
+      switch (fr.ReadUInt16())
+      {
+        case 1:
+          brukerS1 = fr.ReadLengthAndUnicodeString();
+          break;
+        case 2:
+          xilinxFW = fr.ReadLengthAndUnicodeString();
+          break;
+        case 3:
+          suPFW = fr.ReadLengthAndUnicodeString();
+          break;
+        case 4:
+          uuPFW = fr.ReadLengthAndUnicodeString();
+          break;
+        case 5:
+          dppFW = fr.ReadLengthAndUnicodeString();
+          break;
+        case 6:
+          xraySrcFW = fr.ReadLengthAndUnicodeString();
+          break;
+        case 7:
+          headerFW = fr.ReadLengthAndUnicodeString();
+          break;
+        case 8:
+          baseboardFW = fr.ReadLengthAndUnicodeString();
+          break;
+        default:
+          fr.ReadLengthAndUnicodeString();
+          break;
+      }
+    }
+    this.InstrumentInternalVersions = new InstrumentInternalVersionsType(brukerS1, xilinxFW, suPFW, uuPFW, dppFW, xraySrcFW, headerFW, baseboardFW);
+  }
+
+  private Pdz25RecordTypes WriteXRFInstrument(BinaryWriter fw)
+  {
+    fw.WriteLengthAndUnicodeString(this.InstrumentSerialString);
+    fw.WriteLengthAndUnicodeString(this.InstrumentBuildString);
+    fw.Write((byte) this.TubeTargetElement);
+    fw.Write((byte) this._anodeTakeOffAngle);
+    fw.Write((byte) this._sampleIncidenceAngle);
+    fw.Write((byte) this.SampleTakeOffAngle);
+    fw.Write((short) this._beThicknessInMicroMeters);
+    fw.WriteLengthAndUnicodeString(this.DetectorModel);
+    fw.WriteLengthAndUnicodeString(this.TubeType);
+    fw.Write((byte) this.SpotSizeUsed);
+    fw.Write((byte) this.SpotSizeRequested);
+    fw.WriteLengthAndUnicodeString(this.CollimatorType);
+    if (this.InstrumentInternalVersions == null)
+    {
+      fw.Write(0U);
+    }
+    else
+    {
+      fw.Write(8U);
+      fw.Write((short) 1);
+      fw.WriteLengthAndUnicodeString(this.InstrumentInternalVersions.BrukerS1);
+      fw.Write((short) 2);
+      fw.WriteLengthAndUnicodeString(this.InstrumentInternalVersions.XilinxFW);
+      fw.Write((short) 3);
+      fw.WriteLengthAndUnicodeString(this.InstrumentInternalVersions.SuPFW);
+      fw.Write((short) 4);
+      fw.WriteLengthAndUnicodeString(this.InstrumentInternalVersions.UuPFW);
+      fw.Write((short) 5);
+      fw.WriteLengthAndUnicodeString(this.InstrumentInternalVersions.DPPFW);
+      fw.Write((short) 6);
+      fw.WriteLengthAndUnicodeString(this.InstrumentInternalVersions.XRaySrcFW);
+      fw.Write((short) 7);
+      fw.WriteLengthAndUnicodeString(this.InstrumentInternalVersions.HeaderFW);
+      fw.Write((short) 8);
+      fw.WriteLengthAndUnicodeString(this.InstrumentInternalVersions.BaseboardFW);
+    }
+    return Pdz25RecordTypes.XRFInstrument;
+  }
+
+  private void ReadXRFAssaySummary(BinaryReader fr, long expectedEndPosition)
+  {
+    this.NumSpectra = (int) fr.ReadUInt32();
+    if (this.NumSpectra > 1000)
+      throw new FormatException(string.Format("NumSpectra ({0}) exceeds limit of {1}", (object) this.NumSpectra, (object) 1000));
+    for (int index = 0; index < this.NumSpectra; ++index)
+      this._spectra.Add((SpectrumInFile) new SpectrumInFilePdzV25());
+    int num1 = (int) fr.ReadUInt32();
+    int num2 = (int) fr.ReadUInt32();
+    int num3 = (int) fr.ReadUInt32();
+    int num4 = (int) fr.ReadUInt32();
+    double num5 = (double) fr.ReadSingle();
+    double num6 = (double) fr.ReadSingle();
+    double num7 = (double) fr.ReadSingle();
+    double num8 = (double) fr.ReadSingle();
+    this.TotalLiveTime = fr.ReadSingle();
+    double num9 = (double) fr.ReadSingle();
+    this.ApplicationName = fr.ReadLengthAndUnicodeString();
+    this.AppPartNum = fr.ReadLengthAndUnicodeString();
+    if (fr.BaseStream.Position >= expectedEndPosition)
+      return;
+    fr.ReadLengthAndUnicodeString();
+  }
+
+  private Pdz25RecordTypes WriteXRFAssaySummary(BinaryWriter fw)
+  {
+    fw.Write((uint) this.NumSpectra);
+    fw.Write(0U);
+    fw.Write(0U);
+    fw.Write(0U);
+    fw.Write(0U);
+    fw.Write(0.0f);
+    fw.Write(0.0f);
+    fw.Write(0.0f);
+    fw.Write(0.0f);
+    fw.Write(this.TotalLiveTime);
+    fw.Write(this.TotalElapsedTime);
+    fw.WriteLengthAndUnicodeString(this.ApplicationName);
+    fw.WriteLengthAndUnicodeString(this.AppPartNum);
+    fw.WriteLengthAndUnicodeString((string) null);
+    return Pdz25RecordTypes.XRFAssaySummary;
+  }
+
+  private void ReadXRFSpectrum(BinaryReader fr)
+  {
+    int index = fr.ReadInt32();
+    if (index < 0 || index >= this.NumSpectra)
+      throw new FormatException(string.Format("Spectrum record contained phase #: {0} when NumSpectra in file is {1}", (object) index, (object) this.NumSpectra) + " (phase numbers are zero-based)");
+    this._spectra[index].LoadFromFile(fr, (SpectralFile) this, index + 1, 3);
+    this.HasNosePreasureTemperatureData = true;
+    if (!(this.AcquisitionDateTime == DateTime.MinValue))
+      return;
+    this.AcquisitionDateTime = this._spectra[index].AcquisitionDateTime;
+  }
+
+  private void ReadXRFSpectrumPacket(BinaryReader fr)
+  {
+    if (this._spectra.Count + 1 > 1000)
+      throw new FormatException(string.Format("Number of spectra ({0}) exceeds limit of {1}", (object) (this._spectra.Count + 1), (object) 1000));
+    SpectrumInFilePdzV25 spectrumInFilePdzV25 = new SpectrumInFilePdzV25();
+    if (this._singlePacketSpectra == null)
+      this._singlePacketSpectra = new List<SpectrumInFile>();
+    this._singlePacketSpectra.Add((SpectrumInFile) spectrumInFilePdzV25);
+    spectrumInFilePdzV25.LoadFromFile(fr, (SpectralFile) this, 1, 4);
+    if (!(this.AcquisitionDateTime == DateTime.MinValue))
+      return;
+    this.AcquisitionDateTime = spectrumInFilePdzV25.AcquisitionDateTime;
+  }
+
+  private void WriteXRFSpectrum(BinaryWriter fw, SpectrumInFile spec, int spectrumOrdinal)
+  {
+    using (MemoryStream output = new MemoryStream())
+    {
+      using (BinaryWriter fw1 = new BinaryWriter((Stream) output, Encoding.Unicode))
+      {
+        fw.Write(spec.IsNotCompletePhase ? (ushort) 4 : (ushort) 3);
+        spec.WriteToFile(fw1, (SpectralFile) this, spectrumOrdinal);
+        fw.Write((uint) output.Length);
+        output.Position = 0L;
+        output.CopyTo(fw.BaseStream);
+      }
+    }
+  }
+
+  private void ReadCalculatedResults(BinaryReader fr)
+  {
+    DateTime dateTime = new DateTime(0L);
+    int num1 = (int) fr.ReadUInt32();
+    int num2 = (int) fr.ReadUInt32();
+    int num3 = fr.ReadTwoByteBool() ? 1 : 0;
+    int num4 = (int) fr.ReadInt16();
+    int errorMultiplier = (int) fr.ReadUInt16();
+    DateTime createdAt = dateTime;
+    int analysisMode = num1;
+    int analysisType = num2;
+    int resultUnits = num4;
+    string calFileName = fr.ReadLengthAndUnicodeString();
+    string calPkgName = fr.ReadLengthAndUnicodeString();
+    string calPkgPN = fr.ReadLengthAndUnicodeString();
+    string typeStdSetName = fr.ReadLengthAndUnicodeString();
+    this.CalculatedResultsSummary = new CalculatedResultsSummaryType(num3 != 0, errorMultiplier, createdAt, analysisMode, analysisType, resultUnits, calFileName, calPkgName, calPkgPN, typeStdSetName);
+  }
+
+  private Pdz25RecordTypes WriteCalculatedResults(BinaryWriter fw)
+  {
+    if (this.CalculatedResultsSummary == null)
+      return Pdz25RecordTypes.Invalid;
+    fw.Write((uint) this.CalculatedResultsSummary.AnalysisMode);
+    fw.Write((uint) this.CalculatedResultsSummary.AnalysisType);
+    fw.Write(this.CalculatedResultsSummary.UsedAutoCalSelect ? (short) 1 : (short) 0);
+    fw.Write((short) this.CalculatedResultsSummary.ResultUnits);
+    fw.Write((short) this.CalculatedResultsSummary.ErrorMultiplier);
+    fw.WriteLengthAndUnicodeString(this.CalculatedResultsSummary.CalFileName);
+    fw.WriteLengthAndUnicodeString(this.CalculatedResultsSummary.CalPackageName);
+    fw.WriteLengthAndUnicodeString(this.CalculatedResultsSummary.CalPackagePartNumber);
+    fw.WriteLengthAndUnicodeString(this.CalculatedResultsSummary.TypeStandardizationSetName);
+    return Pdz25RecordTypes.CalculatedResults;
+  }
+
+  private void ReadCalculatedResultsDetails(BinaryReader fr)
+  {
+    string name = fr.ReadLengthAndUnicodeString();
+    int num1 = (int) fr.ReadUInt32();
+    int num2 = (int) fr.ReadByte();
+    double result = (double) fr.ReadSingle();
+    float num3 = fr.ReadSingle();
+    double error = (double) fr.ReadSingle();
+    double min = (double) fr.ReadSingle();
+    double max = (double) fr.ReadSingle();
+    int atomicNum = num1;
+    int units = num2;
+    double typeStdResult = (double) num3;
+    int num4 = fr.ReadTwoByteBool() ? 1 : 0;
+    int num5 = fr.ReadTwoByteBool() ? 1 : 0;
+    CalculatedResultDetail calculatedResultDetail = new CalculatedResultDetail(name, (float) result, (float) error, (float) min, (float) max, atomicNum, units, (float) typeStdResult, isTramp: (num4 != 0), isNominal: (num5 != 0));
+    if (string.IsNullOrEmpty(calculatedResultDetail.Name) || calculatedResultDetail.AtomicNumber <= 0 || calculatedResultDetail.AtomicNumber > 150)
+      return;
+    if (this._calculatedResults == null)
+      this._calculatedResults = new Dictionary<int, CalculatedResultDetail>();
+    this._calculatedResults.Add(calculatedResultDetail.AtomicNumber, calculatedResultDetail);
+  }
+
+  private void ReadGradeIDResults(BinaryReader fr)
+  {
+    this._gradeMatchResults = new List<GradeMatchResult>()
+    {
+      new GradeMatchResult(fr.ReadLengthAndUnicodeString(), fr.ReadSingle()),
+      new GradeMatchResult(fr.ReadLengthAndUnicodeString(), fr.ReadSingle()),
+      new GradeMatchResult(fr.ReadLengthAndUnicodeString(), fr.ReadSingle())
+    };
+    this.GradeIDParameters = new GradeIDParametersType(fr.ReadSingle(), fr.ReadTwoByteBool(), fr.ReadTwoByteBool());
+    int num = (int) fr.ReadUInt16();
+    if (num > 100)
+      throw new InvalidDataException(string.Format("Too many grade libraries: {0}", (object) num));
+    this._gradeLibraryItems = new List<GradeLIbraryItem>();
+    for (int index = 0; index < num; ++index)
+      this._gradeLibraryItems.Add(new GradeLIbraryItem(fr.ReadLengthAndUnicodeString(), fr.ReadLengthAndUnicodeString()));
+  }
+
+  private void ReadPassFailResults(BinaryReader fr)
+  {
+    string result;
+    switch (fr.ReadUInt16())
+    {
+      case 0:
+        result = "Pass";
+        break;
+      case 1:
+        result = "Fail";
+        break;
+      default:
+        result = "Inconclusive";
+        break;
+    }
+    string limitFile = fr.ReadLengthAndUnicodeString();
+    string materialName = fr.ReadLengthAndUnicodeString();
+    this.PassFailResult = new PassFailResultType(result, limitFile, materialName);
+  }
+
+  private void ReadUserCustomFields(BinaryReader fr)
+  {
+    int num = (int) fr.ReadInt16();
+    if (num < 0 || num > 100)
+      throw new InvalidDataException(string.Format("UserCustomFields had invalid number of fields: {0}", (object) num));
+    if (num == 0)
+      return;
+    if (this._userCustomFields == null)
+      this._userCustomFields = new List<UserCustomFieldItem>();
+    for (int index = 0; index < num; ++index)
+      this._userCustomFields.Add(new UserCustomFieldItem(fr.ReadLengthAndUnicodeString(), fr.ReadLengthAndUnicodeString()));
+  }
+
+  private Pdz25RecordTypes WriteUserCustomFields(BinaryWriter fw)
+  {
+    short num = (short) this.CustomFields().Count<UserCustomFieldItem>();
+    if (num == (short) 0)
+      return Pdz25RecordTypes.Invalid;
+    fw.Write(num);
+    foreach (UserCustomFieldItem customField in this.CustomFields())
+    {
+      fw.WriteLengthAndUnicodeString(customField.Name);
+      fw.WriteLengthAndUnicodeString(customField.Value);
+    }
+    return Pdz25RecordTypes.UserCustomFields;
+  }
+
+  private void ReadAverageDetails(BinaryReader fr)
+  {
+    uint num = fr.ReadUInt32();
+    if (num > 100U)
+      throw new InvalidDataException(string.Format("AverageDetails had invalid number of assays: {0}", (object) num));
+    this._assaysInAverage = new List<int>();
+    for (uint index = 0; index < num; ++index)
+      this._assaysInAverage.Add((int) fr.ReadUInt32());
+  }
+
+  private void ReadFilterLayers(BinaryReader fr)
+  {
+    int index1 = (int) fr.ReadUInt16();
+    int[] elements;
+    int[] thicknesses;
+    ((index1 <= this.NumSpectra - 1 ? (SpectrumInFile) this[index1] : throw new InvalidDataException(string.Format("FilterLayers has invalid phase number: {0}", (object) index1))) ?? throw new InvalidDataException(string.Format("FilterLayers phase number ({0}) before spectrum data", (object) index1))).GetFilterData(out elements, out thicknesses);
+    int num1 = (int) fr.ReadUInt16();
+    if (num1 > elements.Length)
+      throw new InvalidDataException(string.Format("FilterLayers phase ({0}), number of layers ({1}) mismatch with spectrum data ({2})", (object) index1, (object) num1, (object) elements.Length));
+    for (int index2 = 0; index2 < num1; ++index2)
+    {
+      int num2 = (int) fr.ReadUInt16();
+      if (num2 != elements[index2])
+        throw new InvalidDataException(string.Format("FilterLayers phase ({0}), layer ({1}), element ({2}) mismatch with spectrum data ({3})", (object) index1, (object) index2, (object) num2, (object) elements[index2]));
+    }
+    for (int index3 = 0; index3 < num1; ++index3)
+    {
+      int num3 = (int) fr.ReadUInt32();
+      if (num3 != thicknesses[index3])
+        throw new InvalidDataException(string.Format("FilterLayers phase ({0}), layer ({1}), thickness ({2}) mismatch with spectrum data ({3})", (object) index1, (object) index3, (object) num3, (object) thicknesses[index3]));
+    }
+  }
+
+  private void ReadImageDetails(BinaryReader fr)
+  {
+    uint num1 = fr.ReadUInt32();
+    if (num1 > 100U)
+      throw new InvalidDataException(string.Format("ImageDetails had an invalid number of images: {0}", (object) num1));
+    this._spectrumImages = new List<BrukerImage>();
+    for (int index = 0; (long) index < (long) num1; ++index)
+    {
+      uint num2 = fr.ReadUInt32();
+      byte[] buffer = fr.ReadBytes((int) num2);
+      Image picture;
+      using (MemoryStream memoryStream = new MemoryStream())
+      {
+        memoryStream.Write(buffer, 0, buffer.Length);
+        picture = Image.FromStream((Stream) memoryStream);
+      }
+      uint xdimension = fr.ReadUInt32();
+      uint ydimension = fr.ReadUInt32();
+      string annotation = fr.ReadLengthAndUnicodeString();
+      this._spectrumImages.Add(new BrukerImage(num2, picture, xdimension, ydimension, annotation));
+    }
+  }
+
+  private void ReadGPSDetails(BinaryReader fr)
+  {
+    if (fr.ReadInt32() == 0)
+    {
+      fr.ReadDouble();
+      fr.ReadDouble();
+      double num = (double) fr.ReadSingle();
+    }
+    else
+      this.GPSDetail = new GPSDetailType(fr.ReadDouble(), fr.ReadDouble(), fr.ReadSingle());
+  }
+
+  private void ReadMiscInformation(BinaryReader fr)
+  {
+    fr.ReadInt32();
+    fr.ReadLengthAndUnicodeString();
+    string str = fr.ReadLengthAndUnicodeString();
+    if (!string.IsNullOrEmpty(this.SampleID) || string.IsNullOrEmpty(str))
+      return;
+    this.SampleID = str;
+  }
+
+  private Pdz25RecordTypes WriteMiscInformation(BinaryWriter fw)
+  {
+    if (this.CalculatedResultsSummary == null && string.IsNullOrEmpty(this.SampleID))
+      return Pdz25RecordTypes.Invalid;
+    BinaryWriter binaryWriter = fw;
+    CalculatedResultsSummaryType calculatedResultsSummary = this.CalculatedResultsSummary;
+    int num = calculatedResultsSummary != null ? calculatedResultsSummary.ErrorMultiplier : 0;
+    binaryWriter.Write(num);
+    fw.WriteLengthAndUnicodeString(this.CalculatedResultsSummary?.CalFileName ?? string.Empty);
+    fw.WriteLengthAndUnicodeString(this.SampleID);
+    return Pdz25RecordTypes.MiscInformation;
+  }
+
+  private void ReadTraceLog(BinaryReader fr) => this.TraceLog = fr.ReadLengthAndUnicodeString(100000);
+
+  private void ReadLibsAlloyResults(BinaryReader fr)
+  {
+    int num1 = fr.ReadTwoByteBool() ? 1 : 0;
+    int errorMultiplier = (int) fr.ReadUInt16();
+    string str = fr.ReadLengthAndUnicodeString();
+    DateTime createdAt = fr.ReadDateTime();
+    string libraryName = str;
+    string userName = fr.ReadLengthAndUnicodeString();
+    this.CalculatedResultsSummary = new CalculatedResultsSummaryType(num1 != 0, errorMultiplier, createdAt, libraryName: libraryName, userName: userName);
+    int num2 = (int) fr.ReadUInt16();
+    if (num2 > 100)
+      throw new InvalidDataException(string.Format("Too many elements: {0}", (object) num2));
+    IElementIDConversion elementIdConversion = GetIElementIDConversion.Get();
+    for (int index = 0; index < num2; ++index)
+    {
+      string symbol = new string(fr.ReadChars(2));
+      int atomicNumber = elementIdConversion.SymbolToAtomicNumber(symbol);
+      string name = symbol;
+      int num3 = atomicNumber;
+      double result = (double) fr.ReadSingle();
+      float num4 = fr.ReadSingle();
+      double error = (double) fr.ReadSingle();
+      float num5 = fr.ReadSingle();
+      double min = (double) fr.ReadSingle();
+      double max = (double) num5;
+      int atomicNum = num3;
+      double lod = (double) num4;
+      CalculatedResultDetail calculatedResultDetail = new CalculatedResultDetail(name, (float) result, (float) error, (float) min, (float) max, atomicNum, lod: ((float) lod));
+      if (this._calculatedResults == null)
+        this._calculatedResults = new Dictionary<int, CalculatedResultDetail>();
+      this._calculatedResults.Add(calculatedResultDetail.AtomicNumber, calculatedResultDetail);
+    }
+  }
+
+  private void ReadLibsGradeIDResults(BinaryReader fr)
+  {
+    int num1 = (int) fr.ReadUInt16();
+    if (num1 > 100)
+      throw new InvalidDataException(string.Format("Too many gradeIDs: {0}", (object) num1));
+    this._gradeMatchResults = new List<GradeMatchResult>();
+    for (int index = 0; index < num1; ++index)
+      this._gradeMatchResults.Add(new GradeMatchResult(fr.ReadLengthAndUnicodeString(), fr.ReadSingle()));
+    int num2 = (int) fr.ReadInt16();
+    if (num2 > 100)
+      throw new InvalidDataException(string.Format("Too many grade libraries: {0}", (object) num2));
+    this._gradeLibraryItems = new List<GradeLIbraryItem>();
+    for (int index = 0; index < num2; ++index)
+      this._gradeLibraryItems.Add(new GradeLIbraryItem(fr.ReadLengthAndUnicodeString(), fr.ReadLengthAndUnicodeString()));
+  }
+
+  private void ReadLibsAlloyMethod(BinaryReader fr) => this.LIBSAlloyMethod = new LIBSAlloyMethodType(fr.ReadLengthAndUnicodeString(), fr.ReadLengthAndUnicodeString(), (int) fr.ReadUInt16(), fr.ReadDateTime(), fr.ReadLengthAndUnicodeString());
+
+  private void ReadLibsAlloySample(BinaryReader fr)
+  {
+    this.ScanIndex = fr.ReadInt64();
+    string str = fr.ReadLengthAndUnicodeString();
+    if (string.IsNullOrEmpty(this.SampleID) && !string.IsNullOrEmpty(str))
+      this.SampleID = str;
+    this.ScanID = fr.ReadLengthAndUnicodeString();
+    this.AcquisitionDateTime = fr.ReadDateTime();
+    this.UserName = fr.ReadLengthAndUnicodeString();
+    this.ReadUserCustomFields(fr);
+    this.NumSpectra = 1;
+    this._spectra.Add((SpectrumInFile) new SpectrumInFilePdzV25());
+    this._spectra[0].LoadFromFile(fr, (SpectralFile) this, 1, 1004);
+  }
+
+  private List<long> FindGainPositionsInFile(out long fileSize)
+  {
+    fileSize = 0L;
+    List<long> gainPositionsInFile = new List<long>();
+    if (this.CheckForFailedCreation(true) || !this.LoadFilePreCheck(true))
+      return gainPositionsInFile;
+    int recordNumber = 1;
+    try
+    {
+      using (FileStream input = new FileStream(this.LoadedFromFile, FileMode.Open, FileAccess.Read, FileShare.Read))
+      {
+        using (BinaryReader fr = new BinaryReader((Stream) input, Encoding.Unicode))
+        {
+          (ushort _, uint _, uint instType, long streamLength) = this.ExtractAndVerifyFileHeader(fr);
+          fileSize = streamLength;
+          if (instType != 1U)
+            throw new FormatException(string.Format("Invalid instrument type ({0})", (object) instType));
+          while (input.Position < streamLength)
+          {
+            (long _, Pdz25RecordTypes recordType, long num, long _) = this.ProcessRecordHeader(fr, recordNumber, streamLength);
+            if (recordType == Pdz25RecordTypes.XRFSpectrum)
+              gainPositionsInFile.Add(input.Position + 74L);
+            fr.ReadBytes((int) num);
+            ++recordNumber;
+          }
+        }
+      }
+    }
+    catch (Exception ex)
+    {
+      throw new Exception(string.Format("{0} while reading {1} in record number {2}", (object) ex.Message, (object) this.LoadedFromFile, (object) recordNumber), ex);
+    }
+    return gainPositionsInFile;
+  }
+
+  private delegate Pdz25RecordTypes RecordCreator(BinaryWriter bw);
+}
