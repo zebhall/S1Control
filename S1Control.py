@@ -5,6 +5,7 @@ versionDate = '2023/01/23'
 import os
 import sys
 import threading
+from multiprocessing import Process
 import time
 import pandas as pd
 import json
@@ -23,35 +24,6 @@ from matplotlib.figure import Figure
 from matplotlib import style
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 
-
-
-XRF_IP = '192.168.137.139'      
-XRF_IP_ALTERNATE = '190.168.137.139' # In some VERY UNUSUAL cases, I have seen instuments come back from Bruker servicing with this IP changed to 190 instead of 192. Worth checking if it breaks.
-XRF_PORT = 55204
-xrf =  socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
-
-
-# BRUKER API COMMANDS to be used with sendCommand
-bruker_query_loginstate = '<Query parameter="Login State"/>'
-bruker_query_armedstate = '<Query parameter="Armed State"/>'
-bruker_query_instdef = '<Query parameter="Instrument Definition"/>'
-bruker_query_allapplications = '<Query parameter="Applications"/>'
-bruker_query_currentapplicationinclmethods = '<Query parameter="ActiveApplication">Include Methods</Query>'
-bruker_query_methodsforcurrentapplication = '<Query parameter="Method"></Query>'
-bruker_query_currentapplicationprefs = '<Query parameter="User Preferences"></Query>'       # UAP - incl everything
-bruker_query_currentapplicationphasetimes = '<Query parameter="Phase Times"/>'
-bruker_query_softwareversion = '<Query parameter="Version"/>'       # S1 version, eg 2.7.58.392
-bruker_query_nosetemp = '<Query parameter="Nose Temperature"/>'
-bruker_command_login = '<Command>Login</Command>'
-bruker_command_assaystart = '<Command parameter="Assay">Start</Command>'
-bruker_command_assaystop = '<Command parameter="Assay">Stop</Command>'
-#bruker_configure_setsystemtime = 
-bruker_configure_transmitstatusenable = '<Configure parameter="Transmit Statusmsg">Yes</Configure>'     #Enable transmission of trigger pull/release and assay start/stop status messages
-bruker_configure_transmitelementalresultsenable = '<Configure parameter="Transmit Results" grades="No" elements="Yes">Yes</Configure>'      #Enable transmission of elemental results, disables transmission of grade ID / passfail results
-bruker_configure_transmitspectraenable = '<Configure parameter="Transmit Spectra">Yes</Configure>'
-bruker_configure_transmitspectradisable = '<Configure parameter="Transmit Spectra">No</Configure>'
-bruker_configure_transmitstatusmessagesenable = '<Configure parameter="Transmit Statusmsg">Yes</Configure>'
 
 
 @dataclass
@@ -101,7 +73,6 @@ def instrument_Disconnect():
     xrf.close()
     printAndLog('Instrument Connection Closed.')
 
-instr_assayrepeatsselected = 1  #initial set
 
 def instrument_StartAssay():
     global spectra
@@ -213,20 +184,6 @@ def recvChunks(s, expected_len):
         chunks.append(chunk)
         recv_len = recv_len + len(chunk)
     return b''.join(chunks)
-
-# Consts for datatypes on recv
-COOKED_SPECTRUM = '1'
-RESULTS_SET = '2'
-RAW_SPECTRUM = '3'
-PDZ_FILENAME = '4'
-XML_PACKET = '5'
-XML_SUCCESS_RESPONSE = '5a'
-XML_APPS_PRESENT_RESPONSE = '5b'
-XML_ACTIVE_APP_RESPONSE = '5c'
-STATUS_CHANGE = '6'
-SPECTRUM_ENERGY_PACKET = '7'
-UNKNOWN_DATA = '0'
-
 
 
 
@@ -341,8 +298,7 @@ def resource_path(relative_path):
     """ Get absolute path to resource, works for dev and for PyInstaller """
     base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
     return os.path.join(base_path, relative_path)
-
-driveFolderStr = ''
+    
 
 def initialiseLogFile():
     global logFile
@@ -424,31 +380,30 @@ def instrument_GetStates():
 # def delay_func(t, func:function):
 #     time.sleep(t)
 
-    
-
-plotLiveSpectra = True     # used for choosing whether live spectra should be plotted
-
-
 
 # XRF Listen Loop Functions
 
-def xrfListenLoop_Start(event):
+def xrfListenLoopThread_Start(event):
     global listen_thread
     listen_thread = threading.Thread(target=xrfListenLoop)
     listen_thread.daemon = True
     listen_thread.start()
-    gui.after(20, xrfListenLoop_Check)
+    gui.after(20, xrfListenLoopThread_Check)
 
-def xrfListenLoop_Check():
+def xrfListenLoopThread_Check():
+    global listen_thread
     if listen_thread.is_alive():
-        gui.after(20, xrfListenLoop_Check)
+        gui.after(20, xrfListenLoopThread_Check)
     else:
         printAndLog('xrf listen loop broke')
 
-instr_currentphase = 0
-assay_phase_spectrumpacketcounter = 0
-instr_currentphaselength_s = 0
-instr_approxsingleassaytime = 0
+# TESTING OUT LISTEN LOOP PROCESS instead of thread
+# def xrfListenLoopProcess_Start():
+#     global listen_process
+#     listen_process = Process(target=xrfListenLoop)
+#     listen_process.start()
+
+
 
 def xrfListenLoop():
     global instr_currentapplication
@@ -543,19 +498,21 @@ def xrfListenLoop():
                         plotSpectrum(spectra[-1], specenergies[-1], plotphasecolours[instr_currentphase],legend)
                     except: printAndLog('Issue with Spectra experienced after completion of Assay.')
 
-                    printAndLog(f'Temps: Detector {instr_currentdettemp}°C, Ambient {instr_currentambtemp}°F')
+                    printAndLog(f'Temps: Detector {instr_currentdettemp}°C, Ambient {instr_currentambtemp}°C')
+                    #printAndLog(f'Amb Temp F: {instr_currentambtemp_F}°F')
                     #instrument_QueryNoseTemp()
 
                     # add full assay with all phases to table and catalogue. this 'assay complete' response is usually recieved at very end of assay, when all other values are in place.
-                    #try:
-                    completeAssay(instr_currentapplication, instr_currentassayresults, instr_currentassayspectra, instr_currentassayspecenergies, instr_currentassaylegends)
-                    #except:
-                        #printAndLog('Error: Assay results and spectra were unable to be saved to the table. Was the assay too short to have results?')
-
+                    try:
+                        completeAssay(instr_currentapplication, instr_currentassayresults, instr_currentassayspectra, instr_currentassayspecenergies, instr_currentassaylegends)
+                    except:
+                        printAndLog('Error: Assay results and spectra were unable to be saved to the table. Was the assay too short to have results? Or did an error occur?')
+                    
                     #reset variables for next assay
                     instr_currentassayspectra = []
                     instr_currentassayspecenergies = []
                     instr_currentassaylegends = []
+                    instr_currentassayresults = instr_currentassayresults.iloc[0:0]
 
                     instr_assayrepeatsleft -= 1
                     if instr_assayrepeatsleft <= 0:
@@ -687,6 +644,7 @@ def xrfListenLoop():
                 printAndLog(f'Detector Specs: {instr_detectortype} - {instr_detectorwindowthickness} {instr_detectorwindowtype} window, {instr_detectorresolution} resolution, operating temps {instr_detectormaxTemp} - {instr_detectorminTemp}')
                 printAndLog(f'Source: {instr_sourcemanufacturer} {instr_sourcemaxP}')
                 printAndLog(f'Source Target: {instr_sourcetargetName}')
+                printAndLog(f'Source Spot Size: {instr_sourcespotsize} (Changeable: {instr_sourcehaschangeablecollimator})')
                 printAndLog(f'Source Voltage Range: {instr_sourceminV} - {instr_sourcemaxV}')
                 printAndLog(f'Source Current Range: {instr_sourceminI} - {instr_sourcemaxI}')
             
@@ -854,13 +812,23 @@ def xrfListenLoop():
         elif datatype == XML_ACTIVE_APP_RESPONSE:     
             try:
                 instr_currentapplication = data['Response']['Application']
-                instr_currentmethod = data['Response']['ActiveMethod']
+                printAndLog(f"Current Application: {instr_currentapplication}")
+            except:
+                printAndLog(f"Current Application: Not Found / Spectrometer Mode")
+            try:
                 instr_methodsforcurrentapplication = data['Response']['MethodList']['Method']
                 if isinstance(instr_methodsforcurrentapplication, str):
                     instr_methodsforcurrentapplication = [instr_methodsforcurrentapplication]
-                printAndLog(f"Current Application: {instr_currentapplication} | Current Method: {instr_currentmethod} | Methods Available: {instr_methodsforcurrentapplication}")
+                printAndLog(f"Methods Available: {instr_methodsforcurrentapplication}")
             except:
-                printAndLog(f"Current Application: Error: Not Found - Was the instrument busy when it was connected?")
+                instr_methodsforcurrentapplication = ['']
+                printAndLog(f"Methods Available: Not Found / Spectrometer Mode")
+            try:
+                instr_currentmethod = data['Response']['ActiveMethod']
+                printAndLog(f"Current Method: {instr_currentmethod}")
+            except:
+                instr_currentmethod = ''
+                printAndLog(f"Current Method: Not Found / Spectrometer Mode")
             try:
                 methodselected_stringvar.set(instr_currentmethod)
                 dropdown_method.configure(values=instr_methodsforcurrentapplication)
@@ -879,21 +847,10 @@ def xrfListenLoop():
         time.sleep(0.05)
 
 
-
-
-
-
-spectra = []
-specenergies = []
-instr_currentassayspectra = []
-instr_currentassayspecenergies = []
-instr_currentassaylegends = []
-instr_currentambtemp = ''
-instr_currentdettemp = ''
-
 def setSpectrum(data):
     global spectra
     global instr_currentambtemp
+    global instr_currentambtemp_F
     global instr_currentdettemp
     a = {}
     (a['fEVPerChannel'],a['iTDur'],a['iRaw_Cnts'],a['iValid_Cnts'],a['iADur'],a['iADead'],a['iAReset'],a['iALive'],
@@ -905,8 +862,12 @@ def setSpectrum(data):
     a['data'] = list(map(lambda x: x[0], struct.iter_unpack('<L', data[208:])))
 
     # GET CURRENT TEMPS  - I think this is not working properly, or needs some offsets or something to be taken into account?
-    instr_currentambtemp = a['Amb_Temp']
-    instr_currentdettemp = a['Det_Temp']
+    # Operating under the assumption that the det temp is actually double what it should be (often reading -54 degrees) and ambient temp value is actually 1/10 of a degree F, (e.g. reading 1081 instead of 108.1)
+    instr_currentambtemp = float(a['Amb_Temp'])
+    instr_currentambtemp_F = instr_currentambtemp
+    instr_currentambtemp = round((((instr_currentambtemp/10)-32) * (5/9)), 2)    # shifts decimal place one left (see above comment) and converts to C from F, then rounds to 2 dp.
+    instr_currentdettemp = float(a['Det_Temp'])
+    instr_currentdettemp = round((instr_currentdettemp / 2), 2)     # halves and rounds (halves because see above comment)
     # printAndLog(f'Temps: Detector {instr_currentdettemp}°C, Ambient {instr_currentambtemp}°F')
 
     idx = len(spectra)-1
@@ -929,8 +890,7 @@ def setSpecEnergy(data):
 
     return specenergies
 
-assay_catalogue = []
-assay_catalogue_num = 1
+
 
 def completeAssay(assay_application:str, assay_results:pd.DataFrame, assay_spectra:list, assay_specenergies:list, assay_legends:list):
     global assay_catalogue
@@ -966,168 +926,12 @@ def completeAssay(assay_application:str, assay_results:pd.DataFrame, assay_spect
     printAndLog(f'Assay # {newassay.index} processed sucessfully ({newassay.time_elapsed})')
 
     # increment catalogue index number for next assay
-    
-# COLOURS FOR ELEMENT GROUPS
-ALKALI_METALS = '#FC8B12'            #'goldenrod1'
-ALKALINE_EARTH_METALS = '#FAA23E'    #'DarkOrange1'
-TRANSITION_METALS = '#0084FF'        #'RoyalBlue1'
-OTHER_METALS = '#5F8DFF'     #'SteelBlue1'487BFA
-METALLOIDS = '#9778FE'       #'light slate gray'
-NON_METALS = '#FD81FF'       #'light goldenrod'
-HALOGENS = '#FF3CD0'         #'plum1'
-NOBLE_GASES = '#972EB4'       #'MediumOrchid1'
-LANTHANIDES = '#e84f51'     #'firebrick1'
-ACTINIDES = '#1BCA66'        #'spring green'
-
-# ELEMENT LIST FOR BUTTONS - FORMAT IS (ATOMIC NUMBER, SYMBOL, NAME, PERIODIC TABLE ROW, PERIODIC TABLE COLUMN, CLASS for bg colour)
-element_info = [
-    (1, 'H', 'Hydrogen', 1, 1, NON_METALS),
-    (2, 'He', 'Helium', 1, 18, NOBLE_GASES),
-    (3, 'Li', 'Lithium', 2, 1, ALKALI_METALS),
-    (4, 'Be', 'Beryllium', 2, 2, ALKALINE_EARTH_METALS),
-    (5, 'B', 'Boron', 2, 13, METALLOIDS),
-    (6, 'C', 'Carbon', 2, 14, NON_METALS),
-    (7, 'N', 'Nitrogen', 2, 15, NON_METALS),
-    (8, 'O', 'Oxygen', 2, 16, NON_METALS),
-    (9, 'F', 'Fluorine', 2, 17, HALOGENS),
-    (10, 'Ne', 'Neon', 2, 18, NOBLE_GASES),
-    (11, 'Na', 'Sodium', 3, 1, ALKALI_METALS),
-    (12, 'Mg', 'Magnesium', 3, 2, ALKALINE_EARTH_METALS),
-    (13, 'Al', 'Aluminium', 3, 13, OTHER_METALS),
-    (14, 'Si', 'Silicon', 3, 14, METALLOIDS),
-    (15, 'P', 'Phosphorus', 3, 15, NON_METALS),
-    (16, 'S', 'Sulfur', 3, 16, NON_METALS),
-    (17, 'Cl', 'Chlorine', 3, 17, HALOGENS),
-    (18, 'Ar', 'Argon', 3, 18, NOBLE_GASES),
-    (19, 'K', 'Potassium', 4, 1, ALKALI_METALS),
-    (20, 'Ca', 'Calcium', 4, 2, ALKALINE_EARTH_METALS),
-    (21, 'Sc', 'Scandium', 4, 3, TRANSITION_METALS),
-    (22, 'Ti', 'Titanium', 4, 4, TRANSITION_METALS),
-    (23, 'V', 'Vanadium', 4, 5, TRANSITION_METALS),
-    (24, 'Cr', 'Chromium', 4, 6, TRANSITION_METALS),
-    (25, 'Mn', 'Manganese', 4, 7, TRANSITION_METALS),
-    (26, 'Fe', 'Iron', 4, 8, TRANSITION_METALS),
-    (27, 'Co', 'Cobalt', 4, 9, TRANSITION_METALS),
-    (28, 'Ni', 'Nickel', 4, 10, TRANSITION_METALS),
-    (29, 'Cu', 'Copper', 4, 11, TRANSITION_METALS),
-    (30, 'Zn', 'Zinc', 4, 12, TRANSITION_METALS),
-    (31, 'Ga', 'Gallium', 4, 13, OTHER_METALS),
-    (32, 'Ge', 'Germanium', 4, 14, METALLOIDS),
-    (33, 'As', 'Arsenic', 4, 15, METALLOIDS),
-    (34, 'Se', 'Selenium', 4, 16, NON_METALS),
-    (35, 'Br', 'Bromine', 4, 17, HALOGENS),
-    (36, 'Kr', 'Krypton', 4, 18, NOBLE_GASES),
-    (37, 'Rb', 'Rubidium', 5, 1, ALKALI_METALS),
-    (38, 'Sr', 'Strontium', 5, 2, ALKALINE_EARTH_METALS),
-    (39, 'Y', 'Yttrium', 5, 3, TRANSITION_METALS),
-    (40, 'Zr', 'Zirconium', 5, 4, TRANSITION_METALS),
-    (41, 'Nb', 'Niobium', 5, 5, TRANSITION_METALS),
-    (42, 'Mo', 'Molybdenum', 5, 6, TRANSITION_METALS),
-    (43, 'Tc', 'Technetium', 5, 7, TRANSITION_METALS),
-    (44, 'Ru', 'Ruthenium', 5, 8, TRANSITION_METALS),
-    (45, 'Rh', 'Rhodium', 5, 9, TRANSITION_METALS),
-    (46, 'Pd', 'Palladium', 5, 10, TRANSITION_METALS),
-    (47, 'Ag', 'Silver', 5, 11, TRANSITION_METALS),
-    (48, 'Cd', 'Cadmium', 5, 12, TRANSITION_METALS),
-    (49, 'In', 'Indium', 5, 13, OTHER_METALS),
-    (50, 'Sn', 'Tin', 5, 14, OTHER_METALS),
-    (51, 'Sb', 'Antimony', 5, 15, METALLOIDS),
-    (52, 'Te', 'Tellurium', 5, 16, METALLOIDS),
-    (53, 'I', 'Iodine', 5, 17, HALOGENS),
-    (54, 'Xe', 'Xenon', 5, 18, NOBLE_GASES),
-    (55, 'Cs', 'Caesium', 6, 1, ALKALI_METALS),
-    (56, 'Ba', 'Barium', 6, 2, ALKALINE_EARTH_METALS),
-    (57, 'La', 'Lanthanum', 6, 3, LANTHANIDES),
-    (58, 'Ce', 'Cerium', 9, 4, LANTHANIDES),
-    (59, 'Pr', 'Praseodymium', 9, 5, LANTHANIDES),
-    (60, 'Nd', 'Neodymium', 9, 6, LANTHANIDES),
-    (61, 'Pm', 'Promethium', 9, 7, LANTHANIDES),
-    (62, 'Sm', 'Samarium', 9, 8, LANTHANIDES),
-    (63, 'Eu', 'Europium', 9, 9, LANTHANIDES),
-    (64, 'Gd', 'Gadolinium', 9, 10, LANTHANIDES),
-    (65, 'Tb', 'Terbium', 9, 11, LANTHANIDES),
-    (66, 'Dy', 'Dysprosium', 9, 12, LANTHANIDES),
-    (67, 'Ho', 'Holmium', 9, 13, LANTHANIDES),
-    (68, 'Er', 'Erbium', 9, 14, LANTHANIDES),
-    (69, 'Tm', 'Thulium', 9, 15, LANTHANIDES),
-    (70, 'Yb', 'Ytterbium', 9, 16, LANTHANIDES),
-    (71, 'Lu', 'Lutetium', 9, 17, LANTHANIDES),
-    (72, 'Hf', 'Hafnium', 6, 4, TRANSITION_METALS),
-    (73, 'Ta', 'Tantalum', 6, 5, TRANSITION_METALS),
-    (74, 'W', 'Tungsten', 6, 6, TRANSITION_METALS),
-    (75, 'Re', 'Rhenium', 6, 7, TRANSITION_METALS),
-    (76, 'Os', 'Osmium', 6, 8, TRANSITION_METALS),
-    (77, 'Ir', 'Iridium', 6, 9, TRANSITION_METALS),
-    (78, 'Pt', 'Platinum', 6, 10, TRANSITION_METALS),
-    (79, 'Au', 'Gold', 6, 11, TRANSITION_METALS),
-    (80, 'Hg', 'Mercury', 6, 12, TRANSITION_METALS),
-    (81, 'Tl', 'Thallium', 6, 13, OTHER_METALS),
-    (82, 'Pb', 'Lead', 6, 14, OTHER_METALS),
-    (83, 'Bi', 'Bismuth', 6, 15, OTHER_METALS),
-    (84, 'Po', 'Polonium', 6, 16, METALLOIDS),
-    (85, 'At', 'Astatine', 6, 17, HALOGENS),
-    (86, 'Rn', 'Radon', 6, 18, NOBLE_GASES),
-    (87, 'Fr', 'Francium', 7, 1, ALKALI_METALS),
-    (88, 'Ra', 'Radium', 7, 2, ALKALINE_EARTH_METALS),
-    (89, 'Ac', 'Actinium', 7, 3, ACTINIDES),
-    (90, 'Th', 'Thorium', 10, 4, ACTINIDES),
-    (91, 'Pa', 'Protactinium', 10, 5, ACTINIDES),
-    (92, 'U', 'Uranium', 10, 6, ACTINIDES),
-    (93, 'Np', 'Neptunium', 10, 7, ACTINIDES),
-    (94, 'Pu', 'Plutonium', 10, 8, ACTINIDES),
-    (95, 'Am', 'Americium', 10, 9, ACTINIDES),
-    (96, 'Cm', 'Curium', 10, 10, ACTINIDES),
-    (97, 'Bk', 'Berkelium', 10, 11, ACTINIDES),
-    (98, 'Cf', 'Californium', 10, 12, ACTINIDES),
-    (99, 'Es', 'Einsteinium', 10, 13, ACTINIDES),
-    (100, 'Fm', 'Fermium', 10, 14, ACTINIDES),
-    (101, 'Md', 'Mendelevium', 10, 15, ACTINIDES),
-    (102, 'No', 'Nobelium', 10, 16, ACTINIDES),
-    (103, 'Lr', 'Lawrencium', 10, 17, ACTINIDES),
-    (104, 'Rf', 'Rutherfordium', 7, 4, TRANSITION_METALS),
-    (105, 'Db', 'Dubnium', 7, 5, TRANSITION_METALS),
-    (106, 'Sg', 'Seaborgium', 7, 6, TRANSITION_METALS),
-    (107, 'Bh', 'Bohrium', 7, 7, TRANSITION_METALS),
-    (108, 'Hs', 'Hassium', 7, 8, TRANSITION_METALS),
-    (109, 'Mt', 'Meitnerium', 7, 9, TRANSITION_METALS),
-    (110, 'Ds', 'Darmstadtium', 7, 10, TRANSITION_METALS),
-    (111, 'Rg', 'Roentgenium', 7, 11, TRANSITION_METALS),
-    (112, 'Cn', 'Copernicium', 7, 12, TRANSITION_METALS),
-    (113, 'Nh', 'Nihonium', 7, 13, OTHER_METALS),
-    (114, 'Fl', 'Flerovium', 7, 14, OTHER_METALS),
-    (115, 'Mc', 'Moscovium', 7, 15, OTHER_METALS),
-    (116, 'Lv', 'Livermorium', 7, 16, OTHER_METALS),
-    (117, 'Ts', 'Tennessine', 7, 17, HALOGENS),
-    (118, 'Og', 'Oganesson', 7, 18, NOBLE_GASES)]
 
 
 def onInstrDisconnect():
     messagebox.showwarning('Instrument Disconnected','Error: Connection to the XRF instrument has been lost. The software will be closed, and a log file will be saved.')
     printAndLog('Connection to the XRF instrument was unexpectedly lost. Software will shut down and log will be saved.')
     onClosing()
-
-
-# GUI
-
-thread_halt = False
-
-ctk.set_appearance_mode("light")  # Modes: system (default), light, dark
-ctk.set_default_color_theme("blue")  # Themes: blue (default), dark-blue, green
-
-gui = ctk.CTk()
-gui.title("S1Control")
-#gui.wm_attributes('-toolwindow', 'True',)
-gui.geometry('+5+5')
-#gui.geometry('1380x855')
-iconpath = resource_path("pss_lb.ico")
-energiescsvpath = resource_path("energies.csv")
-gui.iconbitmap(iconpath)
-
-instr_isarmed = False
-instr_isloggedin = False
-instr_assayisrunning = False
-instr_assayrepeatsleft = 1
-
 
 # Functions for Widgets 
 
@@ -1152,6 +956,7 @@ def statusUpdateChecker():
     global statuslabel
     global xraysonbar
     global assayprogressbar
+    global button_assay
 
     while True:
 
@@ -1159,22 +964,29 @@ def statusUpdateChecker():
             break
 
         if instr_isloggedin == False:
-            instr_DANGER_stringvar.set('Not Logged In')
-            statuslabel.configure(text_color = WHITEISH, fg_color = '#3A3A3A') 
-            statusframe.configure(fg_color = '#3A3A3A')
+            instr_DANGER_stringvar.set('Not Logged In!')
+            statuslabel.configure(text_color = WHITEISH, fg_color = '#939BA2')  # Def background colour: '#3A3A3A' 
+            statusframe.configure(fg_color = '#939BA2')
             xraysonbar.configure(progress_color = '#939BA2')
+            if button_assay.cget('state') == 'normal':
+                button_assay.configure(state = 'disabled')
 
         elif instr_isarmed == False:
-            instr_DANGER_stringvar.set('Not Armed')
-            statuslabel.configure(text_color = WHITEISH, fg_color = '#4D4D4D') 
-            statusframe.configure(fg_color = '#4D4D4D')
+            instr_DANGER_stringvar.set('Not Armed!')
+            statuslabel.configure(text_color = WHITEISH, fg_color = '#939BA2') 
+            statusframe.configure(fg_color = '#939BA2')
             xraysonbar.configure(progress_color = '#939BA2')
+            if button_assay.cget('state') == 'normal':
+                button_assay.configure(state = 'disabled')
+            
 
         elif instr_assayisrunning == True:
-            instr_DANGER_stringvar.set('WARNING: X-RAYS')
-            statuslabel.configure(text_color = WHITEISH, fg_color = '#D42525') 
+            instr_DANGER_stringvar.set('WARNING: X-RAYS')  
+            statuslabel.configure(text_color = WHITEISH, fg_color = '#D42525')      # X-RAY WARNING YELLOW = '#FFCC00', NICE RED = '#D42525'
             statusframe.configure(fg_color = '#D42525')
             xraysonbar.configure(progress_color = '#D42525')
+            if button_assay.cget('state') == 'disabled':
+                button_assay.configure(state = 'normal')
 
             # Calculating progress of total assays incl repeats, for progressbar
             num_phases_in_each_assay = len(instr_currentphases)
@@ -1192,9 +1004,11 @@ def statusUpdateChecker():
             
         else:
             instr_DANGER_stringvar.set('Ready')
-            statuslabel.configure(text_color = WHITEISH, fg_color = '#33AF56') 
-            statusframe.configure(fg_color = '#33AF56')
+            statuslabel.configure(text_color = WHITEISH, fg_color = '#3A3A3A') 
+            statusframe.configure(fg_color = '#3A3A3A')     # default ctk blue '#3B8ED0' - complim green '#33AF56'
             xraysonbar.configure(progress_color = '#939BA2')
+            if button_assay.cget('state') == 'disabled':
+                button_assay.configure(state = 'normal')
 
         # print(f'assay is running: {instr_assayisrunning}')
         # print(f'instr is armed: {instr_isarmed}')
@@ -1213,14 +1027,6 @@ def assaySelected(event):
     plotAssay(assay)
     displayResults(assay)
 
-
-total_spec_channels = 2048
-#spec_channels = np.array(list(range(1, total_spec_channels+1)))
-spec_channels = np.array(list(range(0, total_spec_channels)))
-
-plotphasecolours = ['blue', 'red', 'green', 'pink', 'yellow']
-plottedspectra = []
-plottedemissionlineslist = []
 
 def plotSpectrum(spectrum, specenergy, colour, spectrum_legend):
     global spectratoolbar
@@ -1266,9 +1072,6 @@ def clearCurrentSpectra():
     spectratoolbar.update()
     spectracanvas.draw()
 
-emission_lines_to_plot = []
-extraticks = []
-extraticklabels = []
 
 def plotEmissionLines():
     global spectratoolbar
@@ -1360,7 +1163,6 @@ def startPlotClickListener():   # Starts the listener for click on plot so it is
     button_analysepeak.configure(text = 'Click a Peak to Analyse...', fg_color = '#D85820', hover_color = '#973d16')
     cid = fig.canvas.mpl_connect('button_press_event', onPlotClick)
 
-energiesfirsttime = True
 
 def getNearbyEnergies(energy, qty):
     global energies_df
@@ -1441,16 +1243,6 @@ def endOfAssaysReset():     # Assumes this is called when assay is completed and
         button_assay.configure(fg_color = '#33AF56')
 
 
-phasetimelabels = []
-phasetimeentries = []
-phasetime1_stringvar = ctk.StringVar()
-phasetime2_stringvar = ctk.StringVar()
-phasetime3_stringvar = ctk.StringVar()
-phasename1_stringvar = ctk.StringVar()
-phasename2_stringvar = ctk.StringVar()
-phasename3_stringvar = ctk.StringVar()
-
-ui_firsttime = 1
 
 def ui_UpdateCurrentAppAndPhases():    #update application selected and phase timings in UI
     global instr_currentphases
@@ -1655,11 +1447,6 @@ def closeAllThreads():
     global thread_halt
     thread_halt = True
 
-emissionLineElementButtonIDs = []
-emissionLinesElementslist = []
-
-linecfg_firsttime = True
-linecfgwindows = []
 
 def configureEmissionLinesClicked():
     global linecfg_firsttime
@@ -1704,7 +1491,6 @@ def lineCfgOnClosing():
     # .withdraw() hides, .deiconify() brings back.
     linecfgwindows[0].withdraw()
 
-all_lines = [['Be', 'Be Kα', 0.108], ['B', 'B Kα', 0.183], ['C', 'C Kα', 0.277], ['N', 'N Kα', 0.392], ['O', 'O Kα', 0.525], ['F', 'F Kα', 0.677], ['Ne', 'Ne Kα', 0.849], ['Na', 'Na Kα', 1.04], ['Mg', 'Mg Kα', 1.254], ['Mg', 'Mg Kβ', 1.302], ['Al', 'Al Kα', 1.486], ['Al', 'Al Kβ', 1.557], ['Si', 'Si Kα', 1.74], ['Si', 'Si Kβ', 1.837], ['P', 'P Kα', 2.01], ['P', 'P Kβ', 2.139], ['S', 'S Kα', 2.309], ['S', 'S Kβ', 2.465], ['Cl', 'Cl Kα', 2.622], ['Cl', 'Cl Kβ', 2.812], ['Ar', 'Ar Kα', 2.958], ['Ar', 'Ar Kβ', 3.19], ['K', 'K Kα', 3.314], ['K', 'K Kβ', 3.59], ['Ca', 'Ca Kα', 3.692], ['Ca', 'Ca Kβ', 4.013], ['Sc', 'Sc Kα', 4.093], ['Sc', 'Sc Kβ', 4.464], ['Ti', 'Ti Kα', 4.512], ['Ti', 'Ti Kβ', 4.933], ['Ti', 'Ti Lβ', 0.458], ['Ti', 'Ti Lα', 0.452], ['V', 'V Kα', 4.953], ['V', 'V Kβ', 5.428], ['V', 'V Lβ', 0.518], ['V', 'V Lα', 0.51], ['Cr', 'Cr Kα', 5.415], ['Cr', 'Cr Kβ', 5.947], ['Cr', 'Cr Lβ', 0.582], ['Cr', 'Cr Lα', 0.572], ['Mn', 'Mn Kα', 5.9], ['Mn', 'Mn Kβ', 6.492], ['Mn', 'Mn Lβ', 0.648], ['Mn', 'Mn Lα', 0.637], ['Fe', 'Fe Kα', 6.405], ['Fe', 'Fe Kβ', 7.059], ['Fe', 'Fe Lβ', 0.718], ['Fe', 'Fe Lα', 0.705], ['Co', 'Co Kα', 6.931], ['Co', 'Co Kβ', 7.649], ['Co', 'Co Lβ', 0.79], ['Co', 'Co Lα', 0.775], ['Ni', 'Ni Kα', 7.48], ['Ni', 'Ni Kβ', 8.267], ['Ni', 'Ni Lβ', 0.866], ['Ni', 'Ni Lα', 0.849], ['Cu', 'Cu Kα', 8.046], ['Cu', 'Cu Kβ', 8.904], ['Cu', 'Cu Lβ', 0.947], ['Cu', 'Cu Lα', 0.928], ['Zn', 'Zn Kα', 8.637], ['Zn', 'Zn Kβ', 9.57], ['Zn', 'Zn Lβ', 1.035], ['Zn', 'Zn Lα', 1.012], ['Ga', 'Ga Kα', 9.251], ['Ga', 'Ga Kβ', 10.267], ['Ga', 'Ga Lβ', 1.125], ['Ga', 'Ga Lα', 1.098], ['Ge', 'Ge Kα', 9.886], ['Ge', 'Ge Kβ', 10.982], ['Ge', 'Ge Lβ', 1.218], ['Ge', 'Ge Lα', 1.188], ['As', 'As Kα', 10.543], ['As', 'As Kβ', 11.726], ['As', 'As Lβ', 1.317], ['As', 'As Lα', 1.282], ['Se', 'Se Kα', 11.224], ['Se', 'Se Kβ', 12.497], ['Se', 'Se Lβ', 1.419], ['Se', 'Se Lα', 1.379], ['Br', 'Br Kα', 11.924], ['Br', 'Br Kβ', 13.292], ['Br', 'Br Lβ', 1.526], ['Br', 'Br Lα', 1.481], ['Kr', 'Kr Kα', 12.648], ['Kr', 'Kr Kβ', 14.112], ['Kr', 'Kr Lβ', 1.636], ['Kr', 'Kr Lα', 1.585], ['Rb', 'Rb Kα', 13.396], ['Rb', 'Rb Kβ', 14.961], ['Rb', 'Rb Lβ', 1.751], ['Rb', 'Rb Lα', 1.692], ['Sr', 'Sr Kα', 14.165], ['Sr', 'Sr Kβ', 15.835], ['Sr', 'Sr Lβ', 1.871], ['Sr', 'Sr Lα', 1.806], ['Y', 'Y Kα', 14.958], ['Y', 'Y Kβ', 16.739], ['Y', 'Y Lβ', 1.998], ['Y', 'Y Lα', 1.924], ['Zr', 'Zr Kα', 15.775], ['Zr', 'Zr Kβ', 17.668], ['Zr', 'Zr Lβ', 2.126], ['Zr', 'Zr Lα', 2.044], ['Nb', 'Nb Kα', 16.615], ['Nb', 'Nb Kβ', 18.625], ['Nb', 'Nb Lβ', 2.26], ['Nb', 'Nb Lα', 2.169], ['Mo', 'Mo Kα', 17.48], ['Mo', 'Mo Kβ', 19.606], ['Mo', 'Mo Lβ', 2.394], ['Mo', 'Mo Lα', 2.292], ['Tc', 'Tc Kα', 18.367], ['Tc', 'Tc Kβ', 20.626], ['Tc', 'Tc Lβ', 2.535], ['Tc', 'Tc Lα', 2.423], ['Ru', 'Ru Kα', 19.279], ['Ru', 'Ru Kβ', 21.655], ['Ru', 'Ru Lβ', 2.683], ['Ru', 'Ru Lα', 2.558], ['Rh', 'Rh Kα', 20.216], ['Rh', 'Rh Kβ', 22.724], ['Rh', 'Rh Lβ', 2.834], ['Rh', 'Rh Lα', 2.697], ['Pd', 'Pd Kα', 21.177], ['Pd', 'Pd Kβ', 23.818], ['Pd', 'Pd Lβ', 2.99], ['Pd', 'Pd Lα', 2.838], ['Ag', 'Ag Kα', 22.163], ['Ag', 'Ag Kβ', 24.941], ['Ag', 'Ag Lβ', 3.15], ['Ag', 'Ag Lα', 2.983], ['Cd', 'Cd Kα', 23.173], ['Cd', 'Cd Kβ', 26.093], ['Cd', 'Cd Lβ', 3.315], ['Cd', 'Cd Lα', 3.133], ['In', 'In Kα', 24.21], ['In', 'In Kβ', 27.275], ['In', 'In Lβ', 3.487], ['In', 'In Lα', 3.286], ['Sn', 'Sn Kα', 25.271], ['Sn', 'Sn Kβ', 28.485], ['Sn', 'Sn Lβ', 3.663], ['Sn', 'Sn Lα', 3.444], ['Sb', 'Sb Kα', 26.359], ['Sb', 'Sb Kβ', 29.725], ['Sb', 'Sb Lβ', 3.842], ['Sb', 'Sb Lα', 3.604], ['Te', 'Te Kα', 27.473], ['Te', 'Te Kβ', 30.993], ['Te', 'Te Lβ', 4.029], ['Te', 'Te Lα', 3.768], ['I', 'I Kα', 28.612], ['I', 'I Kβ', 32.294], ['I', 'I Lβ', 4.221], ['I', 'I Lα', 3.938], ['Xe', 'Xe Kα', 29.775], ['Xe', 'Xe Kβ', 33.62], ['Xe', 'Xe Lβ', 4.418], ['Xe', 'Xe Lα', 4.11], ['Cs', 'Cs Kα', 30.973], ['Cs', 'Cs Kβ', 34.982], ['Cs', 'Cs Lβ', 4.619], ['Cs', 'Cs Lα', 4.285], ['Ba', 'Ba Kα', 32.194], ['Ba', 'Ba Kβ', 36.378], ['Ba', 'Ba Lβ', 4.828], ['Ba', 'Ba Lα', 4.466], ['La', 'La Kα', 33.442], ['La', 'La Kβ', 37.797], ['La', 'La Lβ', 5.038], ['La', 'La Lα', 4.647], ['Ce', 'Ce Kα', 34.72], ['Ce', 'Ce Kβ', 39.256], ['Ce', 'Ce Lβ', 5.262], ['Ce', 'Ce Lα', 4.839], ['Pr', 'Pr Kα', 36.027], ['Pr', 'Pr Kβ', 40.749], ['Pr', 'Pr Lβ', 5.492], ['Pr', 'Pr Lα', 5.035], ['Nd', 'Nd Kα', 37.361], ['Nd', 'Nd Kβ', 42.272], ['Nd', 'Nd Lβ', 5.719], ['Nd', 'Nd Lα', 5.228], ['Pm', 'Pm Kα', 38.725], ['Pm', 'Pm Kβ', 43.827], ['Pm', 'Pm Lβ', 5.961], ['Pm', 'Pm Lα', 5.432], ['Sm', 'Sm Kα', 40.118], ['Sm', 'Sm Kβ', 45.414], ['Sm', 'Sm Lβ', 6.201], ['Sm', 'Sm Lα', 5.633], ['Eu', 'Eu Kα', 41.542], ['Eu', 'Eu Kβ', 47.038], ['Eu', 'Eu Lβ', 6.458], ['Eu', 'Eu Lα', 5.849], ['Gd', 'Gd Kα', 42.996], ['Gd', 'Gd Kβ', 48.695], ['Gd', 'Gd Lβ', 6.708], ['Gd', 'Gd Lα', 6.053], ['Tb', 'Tb Kα', 44.482], ['Tb', 'Tb Kβ', 50.385], ['Tb', 'Tb Lβ', 6.975], ['Tb', 'Tb Lα', 6.273], ['Dy', 'Dy Kα', 45.999], ['Dy', 'Dy Kβ', 52.113], ['Dy', 'Dy Lβ', 7.248], ['Dy', 'Dy Lα', 6.498], ['Ho', 'Ho Kα', 47.547], ['Ho', 'Ho Kβ', 53.877], ['Ho', 'Ho Lβ', 7.526], ['Ho', 'Ho Lα', 6.72], ['Er', 'Er Kα', 49.128], ['Er', 'Er Kβ', 55.674], ['Er', 'Er Lβ', 7.811], ['Er', 'Er Lα', 6.949], ['Tm', 'Tm Kα', 50.742], ['Tm', 'Tm Kβ', 57.505], ['Tm', 'Tm Lβ', 8.102], ['Tm', 'Tm Lα', 7.18], ['Yb', 'Yb Kα', 52.388], ['Yb', 'Yb Kβ', 59.382], ['Yb', 'Yb Lβ', 8.402], ['Yb', 'Yb Lα', 7.416], ['Lu', 'Lu Kα', 54.07], ['Lu', 'Lu Kβ', 61.29], ['Lu', 'Lu Lβ', 8.71], ['Lu', 'Lu Lα', 7.655], ['Hf', 'Hf Kα', 55.79], ['Hf', 'Hf Kβ', 63.244], ['Hf', 'Hf Lβ', 9.023], ['Hf', 'Hf Lα', 7.899], ['Ta', 'Ta Kα', 57.535], ['Ta', 'Ta Kβ', 65.222], ['Ta', 'Ta Lβ', 9.343], ['Ta', 'Ta Lα', 8.146], ['W', 'W Kα', 59.318], ['W', 'W Kβ', 67.244], ['W', 'W Lβ', 9.672], ['W', 'W Lα', 8.398], ['Re', 'Re Kα', 61.141], ['Re', 'Re Kβ', 69.309], ['Re', 'Re Lβ', 10.01], ['Re', 'Re Lα', 8.652], ['Os', 'Os Kα', 63.0], ['Os', 'Os Kβ', 71.414], ['Os', 'Os Lβ', 10.354], ['Os', 'Os Lα', 8.911], ['Ir', 'Ir Kα', 64.896], ['Ir', 'Ir Kβ', 73.56], ['Ir', 'Ir Lβ', 10.708], ['Ir', 'Ir Lα', 9.175], ['Pt', 'Pt Kα', 66.831], ['Pt', 'Pt Kβ', 75.75], ['Pt', 'Pt Lβ', 11.071], ['Pt', 'Pt Lα', 9.442], ['Au', 'Au Kα', 68.806], ['Au', 'Au Kβ', 77.982], ['Au', 'Au Lβ', 11.443], ['Au', 'Au Lα', 9.713], ['Hg', 'Hg Kα', 70.818], ['Hg', 'Hg Kβ', 80.255], ['Hg', 'Hg Lβ', 11.824], ['Hg', 'Hg Lα', 9.989], ['Tl', 'Tl Kα', 72.872], ['Tl', 'Tl Kβ', 82.573], ['Tl', 'Tl Lβ', 12.213], ['Tl', 'Tl Lα', 10.269], ['Pb', 'Pb Kα', 74.97], ['Pb', 'Pb Kβ', 84.939], ['Pb', 'Pb Lβ', 12.614], ['Pb', 'Pb Lα', 10.551], ['Bi', 'Bi Kα', 77.107], ['Bi', 'Bi Kβ', 87.349], ['Bi', 'Bi Lβ', 13.023], ['Bi', 'Bi Lα', 10.839], ['Po', 'Po Kα', 79.291], ['Po', 'Po Kβ', 89.803], ['Po', 'Po Lβ', 13.446], ['Po', 'Po Lα', 11.131], ['At', 'At Kα', 81.516], ['At', 'At Kβ', 92.304], ['At', 'At Lβ', 13.876], ['At', 'At Lα', 11.427], ['Rn', 'Rn Kα', 83.785], ['Rn', 'Rn Kβ', 94.866], ['Rn', 'Rn Lβ', 14.315], ['Rn', 'Rn Lα', 11.727], ['Fr', 'Fr Kα', 86.106], ['Fr', 'Fr Kβ', 97.474], ['Fr', 'Fr Lβ', 14.771], ['Fr', 'Fr Lα', 12.031], ['Ra', 'Ra Kα', 88.478], ['Ra', 'Ra Kβ', 100.13], ['Ra', 'Ra Lβ', 15.236], ['Ra', 'Ra Lα', 12.339], ['Ac', 'Ac Kα', 90.884], ['Ac', 'Ac Kβ', 102.846], ['Ac', 'Ac Lβ', 15.713], ['Ac', 'Ac Lα', 12.652], ['Th', 'Th Kα', 93.351], ['Th', 'Th Kβ', 105.605], ['Th', 'Th Lβ', 16.202], ['Th', 'Th Lα', 12.968], ['Pa', 'Pa Kα', 95.868], ['Pa', 'Pa Kβ', 108.427], ['Pa', 'Pa Lβ', 16.703], ['Pa', 'Pa Lα', 13.291], ['U', 'U Kα', 98.44], ['U', 'U Kβ', 111.303], ['U', 'U Lβ', 17.22], ['U', 'U Lα', 13.614], ['Np', 'Np Kα', 101.059], ['Np', 'Np Kβ', 114.234], ['Np', 'Np Lβ', 17.751], ['Np', 'Np Lα', 13.946], ['Pu', 'Pu Kα', 103.734], ['Pu', 'Pu Kβ', 117.228], ['Pu', 'Pu Lβ', 18.296], ['Pu', 'Pu Lα', 14.282], ['Am', 'Am Kα', 106.472], ['Am', 'Am Kβ', 120.284], ['Am', 'Am Lβ', 18.856], ['Am', 'Am Lα', 14.62], ['Cm', 'Cm Kα', 109.271], ['Cm', 'Cm Kβ', 123.403], ['Cm', 'Cm Lβ', 19.427], ['Cm', 'Cm Lα', 14.961], ['Bk', 'Bk Kα', 112.121], ['Bk', 'Bk Kβ', 126.58], ['Bk', 'Bk Lβ', 20.018], ['Bk', 'Bk Lα', 15.308], ['Cf', 'Cf Kα', 115.032], ['Cf', 'Cf Kβ', 129.823], ['Cf', 'Cf Lβ', 20.624], ['Cf', 'Cf Lα', 15.66]]
 
 def toggleEmissionLine(Z):
     global emissionLinesElementslist
@@ -1748,337 +1534,579 @@ def toggleEmissionLine(Z):
 
 
 
-
-# Fonts
-consolas24 = font.Font(family='Consolas', size=24)
-consolas20 = font.Font(family='Consolas', size=20)
-consolas18 = font.Font(family='Consolas', size=18)
-consolas18B = font.Font(family='Consolas', size=18, weight = 'bold')
-consolas16 = font.Font(family='Consolas', size=16)
-consolas13 = font.Font(family='Consolas', size=13)
-consolas12 = font.Font(family='Consolas', size=12)
-consolas10 = font.Font(family='Consolas', size=10)
-consolas10B = font.Font(family='Consolas', size=10, weight = 'bold')
-consolas09 = font.Font(family='Consolas', size=9)
-consolas08 = font.Font(family='Consolas', size=8)
-consolas07 = font.Font(family='Consolas', size=7)
-plotfont = {'fontname':'Consolas'}
-ctk_segoe14B = ctk.CTkFont(family = 'Segoe UI', size = 14, weight= 'bold')
-ctk_segoe12B = ctk.CTkFont(family = 'Segoe UI', size = 12, weight= 'bold')
-ctk_consolas08 = ctk.CTkFont(family = 'Consolas', size = 8)
-ctk_consolas10 = ctk.CTkFont(family = 'Consolas', size = 10)
-ctk_consolas11 = ctk.CTkFont(family = 'Consolas', size = 11)
-ctk_consolas12 = ctk.CTkFont(family = 'Consolas', size = 12)
-ctk_consolas12B = ctk.CTkFont(family = 'Consolas', size = 12, weight = 'bold')
-ctk_consolas13 = ctk.CTkFont(family = 'Consolas', size = 13)
-ctk_consolas14B = ctk.CTkFont(family = 'Consolas', size = 14, weight = 'bold')
-ctk_consolas15B = ctk.CTkFont(family = 'Consolas', size = 15, weight = 'bold')
-ctk_consolas18B = ctk.CTkFont(family = 'Consolas', size = 18, weight = 'bold')
-ctk_consolas20B = ctk.CTkFont(family = 'Consolas', size = 20, weight = 'bold')
-ctk_default_largeB = ctk.CTkFont(weight = 'bold')
-
-
-# Colour Assignments
-WHITEISH = "#FAFAFA"
-NAVYGREY = "#566573"
-CHARCOAL = "#181819"
-GRAPHITE = "#29292B"
-
-PSS_DARKBLUE = "#252D5C"
-PSS_LIGHTBLUE = "#1B75BC"
-PSS_ORANGE = "#D85820"
-PSS_GREY = "#9E9FA3"
-
-CROW_LGREY = "#4e576c"
-CROW_DGREY = "#394d60"
-CROW_LBLUE = "#316d90"
-CROW_MBLUE = "#1e5073"
-CROW_DBLUE = "#062435"
-
-# Colours Used
-buttonbg1 = CROW_LBLUE
-buttonfg1 = WHITEISH
-buttonbg2 = CROW_MBLUE
-buttonfg2 = WHITEISH
-buttonbg3 = CROW_DBLUE
-buttonfg3 = WHITEISH
-textfg1 = CHARCOAL
-
-# Styles
-# Astyle = ttk.Style()
-# Astyle.configure('my.TMenubutton', font = consolas10)
-
-guiStyle = ttk.Style()
-guiStyle.configure('mystyle.Treeview', highlightthickness=0, bd=0, font= consolas10)        # Modify the font of the body
-guiStyle.configure('mystyle.Treeview.Heading', font = consolas10B)                                    # Modify the font of the headings)
-
-
-
-# Frames
-# LHSframe = ctk.CTkFrame(gui, width=340, corner_radius=0)
-# LHSframe.grid(row=0,column=0, rowspan=4, sticky = tk.NSEW)
-LHSframe = ctk.CTkFrame(gui, width=340, corner_radius=0)
-LHSframe.pack(side=tk.LEFT, anchor = tk.W, fill = 'y', expand = False, padx = 0, pady = 0, ipadx = 0)
-
-# RHSframe = ctk.CTkFrame(gui, width=200, corner_radius=0, fg_color= 'transparent')
-# RHSframe.grid(row=0,column=1, columnspan=3, rowspan=4, sticky = tk.NSEW)
-RHSframe = ctk.CTkFrame(gui, corner_radius=0, fg_color= 'transparent')
-RHSframe.pack(side=tk.RIGHT, anchor = tk.W, fill = 'both', expand = True, padx = 0, pady = 0, ipadx = 0)
-
-# spectraframe = ctk.CTkFrame(RHSframe, width = 700, height = 50, corner_radius = 5)
-# spectraframe.grid(row=0, column=0, pady = 10, padx = 10, ipadx = 10, ipady = 5, sticky= tk.NSEW)
-spectraframe = ctk.CTkFrame(RHSframe, width = 700, height = 50, corner_radius = 5)
-spectraframe.pack(side=tk.TOP, fill = 'both', anchor = tk.N, expand = True, padx = 8, pady = [8,4], ipadx = 4, ipady = 4)
-
-# resultsframe = ctk.CTkFrame(RHSframe, width = 700, height = 300)
-# resultsframe.grid(row=1, column=0, pady = 10, padx = 10, ipadx = 10, ipady = 10, sticky= tk.NSEW)
-resultsframe = ctk.CTkFrame(RHSframe, width = 700, height = 300)
-resultsframe.pack(side=tk.BOTTOM, fill = 'x', anchor = tk.SW, expand = False, padx = 8, pady = [4,8], ipadx = 4, ipady = 4)
-
-
-# tableframe = tk.Frame(resultsframe, width = 550, height = 300)
-# tableframe.grid(row=0, column=0, padx=[10,0], pady=[10,0], ipadx = 0, ipady = 0, sticky= tk.NSEW)
-assaytableframe = tk.Frame(resultsframe, width = 450, height = 300)
-assaytableframe.pack(side=tk.LEFT, fill = 'both', anchor = tk.SW, expand = False, padx = [8,0], pady = 8, ipadx = 0, ipady = 0)
-assaytableframe.pack_propagate(0)
-
-
-# Status Frame stuff
-
-statusframe = ctk.CTkFrame(LHSframe, width=50, height = 30, corner_radius=5)
-statusframe.pack(side = tk.BOTTOM, anchor = tk.S, fill = 'x', expand = False, padx=8, pady=[4, 8])
-instr_DANGER_stringvar = tk.StringVar()
-statuslabel = ctk.CTkLabel(statusframe, textvariable = instr_DANGER_stringvar, font= ctk_consolas18B)
-statuslabel.pack(side = tk.TOP, fill = 'both', anchor = tk.N, expand = True, padx = 2, pady = 2)
-
-# loading bar stuff
-xraysonbar = ctk.CTkProgressBar(LHSframe, width=50, mode='indeterminate')
-xraysonbar.pack(side = tk.BOTTOM, anchor = tk.S, fill = 'x', expand = False, padx=8, pady=[4, 4])
-
-assayprogressbar = ctk.CTkProgressBar(LHSframe, width=50, mode='determinate')
-assayprogressbar.pack(side = tk.BOTTOM, anchor = tk.S, fill = 'x', expand = False, padx=8, pady=[8, 4])
-assayprogressbar.set(0)
-
-
-# Tabview for controls LHS
-ctrltabview = ctk.CTkTabview(LHSframe, height = 300)
-#ctrltabview.grid(row=1, column=1, padx=10, pady=[10, 5], sticky=tk.NSEW)
-ctrltabview.pack(side = tk.TOP, anchor = tk.N, fill = 'x', expand = False, padx=8, pady=[8, 4])
-ctrltabview.add('Assay Controls')
-ctrltabview.add('Instrument Settings')
-ctrltabview.add('About')
-ctrltabview.tab('Assay Controls').grid_columnconfigure(0, weight=1)
-ctrltabview.tab('Instrument Settings').grid_columnconfigure(0, weight=1)
-ctrltabview.tab('About').grid_columnconfigure(0, weight=1)
-
-appmethodframe = ctk.CTkFrame(ctrltabview.tab('Assay Controls'), fg_color= '#c5c5c5')
-appmethodframe.grid(row=2, column=0, columnspan = 2, rowspan = 2, padx=4, pady=4, sticky=tk.NSEW)
-
-phaseframe = ctk.CTkFrame(ctrltabview.tab('Assay Controls'), fg_color= '#c5c5c5')
-phaseframe.grid(row=4, column=0, columnspan = 2, rowspan = 2, padx=4, pady=4, sticky=tk.NSEW)
-
-# About Section
-about_blurb1 = ctk.CTkLabel(ctrltabview.tab('About'), text=f'S1Control {versionNum} ({versionDate})\nCreated by Zeb Hall for Portable Spectral Services\nContact: service@portaspecs.com', justify = tk.LEFT, font=ctk_consolas11, text_color=CHARCOAL)
-about_blurb1.grid(row=1, column=0, columnspan = 2, rowspan = 2, padx=4, pady=4, sticky=tk.NSEW)
-# Buttons
-button_assay_text = ctk.StringVar()
-button_assay_text.set('\u2BC8 Start Assay')
-#button_assay_text.set('\u2715 Stop Assay')
-#\u2BC0
-button_assay = ctk.CTkButton(ctrltabview.tab('Assay Controls'), width = 13, textvariable = button_assay_text, command = startAssayClicked, fg_color = '#33AF56', hover_color = '#237A3C')#, font = ctk_default_largeB,)
-button_assay.grid(row=1, column=0, padx=4, pady=4, sticky=tk.NSEW)
-
-#button_startlistener = tk.Button(width = 15, text = "start listen", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = lambda:xrfListenLoop_Start(None)).pack(ipadx=8,ipady=2)
-
-#button_getinstdef = tk.Button(width = 15, text = "get instdef", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = getInfoClicked).pack(ipadx=8,ipady=2)
-# button_enablespectra = ctk.CTkButton(ctrltabview.tab("Instrument Settings"), width = 13, text = "Enable Spectra Transmit", command = instrument_ConfigureTransmitSpectraEnable)
-# button_enablespectra.grid(row=1, column=0, padx=4, pady=4, sticky=tk.NSEW)
-button_disablespectra = ctk.CTkButton(ctrltabview.tab("Instrument Settings"), width = 13, text = "Disable Spectra Transmit", command = instrument_ConfigureTransmitSpectraDisable)
-button_disablespectra.grid(row=1, column=0, padx=4, pady=4, sticky=tk.NSEW)
-button_setsystemtime = ctk.CTkButton(ctrltabview.tab("Instrument Settings"), width = 13, text = "Sync System Time", command = instrument_ConfigureSystemTime)
-button_setsystemtime.grid(row=1, column=1, padx=4, pady=4, sticky=tk.NSEW)
-
-button_gets1softwareversion = ctk.CTkButton(ctrltabview.tab("Instrument Settings"), width = 13, text = "Check Software Version", command = instrument_QuerySoftwareVersion)
-button_gets1softwareversion.grid(row=2, column=0, padx=4, pady=4, sticky=tk.NSEW)
-
-button_getnosetemp = ctk.CTkButton(ctrltabview.tab("Instrument Settings"), width = 13, text = "Get Nose Temp", command = instrument_QueryNoseTemp)
-button_getnosetemp.grid(row=2, column=1, padx=4, pady=4, sticky=tk.NSEW)
-
-
-#button_getapplicationprefs = tk.Button(configframe, width = 25, text = "get current app prefs", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = instrument_QueryCurrentApplicationPreferences)
-#button_getapplicationprefs.grid(row=7, column=1, padx=2, pady=2, ipadx=4, ipady=0, sticky=tk.NSEW)
-
-# button_getapplicationphasetimes = ctk.CTkButton(ctrltabview.tab("Instrument Settings"), width = 13, text = "Get Phase Times", command = instrument_QueryCurrentApplicationPhaseTimes)
-# button_getapplicationphasetimes.grid(row=2, column=1, padx=4, pady=4, sticky=tk.NSEW)
-
-
-# Current Instrument Info stuff
-# label_currentapplication_text = ctk.StringVar()
-applicationselected_stringvar = ctk.StringVar(value='Application')
-methodselected_stringvar = ctk.StringVar(value='Method')
-instr_applicationspresent = []
-instr_methodsforcurrentapplication = []
-
-# Consecutive Tests Section
-repeats_choice_var = ctk.StringVar(value='\u2B6F Consecutive')
-repeats_choice_list = ['1','2','3','4','5','6','7','8','9','10','15','20','50','100']
-dropdown_repeattests = ctk.CTkOptionMenu(ctrltabview.tab("Assay Controls"), variable=repeats_choice_var, values=repeats_choice_list, command=repeatsChoiceMade, dynamic_resizing=False)
-dropdown_repeattests.grid(row=1,column=1,padx=4, pady=4, sticky=tk.NSEW)
-
-
-# Log Box
-
-#logbox_xscroll = tk.Scrollbar(infoframe, orient = 'horizontal')
-#logbox_xscroll.grid(row = 3, column = 1, columnspan = 2, sticky = tk.NSEW)
-#logbox_yscroll = tk.Scrollbar(infoframe, orient = 'vertical')
-#logbox_yscroll.grid(row = 1, column = 3, columnspan = 1, rowspan= 2, sticky = tk.NSEW)
-logbox = ctk.CTkTextbox(LHSframe, corner_radius=5, height = 250, width = 320, font = ctk_consolas11, text_color=WHITEISH, fg_color=CHARCOAL, wrap = tk.NONE)
-logbox.pack(side = tk.TOP, anchor = tk.N, fill = 'both', expand = True, padx=8, pady=[4, 4])
-#logbox.pack(side = tk.TOP, fill = 'both', expand = True, anchor = tk.N)
-logbox.configure(state = 'disabled')
-#logbox_xscroll.config(command = logbox.xview)
-#logbox_yscroll.config(command = logbox.yview)
-
-# Spectraframe Stuff
-
-fig = Figure(figsize = (10, 4), dpi = 100, frameon=False)
-fig.set_tight_layout(True)
-fig.set_facecolor('#dbdbdb')
-fig.set_edgecolor('#dbdbdb')
-#print(plt.style.available)
-#plt.style.use('seaborn-paper')
-plt.style.use('seaborn-whitegrid')
-plt.rcParams["font.family"] = "Consolas"
-plt.rcParams["font.sans-serif"] = "Helvetica"
-plt.rcParams["font.size"] = 9
-spectra_ax = fig.add_subplot(111)
-spectra_ax.set_xlabel('Energy (keV)')
-spectra_ax.set_ylabel('Counts')
-spectra_ax.set_xlim(xmin=0, xmax=50)
-#spectra_ax.set_ylim(ymin=0, ymax=50000)
-#spectra_ax.autoscale_view()
-spectra_ax.autoscale(enable=True,tight=True)
-#spectra_ax.axhline(y=0, color='k')
-#spectra_ax.axvline(x=0, color='k')
-spectracanvas = FigureCanvasTkAgg(fig,master = spectraframe)
-
-spectracanvas.draw()
-spectratoolbar = NavigationToolbar2Tk(spectracanvas,spectraframe,pack_toolbar=False)
-
-spectratoolbar.config(background='#dbdbdb')
-spectratoolbar._message_label.config(background='#dbdbdb')
-spectracanvas.get_tk_widget().pack(side=tk.TOP, fill = 'both', expand = True, padx = 8, pady = [8,0])
-spectratoolbar.pack(side=tk.LEFT, fill = 'x', padx = 8, pady = 4, ipadx = 5)
-for child in spectratoolbar.winfo_children():
-    child.config(background='#dbdbdb')
-
-# Other Toolbar widgets
-button_configureemissionlines = ctk.CTkButton(spectraframe, width = 13, text = "Configure Emission Lines", command = configureEmissionLinesClicked)
-button_configureemissionlines.pack(side=tk.RIGHT, fill = 'x', padx = 8, pady = 4)
-
-# button_clearemissionlines = ctk.CTkButton(spectraframe, width = 13, text = "Clear Emission Lines", command = clearEmissionLinesClicked)
-# button_clearemissionlines.pack(side=tk.RIGHT, fill = 'x', padx = 0, pady = 4)
-
-button_analysepeak = ctk.CTkButton(spectraframe, width = 13, text = "Identify Peak", command = startPlotClickListener)
-button_analysepeak.pack(side=tk.RIGHT, fill = 'x', padx = 0, pady = 4)
-
-
-
-
-# Assays Frame Stuff
-assaysColumns = ('t_num', 't_app', 't_time', 't_timeelapsed')
-assaysTable = Treeview(assaytableframe, columns = assaysColumns, height = "14",  selectmode = "browse", style = 'mystyle.Treeview')
-assaysTable.pack(side="top", fill="both", expand=True)
-
-assaysTable.heading('t_num', text = "Assay", anchor = tk.W, command=lambda _col='t_num': treeview_sort_column(assaysTable, _col, False))                  
-assaysTable.heading('t_app', text = "Application", anchor = tk.W, command=lambda _col='t_app': treeview_sort_column(assaysTable, _col, False)) 
-assaysTable.heading('t_time', text = "Time Completed", anchor = tk.W, command=lambda _col='t_time': treeview_sort_column(assaysTable, _col, False))
-assaysTable.heading('t_timeelapsed', text = "Elapsed", anchor = tk.W, command=lambda _col='t_timeelapsed': treeview_sort_column(assaysTable, _col, False))     
-
-assaysTable.column('t_num', minwidth = 50, width = 60, stretch = 0, anchor = tk.W)
-assaysTable.column('t_app', minwidth = 125, width = 100, stretch = 1, anchor = tk.W)
-assaysTable.column('t_time', minwidth = 100, width = 115, stretch = 0, anchor = tk.W)
-assaysTable.column('t_timeelapsed', minwidth = 80, width = 60, stretch = 0, anchor = tk.W)
-
-# assaysTableScrollbarY = ttk.Scrollbar(resultsframe, command=assaysTable.yview)
-# assaysTableScrollbarY.grid(column=1, row=0, padx=[0,2], pady=0, sticky = tk.NS)
-
-# resultsTableScrollbarX = ttk.Scrollbar(resultsframe, orient = 'horizontal', command=assaysTable.xview)
-# resultsTableScrollbarX.grid(column=0, row=1, padx=0, pady=[0,2], sticky = tk.EW)
-
-# assaysTableScrollbarY = ctk.CTkScrollbar(resultsframe, command=assaysTable.yview)
-# assaysTableScrollbarY.grid(column=1, row=0, padx=[0,2], pady=[8,0], sticky = tk.NS)
-assaysTableScrollbarY = ctk.CTkScrollbar(resultsframe, command=assaysTable.yview)
-assaysTableScrollbarY.pack(side = tk.LEFT, fill = 'y', expand = False, padx=[0,8], pady=8)
-
-# resultsTableScrollbarX = ctk.CTkScrollbar(resultsframe, orientation= 'horizontal', command=assaysTable.xview)
-# resultsTableScrollbarX.grid(column=0, row=1, padx=0, pady=[0,2], sticky = tk.EW)
-
-assaysTable.configure(yscrollcommand=assaysTableScrollbarY.set)
-# assaysTable.configure(xscrollcommand=resultsTableScrollbarX.set)
-
-assaysTable.bind('<<TreeviewSelect>>', assaySelected)
-assaysTable.configure(show = 'headings')
-
-tables = []
-tables.append(assaysTable)
-
-# Resultsbox stuff
-
-# resultsbox = ctk.CTkTextbox(resultsframe, corner_radius=5, height = 250, width = 150, font = ctk_consolas11, wrap = tk.NONE)
-# resultsbox.pack(side = tk.RIGHT, fill = 'both', expand = True, padx=8, pady=8)
-# resultsbox.configure(state = 'disabled')
-
-resultsColumns = ('results_Z', 'results_Compound', 'results_Concentration', 'results_Error')
-resultsTable = Treeview(resultsframe, columns = resultsColumns, height = "14",  selectmode = "browse", style = 'mystyle.Treeview')
-resultsTable.pack(side = tk.LEFT, fill = 'both', expand = True, padx=[8,0], pady=8)
-
-resultsTable.heading('results_Z', text = 'Z', anchor = tk.W, command=lambda _col='results_Z': treeview_sort_column(resultsTable, _col, False))    
-resultsTable.heading('results_Compound', text = 'Compound', anchor = tk.W, command=lambda _col='results_Compound': treeview_sort_column(resultsTable, _col, False))    
-resultsTable.heading('results_Concentration', text = 'Concentration %', anchor = tk.W, command=lambda _col='results_Concentration': treeview_sort_column(resultsTable, _col, False))    
-resultsTable.heading('results_Error', text = 'Error (1\u03C3)', anchor = tk.W, command=lambda _col='results_Error': treeview_sort_column(resultsTable, _col, False))    
-
-resultsTable.column('results_Z', minwidth = 25, width = 30, stretch = 0, anchor = tk.W)
-resultsTable.column('results_Compound', minwidth = 70, width = 70, stretch = 0, anchor = tk.W)
-resultsTable.column('results_Concentration', minwidth = 120, width = 120, stretch = 0, anchor = tk.W)
-resultsTable.column('results_Error', minwidth = 110, width = 120, anchor = tk.W)
-
-resultsTableScrollbarY = ctk.CTkScrollbar(resultsframe, command=resultsTable.yview)
-resultsTableScrollbarY.pack(side = tk.LEFT, fill = 'y', expand = False, padx=[0,8], pady=8)
-#resultsTable.bind('<<TreeviewSelect>>', resultCompoundSelected)
-resultsTable.configure(show = 'headings')
-resultsTable.configure(yscrollcommand=resultsTableScrollbarY.set)
-
-tables.append(resultsTable)
-
-
-logFileName = ""
-
-# Begin Instrument Connection
-
-instrument_Connect()
-time.sleep(0.2)
-statusUpdateCheckerLoop_Start(None)
-xrfListenLoop_Start(None)
-time.sleep(0.2)
-instrument_GetStates()
-time.sleep(0.05)
-instrument_GetInfo()        # Get info from IDF for log file NAMING purposes
-time.sleep(0.3)
-initialiseLogFile()     # Must be called after instrument and listen loop are connected and started, and getinfo has been called once, and time has been allowed for loop to read all info into vars
-try: gui.title(f"S1Control - {driveFolderStr}")
-except: pass
-if instr_isloggedin == False:
-    instrument_Login()
-time.sleep(0.05)
-instrument_SetImportantStartupConfigurables()
-time.sleep(0.05)
-instrument_QueryCurrentApplicationPhaseTimes()
-
-gui.protocol("WM_DELETE_WINDOW", onClosing)
-gui.mainloop()
-
-closeAllThreads()   # called after gui mainloop has ended
+if __name__ == '__main__':
+    # GUI
+
+    thread_halt = False
+
+    ctk.set_appearance_mode("light")  # Modes: system (default), light, dark
+    ctk.set_default_color_theme("blue")  # Themes: blue (default), dark-blue, green
+
+    gui = ctk.CTk()
+    gui.title("S1Control")
+    #gui.wm_attributes('-toolwindow', 'True',)
+    gui.geometry('+5+5')
+    #gui.geometry('1380x855')
+    iconpath = resource_path("pss_lb.ico")
+    energiescsvpath = resource_path("energies.csv")
+    gui.iconbitmap(iconpath)
+
+    instr_isarmed = False
+    instr_isloggedin = False
+    instr_assayisrunning = False
+    instr_assayrepeatsleft = 1
+    instr_assayrepeatsselected = 1  #initial set
+
+    all_lines = [['Be', 'Be Kα', 0.108], ['B', 'B Kα', 0.183], ['C', 'C Kα', 0.277], ['N', 'N Kα', 0.392], ['O', 'O Kα', 0.525], ['F', 'F Kα', 0.677], ['Ne', 'Ne Kα', 0.849], ['Na', 'Na Kα', 1.04], ['Mg', 'Mg Kα', 1.254], ['Mg', 'Mg Kβ', 1.302], ['Al', 'Al Kα', 1.486], ['Al', 'Al Kβ', 1.557], ['Si', 'Si Kα', 1.74], ['Si', 'Si Kβ', 1.837], ['P', 'P Kα', 2.01], ['P', 'P Kβ', 2.139], ['S', 'S Kα', 2.309], ['S', 'S Kβ', 2.465], ['Cl', 'Cl Kα', 2.622], ['Cl', 'Cl Kβ', 2.812], ['Ar', 'Ar Kα', 2.958], ['Ar', 'Ar Kβ', 3.19], ['K', 'K Kα', 3.314], ['K', 'K Kβ', 3.59], ['Ca', 'Ca Kα', 3.692], ['Ca', 'Ca Kβ', 4.013], ['Sc', 'Sc Kα', 4.093], ['Sc', 'Sc Kβ', 4.464], ['Ti', 'Ti Kα', 4.512], ['Ti', 'Ti Kβ', 4.933], ['Ti', 'Ti Lβ', 0.458], ['Ti', 'Ti Lα', 0.452], ['V', 'V Kα', 4.953], ['V', 'V Kβ', 5.428], ['V', 'V Lβ', 0.518], ['V', 'V Lα', 0.51], ['Cr', 'Cr Kα', 5.415], ['Cr', 'Cr Kβ', 5.947], ['Cr', 'Cr Lβ', 0.582], ['Cr', 'Cr Lα', 0.572], ['Mn', 'Mn Kα', 5.9], ['Mn', 'Mn Kβ', 6.492], ['Mn', 'Mn Lβ', 0.648], ['Mn', 'Mn Lα', 0.637], ['Fe', 'Fe Kα', 6.405], ['Fe', 'Fe Kβ', 7.059], ['Fe', 'Fe Lβ', 0.718], ['Fe', 'Fe Lα', 0.705], ['Co', 'Co Kα', 6.931], ['Co', 'Co Kβ', 7.649], ['Co', 'Co Lβ', 0.79], ['Co', 'Co Lα', 0.775], ['Ni', 'Ni Kα', 7.48], ['Ni', 'Ni Kβ', 8.267], ['Ni', 'Ni Lβ', 0.866], ['Ni', 'Ni Lα', 0.849], ['Cu', 'Cu Kα', 8.046], ['Cu', 'Cu Kβ', 8.904], ['Cu', 'Cu Lβ', 0.947], ['Cu', 'Cu Lα', 0.928], ['Zn', 'Zn Kα', 8.637], ['Zn', 'Zn Kβ', 9.57], ['Zn', 'Zn Lβ', 1.035], ['Zn', 'Zn Lα', 1.012], ['Ga', 'Ga Kα', 9.251], ['Ga', 'Ga Kβ', 10.267], ['Ga', 'Ga Lβ', 1.125], ['Ga', 'Ga Lα', 1.098], ['Ge', 'Ge Kα', 9.886], ['Ge', 'Ge Kβ', 10.982], ['Ge', 'Ge Lβ', 1.218], ['Ge', 'Ge Lα', 1.188], ['As', 'As Kα', 10.543], ['As', 'As Kβ', 11.726], ['As', 'As Lβ', 1.317], ['As', 'As Lα', 1.282], ['Se', 'Se Kα', 11.224], ['Se', 'Se Kβ', 12.497], ['Se', 'Se Lβ', 1.419], ['Se', 'Se Lα', 1.379], ['Br', 'Br Kα', 11.924], ['Br', 'Br Kβ', 13.292], ['Br', 'Br Lβ', 1.526], ['Br', 'Br Lα', 1.481], ['Kr', 'Kr Kα', 12.648], ['Kr', 'Kr Kβ', 14.112], ['Kr', 'Kr Lβ', 1.636], ['Kr', 'Kr Lα', 1.585], ['Rb', 'Rb Kα', 13.396], ['Rb', 'Rb Kβ', 14.961], ['Rb', 'Rb Lβ', 1.751], ['Rb', 'Rb Lα', 1.692], ['Sr', 'Sr Kα', 14.165], ['Sr', 'Sr Kβ', 15.835], ['Sr', 'Sr Lβ', 1.871], ['Sr', 'Sr Lα', 1.806], ['Y', 'Y Kα', 14.958], ['Y', 'Y Kβ', 16.739], ['Y', 'Y Lβ', 1.998], ['Y', 'Y Lα', 1.924], ['Zr', 'Zr Kα', 15.775], ['Zr', 'Zr Kβ', 17.668], ['Zr', 'Zr Lβ', 2.126], ['Zr', 'Zr Lα', 2.044], ['Nb', 'Nb Kα', 16.615], ['Nb', 'Nb Kβ', 18.625], ['Nb', 'Nb Lβ', 2.26], ['Nb', 'Nb Lα', 2.169], ['Mo', 'Mo Kα', 17.48], ['Mo', 'Mo Kβ', 19.606], ['Mo', 'Mo Lβ', 2.394], ['Mo', 'Mo Lα', 2.292], ['Tc', 'Tc Kα', 18.367], ['Tc', 'Tc Kβ', 20.626], ['Tc', 'Tc Lβ', 2.535], ['Tc', 'Tc Lα', 2.423], ['Ru', 'Ru Kα', 19.279], ['Ru', 'Ru Kβ', 21.655], ['Ru', 'Ru Lβ', 2.683], ['Ru', 'Ru Lα', 2.558], ['Rh', 'Rh Kα', 20.216], ['Rh', 'Rh Kβ', 22.724], ['Rh', 'Rh Lβ', 2.834], ['Rh', 'Rh Lα', 2.697], ['Pd', 'Pd Kα', 21.177], ['Pd', 'Pd Kβ', 23.818], ['Pd', 'Pd Lβ', 2.99], ['Pd', 'Pd Lα', 2.838], ['Ag', 'Ag Kα', 22.163], ['Ag', 'Ag Kβ', 24.941], ['Ag', 'Ag Lβ', 3.15], ['Ag', 'Ag Lα', 2.983], ['Cd', 'Cd Kα', 23.173], ['Cd', 'Cd Kβ', 26.093], ['Cd', 'Cd Lβ', 3.315], ['Cd', 'Cd Lα', 3.133], ['In', 'In Kα', 24.21], ['In', 'In Kβ', 27.275], ['In', 'In Lβ', 3.487], ['In', 'In Lα', 3.286], ['Sn', 'Sn Kα', 25.271], ['Sn', 'Sn Kβ', 28.485], ['Sn', 'Sn Lβ', 3.663], ['Sn', 'Sn Lα', 3.444], ['Sb', 'Sb Kα', 26.359], ['Sb', 'Sb Kβ', 29.725], ['Sb', 'Sb Lβ', 3.842], ['Sb', 'Sb Lα', 3.604], ['Te', 'Te Kα', 27.473], ['Te', 'Te Kβ', 30.993], ['Te', 'Te Lβ', 4.029], ['Te', 'Te Lα', 3.768], ['I', 'I Kα', 28.612], ['I', 'I Kβ', 32.294], ['I', 'I Lβ', 4.221], ['I', 'I Lα', 3.938], ['Xe', 'Xe Kα', 29.775], ['Xe', 'Xe Kβ', 33.62], ['Xe', 'Xe Lβ', 4.418], ['Xe', 'Xe Lα', 4.11], ['Cs', 'Cs Kα', 30.973], ['Cs', 'Cs Kβ', 34.982], ['Cs', 'Cs Lβ', 4.619], ['Cs', 'Cs Lα', 4.285], ['Ba', 'Ba Kα', 32.194], ['Ba', 'Ba Kβ', 36.378], ['Ba', 'Ba Lβ', 4.828], ['Ba', 'Ba Lα', 4.466], ['La', 'La Kα', 33.442], ['La', 'La Kβ', 37.797], ['La', 'La Lβ', 5.038], ['La', 'La Lα', 4.647], ['Ce', 'Ce Kα', 34.72], ['Ce', 'Ce Kβ', 39.256], ['Ce', 'Ce Lβ', 5.262], ['Ce', 'Ce Lα', 4.839], ['Pr', 'Pr Kα', 36.027], ['Pr', 'Pr Kβ', 40.749], ['Pr', 'Pr Lβ', 5.492], ['Pr', 'Pr Lα', 5.035], ['Nd', 'Nd Kα', 37.361], ['Nd', 'Nd Kβ', 42.272], ['Nd', 'Nd Lβ', 5.719], ['Nd', 'Nd Lα', 5.228], ['Pm', 'Pm Kα', 38.725], ['Pm', 'Pm Kβ', 43.827], ['Pm', 'Pm Lβ', 5.961], ['Pm', 'Pm Lα', 5.432], ['Sm', 'Sm Kα', 40.118], ['Sm', 'Sm Kβ', 45.414], ['Sm', 'Sm Lβ', 6.201], ['Sm', 'Sm Lα', 5.633], ['Eu', 'Eu Kα', 41.542], ['Eu', 'Eu Kβ', 47.038], ['Eu', 'Eu Lβ', 6.458], ['Eu', 'Eu Lα', 5.849], ['Gd', 'Gd Kα', 42.996], ['Gd', 'Gd Kβ', 48.695], ['Gd', 'Gd Lβ', 6.708], ['Gd', 'Gd Lα', 6.053], ['Tb', 'Tb Kα', 44.482], ['Tb', 'Tb Kβ', 50.385], ['Tb', 'Tb Lβ', 6.975], ['Tb', 'Tb Lα', 6.273], ['Dy', 'Dy Kα', 45.999], ['Dy', 'Dy Kβ', 52.113], ['Dy', 'Dy Lβ', 7.248], ['Dy', 'Dy Lα', 6.498], ['Ho', 'Ho Kα', 47.547], ['Ho', 'Ho Kβ', 53.877], ['Ho', 'Ho Lβ', 7.526], ['Ho', 'Ho Lα', 6.72], ['Er', 'Er Kα', 49.128], ['Er', 'Er Kβ', 55.674], ['Er', 'Er Lβ', 7.811], ['Er', 'Er Lα', 6.949], ['Tm', 'Tm Kα', 50.742], ['Tm', 'Tm Kβ', 57.505], ['Tm', 'Tm Lβ', 8.102], ['Tm', 'Tm Lα', 7.18], ['Yb', 'Yb Kα', 52.388], ['Yb', 'Yb Kβ', 59.382], ['Yb', 'Yb Lβ', 8.402], ['Yb', 'Yb Lα', 7.416], ['Lu', 'Lu Kα', 54.07], ['Lu', 'Lu Kβ', 61.29], ['Lu', 'Lu Lβ', 8.71], ['Lu', 'Lu Lα', 7.655], ['Hf', 'Hf Kα', 55.79], ['Hf', 'Hf Kβ', 63.244], ['Hf', 'Hf Lβ', 9.023], ['Hf', 'Hf Lα', 7.899], ['Ta', 'Ta Kα', 57.535], ['Ta', 'Ta Kβ', 65.222], ['Ta', 'Ta Lβ', 9.343], ['Ta', 'Ta Lα', 8.146], ['W', 'W Kα', 59.318], ['W', 'W Kβ', 67.244], ['W', 'W Lβ', 9.672], ['W', 'W Lα', 8.398], ['Re', 'Re Kα', 61.141], ['Re', 'Re Kβ', 69.309], ['Re', 'Re Lβ', 10.01], ['Re', 'Re Lα', 8.652], ['Os', 'Os Kα', 63.0], ['Os', 'Os Kβ', 71.414], ['Os', 'Os Lβ', 10.354], ['Os', 'Os Lα', 8.911], ['Ir', 'Ir Kα', 64.896], ['Ir', 'Ir Kβ', 73.56], ['Ir', 'Ir Lβ', 10.708], ['Ir', 'Ir Lα', 9.175], ['Pt', 'Pt Kα', 66.831], ['Pt', 'Pt Kβ', 75.75], ['Pt', 'Pt Lβ', 11.071], ['Pt', 'Pt Lα', 9.442], ['Au', 'Au Kα', 68.806], ['Au', 'Au Kβ', 77.982], ['Au', 'Au Lβ', 11.443], ['Au', 'Au Lα', 9.713], ['Hg', 'Hg Kα', 70.818], ['Hg', 'Hg Kβ', 80.255], ['Hg', 'Hg Lβ', 11.824], ['Hg', 'Hg Lα', 9.989], ['Tl', 'Tl Kα', 72.872], ['Tl', 'Tl Kβ', 82.573], ['Tl', 'Tl Lβ', 12.213], ['Tl', 'Tl Lα', 10.269], ['Pb', 'Pb Kα', 74.97], ['Pb', 'Pb Kβ', 84.939], ['Pb', 'Pb Lβ', 12.614], ['Pb', 'Pb Lα', 10.551], ['Bi', 'Bi Kα', 77.107], ['Bi', 'Bi Kβ', 87.349], ['Bi', 'Bi Lβ', 13.023], ['Bi', 'Bi Lα', 10.839], ['Po', 'Po Kα', 79.291], ['Po', 'Po Kβ', 89.803], ['Po', 'Po Lβ', 13.446], ['Po', 'Po Lα', 11.131], ['At', 'At Kα', 81.516], ['At', 'At Kβ', 92.304], ['At', 'At Lβ', 13.876], ['At', 'At Lα', 11.427], ['Rn', 'Rn Kα', 83.785], ['Rn', 'Rn Kβ', 94.866], ['Rn', 'Rn Lβ', 14.315], ['Rn', 'Rn Lα', 11.727], ['Fr', 'Fr Kα', 86.106], ['Fr', 'Fr Kβ', 97.474], ['Fr', 'Fr Lβ', 14.771], ['Fr', 'Fr Lα', 12.031], ['Ra', 'Ra Kα', 88.478], ['Ra', 'Ra Kβ', 100.13], ['Ra', 'Ra Lβ', 15.236], ['Ra', 'Ra Lα', 12.339], ['Ac', 'Ac Kα', 90.884], ['Ac', 'Ac Kβ', 102.846], ['Ac', 'Ac Lβ', 15.713], ['Ac', 'Ac Lα', 12.652], ['Th', 'Th Kα', 93.351], ['Th', 'Th Kβ', 105.605], ['Th', 'Th Lβ', 16.202], ['Th', 'Th Lα', 12.968], ['Pa', 'Pa Kα', 95.868], ['Pa', 'Pa Kβ', 108.427], ['Pa', 'Pa Lβ', 16.703], ['Pa', 'Pa Lα', 13.291], ['U', 'U Kα', 98.44], ['U', 'U Kβ', 111.303], ['U', 'U Lβ', 17.22], ['U', 'U Lα', 13.614], ['Np', 'Np Kα', 101.059], ['Np', 'Np Kβ', 114.234], ['Np', 'Np Lβ', 17.751], ['Np', 'Np Lα', 13.946], ['Pu', 'Pu Kα', 103.734], ['Pu', 'Pu Kβ', 117.228], ['Pu', 'Pu Lβ', 18.296], ['Pu', 'Pu Lα', 14.282], ['Am', 'Am Kα', 106.472], ['Am', 'Am Kβ', 120.284], ['Am', 'Am Lβ', 18.856], ['Am', 'Am Lα', 14.62], ['Cm', 'Cm Kα', 109.271], ['Cm', 'Cm Kβ', 123.403], ['Cm', 'Cm Lβ', 19.427], ['Cm', 'Cm Lα', 14.961], ['Bk', 'Bk Kα', 112.121], ['Bk', 'Bk Kβ', 126.58], ['Bk', 'Bk Lβ', 20.018], ['Bk', 'Bk Lα', 15.308], ['Cf', 'Cf Kα', 115.032], ['Cf', 'Cf Kβ', 129.823], ['Cf', 'Cf Lβ', 20.624], ['Cf', 'Cf Lα', 15.66]]
+    emissionLineElementButtonIDs = []
+    emissionLinesElementslist = []
+    linecfg_firsttime = True
+    linecfgwindows = []
+    
+    phasetimelabels = []
+    phasetimeentries = []
+    phasetime1_stringvar = ctk.StringVar()
+    phasetime2_stringvar = ctk.StringVar()
+    phasetime3_stringvar = ctk.StringVar()
+    phasename1_stringvar = ctk.StringVar()
+    phasename2_stringvar = ctk.StringVar()
+    phasename3_stringvar = ctk.StringVar()
+
+    ui_firsttime = 1
+
+    energiesfirsttime = True
+
+    emission_lines_to_plot = []
+    extraticks = []
+    extraticklabels = []
+
+    total_spec_channels = 2048
+    #spec_channels = np.array(list(range(1, total_spec_channels+1)))
+    spec_channels = np.array(list(range(0, total_spec_channels)))
+
+    plotphasecolours = ['blue', 'red', 'green', 'pink', 'yellow']
+    plottedspectra = []
+    plottedemissionlineslist = []
+    
+    assay_catalogue = []
+    assay_catalogue_num = 1
+
+    spectra = []
+    specenergies = []
+    instr_currentassayspectra = []
+    instr_currentassayspecenergies = []
+    instr_currentassaylegends = []
+    instr_currentambtemp = ''
+    instr_currentdettemp = ''
+
+    XRF_IP = '192.168.137.139'      
+    XRF_IP_ALTERNATE = '190.168.137.139' # In some VERY UNUSUAL cases, I have seen instuments come back from Bruker servicing with this IP changed to 190 instead of 192. Worth checking if it breaks.
+    XRF_PORT = 55204
+    xrf =  socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+    # BRUKER API COMMANDS to be used with sendCommand
+    bruker_query_loginstate = '<Query parameter="Login State"/>'
+    bruker_query_armedstate = '<Query parameter="Armed State"/>'
+    bruker_query_instdef = '<Query parameter="Instrument Definition"/>'
+    bruker_query_allapplications = '<Query parameter="Applications"/>'
+    bruker_query_currentapplicationinclmethods = '<Query parameter="ActiveApplication">Include Methods</Query>'
+    bruker_query_methodsforcurrentapplication = '<Query parameter="Method"></Query>'
+    bruker_query_currentapplicationprefs = '<Query parameter="User Preferences"></Query>'       # UAP - incl everything
+    bruker_query_currentapplicationphasetimes = '<Query parameter="Phase Times"/>'
+    bruker_query_softwareversion = '<Query parameter="Version"/>'       # S1 version, eg 2.7.58.392
+    bruker_query_nosetemp = '<Query parameter="Nose Temperature"/>'
+    bruker_command_login = '<Command>Login</Command>'
+    bruker_command_assaystart = '<Command parameter="Assay">Start</Command>'
+    bruker_command_assaystop = '<Command parameter="Assay">Stop</Command>'
+    #bruker_configure_setsystemtime = 
+    bruker_configure_transmitstatusenable = '<Configure parameter="Transmit Statusmsg">Yes</Configure>'     #Enable transmission of trigger pull/release and assay start/stop status messages
+    bruker_configure_transmitelementalresultsenable = '<Configure parameter="Transmit Results" grades="No" elements="Yes">Yes</Configure>'      #Enable transmission of elemental results, disables transmission of grade ID / passfail results
+    bruker_configure_transmitspectraenable = '<Configure parameter="Transmit Spectra">Yes</Configure>'
+    bruker_configure_transmitspectradisable = '<Configure parameter="Transmit Spectra">No</Configure>'
+    bruker_configure_transmitstatusmessagesenable = '<Configure parameter="Transmit Statusmsg">Yes</Configure>'
+
+    instr_currentphase = 0
+    assay_phase_spectrumpacketcounter = 0
+    instr_currentphaselength_s = 0
+    instr_approxsingleassaytime = 0
+    plotLiveSpectra = True     # used for choosing whether live spectra should be plotted
+    driveFolderStr = ''
+
+    # Consts for datatypes on recv
+    COOKED_SPECTRUM = '1'
+    RESULTS_SET = '2'
+    RAW_SPECTRUM = '3'
+    PDZ_FILENAME = '4'
+    XML_PACKET = '5'
+    XML_SUCCESS_RESPONSE = '5a'
+    XML_APPS_PRESENT_RESPONSE = '5b'
+    XML_ACTIVE_APP_RESPONSE = '5c'
+    STATUS_CHANGE = '6'
+    SPECTRUM_ENERGY_PACKET = '7'
+    UNKNOWN_DATA = '0'
+        
+    # COLOURS FOR ELEMENT GROUPS
+    ALKALI_METALS = '#FC8B12'            #'goldenrod1'
+    ALKALINE_EARTH_METALS = '#FAA23E'    #'DarkOrange1'
+    TRANSITION_METALS = '#0084FF'        #'RoyalBlue1'
+    OTHER_METALS = '#5F8DFF'     #'SteelBlue1'487BFA
+    METALLOIDS = '#9778FE'       #'light slate gray'
+    NON_METALS = '#FD81FF'       #'light goldenrod'
+    HALOGENS = '#FF3CD0'         #'plum1'
+    NOBLE_GASES = '#972EB4'       #'MediumOrchid1'
+    LANTHANIDES = '#e84f51'     #'firebrick1'
+    ACTINIDES = '#1BCA66'        #'spring green'
+
+    # ELEMENT LIST FOR BUTTONS - FORMAT IS (ATOMIC NUMBER, SYMBOL, NAME, PERIODIC TABLE ROW, PERIODIC TABLE COLUMN, CLASS for bg colour)
+    element_info = [
+        (1, 'H', 'Hydrogen', 1, 1, NON_METALS),
+        (2, 'He', 'Helium', 1, 18, NOBLE_GASES),
+        (3, 'Li', 'Lithium', 2, 1, ALKALI_METALS),
+        (4, 'Be', 'Beryllium', 2, 2, ALKALINE_EARTH_METALS),
+        (5, 'B', 'Boron', 2, 13, METALLOIDS),
+        (6, 'C', 'Carbon', 2, 14, NON_METALS),
+        (7, 'N', 'Nitrogen', 2, 15, NON_METALS),
+        (8, 'O', 'Oxygen', 2, 16, NON_METALS),
+        (9, 'F', 'Fluorine', 2, 17, HALOGENS),
+        (10, 'Ne', 'Neon', 2, 18, NOBLE_GASES),
+        (11, 'Na', 'Sodium', 3, 1, ALKALI_METALS),
+        (12, 'Mg', 'Magnesium', 3, 2, ALKALINE_EARTH_METALS),
+        (13, 'Al', 'Aluminium', 3, 13, OTHER_METALS),
+        (14, 'Si', 'Silicon', 3, 14, METALLOIDS),
+        (15, 'P', 'Phosphorus', 3, 15, NON_METALS),
+        (16, 'S', 'Sulfur', 3, 16, NON_METALS),
+        (17, 'Cl', 'Chlorine', 3, 17, HALOGENS),
+        (18, 'Ar', 'Argon', 3, 18, NOBLE_GASES),
+        (19, 'K', 'Potassium', 4, 1, ALKALI_METALS),
+        (20, 'Ca', 'Calcium', 4, 2, ALKALINE_EARTH_METALS),
+        (21, 'Sc', 'Scandium', 4, 3, TRANSITION_METALS),
+        (22, 'Ti', 'Titanium', 4, 4, TRANSITION_METALS),
+        (23, 'V', 'Vanadium', 4, 5, TRANSITION_METALS),
+        (24, 'Cr', 'Chromium', 4, 6, TRANSITION_METALS),
+        (25, 'Mn', 'Manganese', 4, 7, TRANSITION_METALS),
+        (26, 'Fe', 'Iron', 4, 8, TRANSITION_METALS),
+        (27, 'Co', 'Cobalt', 4, 9, TRANSITION_METALS),
+        (28, 'Ni', 'Nickel', 4, 10, TRANSITION_METALS),
+        (29, 'Cu', 'Copper', 4, 11, TRANSITION_METALS),
+        (30, 'Zn', 'Zinc', 4, 12, TRANSITION_METALS),
+        (31, 'Ga', 'Gallium', 4, 13, OTHER_METALS),
+        (32, 'Ge', 'Germanium', 4, 14, METALLOIDS),
+        (33, 'As', 'Arsenic', 4, 15, METALLOIDS),
+        (34, 'Se', 'Selenium', 4, 16, NON_METALS),
+        (35, 'Br', 'Bromine', 4, 17, HALOGENS),
+        (36, 'Kr', 'Krypton', 4, 18, NOBLE_GASES),
+        (37, 'Rb', 'Rubidium', 5, 1, ALKALI_METALS),
+        (38, 'Sr', 'Strontium', 5, 2, ALKALINE_EARTH_METALS),
+        (39, 'Y', 'Yttrium', 5, 3, TRANSITION_METALS),
+        (40, 'Zr', 'Zirconium', 5, 4, TRANSITION_METALS),
+        (41, 'Nb', 'Niobium', 5, 5, TRANSITION_METALS),
+        (42, 'Mo', 'Molybdenum', 5, 6, TRANSITION_METALS),
+        (43, 'Tc', 'Technetium', 5, 7, TRANSITION_METALS),
+        (44, 'Ru', 'Ruthenium', 5, 8, TRANSITION_METALS),
+        (45, 'Rh', 'Rhodium', 5, 9, TRANSITION_METALS),
+        (46, 'Pd', 'Palladium', 5, 10, TRANSITION_METALS),
+        (47, 'Ag', 'Silver', 5, 11, TRANSITION_METALS),
+        (48, 'Cd', 'Cadmium', 5, 12, TRANSITION_METALS),
+        (49, 'In', 'Indium', 5, 13, OTHER_METALS),
+        (50, 'Sn', 'Tin', 5, 14, OTHER_METALS),
+        (51, 'Sb', 'Antimony', 5, 15, METALLOIDS),
+        (52, 'Te', 'Tellurium', 5, 16, METALLOIDS),
+        (53, 'I', 'Iodine', 5, 17, HALOGENS),
+        (54, 'Xe', 'Xenon', 5, 18, NOBLE_GASES),
+        (55, 'Cs', 'Caesium', 6, 1, ALKALI_METALS),
+        (56, 'Ba', 'Barium', 6, 2, ALKALINE_EARTH_METALS),
+        (57, 'La', 'Lanthanum', 6, 3, LANTHANIDES),
+        (58, 'Ce', 'Cerium', 9, 4, LANTHANIDES),
+        (59, 'Pr', 'Praseodymium', 9, 5, LANTHANIDES),
+        (60, 'Nd', 'Neodymium', 9, 6, LANTHANIDES),
+        (61, 'Pm', 'Promethium', 9, 7, LANTHANIDES),
+        (62, 'Sm', 'Samarium', 9, 8, LANTHANIDES),
+        (63, 'Eu', 'Europium', 9, 9, LANTHANIDES),
+        (64, 'Gd', 'Gadolinium', 9, 10, LANTHANIDES),
+        (65, 'Tb', 'Terbium', 9, 11, LANTHANIDES),
+        (66, 'Dy', 'Dysprosium', 9, 12, LANTHANIDES),
+        (67, 'Ho', 'Holmium', 9, 13, LANTHANIDES),
+        (68, 'Er', 'Erbium', 9, 14, LANTHANIDES),
+        (69, 'Tm', 'Thulium', 9, 15, LANTHANIDES),
+        (70, 'Yb', 'Ytterbium', 9, 16, LANTHANIDES),
+        (71, 'Lu', 'Lutetium', 9, 17, LANTHANIDES),
+        (72, 'Hf', 'Hafnium', 6, 4, TRANSITION_METALS),
+        (73, 'Ta', 'Tantalum', 6, 5, TRANSITION_METALS),
+        (74, 'W', 'Tungsten', 6, 6, TRANSITION_METALS),
+        (75, 'Re', 'Rhenium', 6, 7, TRANSITION_METALS),
+        (76, 'Os', 'Osmium', 6, 8, TRANSITION_METALS),
+        (77, 'Ir', 'Iridium', 6, 9, TRANSITION_METALS),
+        (78, 'Pt', 'Platinum', 6, 10, TRANSITION_METALS),
+        (79, 'Au', 'Gold', 6, 11, TRANSITION_METALS),
+        (80, 'Hg', 'Mercury', 6, 12, TRANSITION_METALS),
+        (81, 'Tl', 'Thallium', 6, 13, OTHER_METALS),
+        (82, 'Pb', 'Lead', 6, 14, OTHER_METALS),
+        (83, 'Bi', 'Bismuth', 6, 15, OTHER_METALS),
+        (84, 'Po', 'Polonium', 6, 16, METALLOIDS),
+        (85, 'At', 'Astatine', 6, 17, HALOGENS),
+        (86, 'Rn', 'Radon', 6, 18, NOBLE_GASES),
+        (87, 'Fr', 'Francium', 7, 1, ALKALI_METALS),
+        (88, 'Ra', 'Radium', 7, 2, ALKALINE_EARTH_METALS),
+        (89, 'Ac', 'Actinium', 7, 3, ACTINIDES),
+        (90, 'Th', 'Thorium', 10, 4, ACTINIDES),
+        (91, 'Pa', 'Protactinium', 10, 5, ACTINIDES),
+        (92, 'U', 'Uranium', 10, 6, ACTINIDES),
+        (93, 'Np', 'Neptunium', 10, 7, ACTINIDES),
+        (94, 'Pu', 'Plutonium', 10, 8, ACTINIDES),
+        (95, 'Am', 'Americium', 10, 9, ACTINIDES),
+        (96, 'Cm', 'Curium', 10, 10, ACTINIDES),
+        (97, 'Bk', 'Berkelium', 10, 11, ACTINIDES),
+        (98, 'Cf', 'Californium', 10, 12, ACTINIDES),
+        (99, 'Es', 'Einsteinium', 10, 13, ACTINIDES),
+        (100, 'Fm', 'Fermium', 10, 14, ACTINIDES),
+        (101, 'Md', 'Mendelevium', 10, 15, ACTINIDES),
+        (102, 'No', 'Nobelium', 10, 16, ACTINIDES),
+        (103, 'Lr', 'Lawrencium', 10, 17, ACTINIDES),
+        (104, 'Rf', 'Rutherfordium', 7, 4, TRANSITION_METALS),
+        (105, 'Db', 'Dubnium', 7, 5, TRANSITION_METALS),
+        (106, 'Sg', 'Seaborgium', 7, 6, TRANSITION_METALS),
+        (107, 'Bh', 'Bohrium', 7, 7, TRANSITION_METALS),
+        (108, 'Hs', 'Hassium', 7, 8, TRANSITION_METALS),
+        (109, 'Mt', 'Meitnerium', 7, 9, TRANSITION_METALS),
+        (110, 'Ds', 'Darmstadtium', 7, 10, TRANSITION_METALS),
+        (111, 'Rg', 'Roentgenium', 7, 11, TRANSITION_METALS),
+        (112, 'Cn', 'Copernicium', 7, 12, TRANSITION_METALS),
+        (113, 'Nh', 'Nihonium', 7, 13, OTHER_METALS),
+        (114, 'Fl', 'Flerovium', 7, 14, OTHER_METALS),
+        (115, 'Mc', 'Moscovium', 7, 15, OTHER_METALS),
+        (116, 'Lv', 'Livermorium', 7, 16, OTHER_METALS),
+        (117, 'Ts', 'Tennessine', 7, 17, HALOGENS),
+        (118, 'Og', 'Oganesson', 7, 18, NOBLE_GASES)]
+
+    # Fonts
+    consolas24 = font.Font(family='Consolas', size=24)
+    consolas20 = font.Font(family='Consolas', size=20)
+    consolas18 = font.Font(family='Consolas', size=18)
+    consolas18B = font.Font(family='Consolas', size=18, weight = 'bold')
+    consolas16 = font.Font(family='Consolas', size=16)
+    consolas13 = font.Font(family='Consolas', size=13)
+    consolas12 = font.Font(family='Consolas', size=12)
+    consolas10 = font.Font(family='Consolas', size=10)
+    consolas10B = font.Font(family='Consolas', size=10, weight = 'bold')
+    consolas09 = font.Font(family='Consolas', size=9)
+    consolas08 = font.Font(family='Consolas', size=8)
+    consolas07 = font.Font(family='Consolas', size=7)
+    plotfont = {'fontname':'Consolas'}
+    ctk_segoe14B = ctk.CTkFont(family = 'Segoe UI', size = 14, weight= 'bold')
+    ctk_segoe12B = ctk.CTkFont(family = 'Segoe UI', size = 12, weight= 'bold')
+    ctk_consolas08 = ctk.CTkFont(family = 'Consolas', size = 8)
+    ctk_consolas10 = ctk.CTkFont(family = 'Consolas', size = 10)
+    ctk_consolas11 = ctk.CTkFont(family = 'Consolas', size = 11)
+    ctk_consolas12 = ctk.CTkFont(family = 'Consolas', size = 12)
+    ctk_consolas12B = ctk.CTkFont(family = 'Consolas', size = 12, weight = 'bold')
+    ctk_consolas13 = ctk.CTkFont(family = 'Consolas', size = 13)
+    ctk_consolas14B = ctk.CTkFont(family = 'Consolas', size = 14, weight = 'bold')
+    ctk_consolas15B = ctk.CTkFont(family = 'Consolas', size = 15, weight = 'bold')
+    ctk_consolas18B = ctk.CTkFont(family = 'Consolas', size = 18, weight = 'bold')
+    ctk_consolas20B = ctk.CTkFont(family = 'Consolas', size = 20, weight = 'bold')
+    ctk_default_largeB = ctk.CTkFont(weight = 'bold')
+
+
+    # Colour Assignments
+    WHITEISH = "#FAFAFA"
+    NAVYGREY = "#566573"
+    CHARCOAL = "#181819"
+    GRAPHITE = "#29292B"
+
+    PSS_DARKBLUE = "#252D5C"
+    PSS_LIGHTBLUE = "#1B75BC"
+    PSS_ORANGE = "#D85820"
+    PSS_GREY = "#9E9FA3"
+
+    CROW_LGREY = "#4e576c"
+    CROW_DGREY = "#394d60"
+    CROW_LBLUE = "#316d90"
+    CROW_MBLUE = "#1e5073"
+    CROW_DBLUE = "#062435"
+
+    # Colours Used
+    buttonbg1 = CROW_LBLUE
+    buttonfg1 = WHITEISH
+    buttonbg2 = CROW_MBLUE
+    buttonfg2 = WHITEISH
+    buttonbg3 = CROW_DBLUE
+    buttonfg3 = WHITEISH
+    textfg1 = CHARCOAL
+
+    # Styles
+    # Astyle = ttk.Style()
+    # Astyle.configure('my.TMenubutton', font = consolas10)
+
+    guiStyle = ttk.Style()
+    guiStyle.configure('mystyle.Treeview', highlightthickness=0, bd=0, font= consolas10)        # Modify the font of the body
+    guiStyle.configure('mystyle.Treeview.Heading', font = consolas10B)                                    # Modify the font of the headings)
+
+
+
+    # Frames
+    # LHSframe = ctk.CTkFrame(gui, width=340, corner_radius=0)
+    # LHSframe.grid(row=0,column=0, rowspan=4, sticky = tk.NSEW)
+    LHSframe = ctk.CTkFrame(gui, width=340, corner_radius=0)
+    LHSframe.pack(side=tk.LEFT, anchor = tk.W, fill = 'y', expand = False, padx = 0, pady = 0, ipadx = 0)
+
+    # RHSframe = ctk.CTkFrame(gui, width=200, corner_radius=0, fg_color= 'transparent')
+    # RHSframe.grid(row=0,column=1, columnspan=3, rowspan=4, sticky = tk.NSEW)
+    RHSframe = ctk.CTkFrame(gui, corner_radius=0, fg_color= 'transparent')
+    RHSframe.pack(side=tk.RIGHT, anchor = tk.W, fill = 'both', expand = True, padx = 0, pady = 0, ipadx = 0)
+
+    # spectraframe = ctk.CTkFrame(RHSframe, width = 700, height = 50, corner_radius = 5)
+    # spectraframe.grid(row=0, column=0, pady = 10, padx = 10, ipadx = 10, ipady = 5, sticky= tk.NSEW)
+    spectraframe = ctk.CTkFrame(RHSframe, width = 700, height = 50, corner_radius = 5)
+    spectraframe.pack(side=tk.TOP, fill = 'both', anchor = tk.N, expand = True, padx = 8, pady = [8,4], ipadx = 4, ipady = 4)
+
+    # resultsframe = ctk.CTkFrame(RHSframe, width = 700, height = 300)
+    # resultsframe.grid(row=1, column=0, pady = 10, padx = 10, ipadx = 10, ipady = 10, sticky= tk.NSEW)
+    resultsframe = ctk.CTkFrame(RHSframe, width = 700, height = 300)
+    resultsframe.pack(side=tk.BOTTOM, fill = 'x', anchor = tk.SW, expand = False, padx = 8, pady = [4,8], ipadx = 4, ipady = 4)
+
+
+    # tableframe = tk.Frame(resultsframe, width = 550, height = 300)
+    # tableframe.grid(row=0, column=0, padx=[10,0], pady=[10,0], ipadx = 0, ipady = 0, sticky= tk.NSEW)
+    assaytableframe = tk.Frame(resultsframe, width = 450, height = 300)
+    assaytableframe.pack(side=tk.LEFT, fill = 'both', anchor = tk.SW, expand = False, padx = [8,0], pady = 8, ipadx = 0, ipady = 0)
+    assaytableframe.pack_propagate(0)
+
+
+    # Status Frame stuff
+
+    statusframe = ctk.CTkFrame(LHSframe, width=50, height = 30, corner_radius=5)
+    statusframe.pack(side = tk.BOTTOM, anchor = tk.S, fill = 'x', expand = False, padx=8, pady=[4, 8])
+    instr_DANGER_stringvar = tk.StringVar()
+    statuslabel = ctk.CTkLabel(statusframe, textvariable = instr_DANGER_stringvar, font= ctk_consolas18B)
+    statuslabel.pack(side = tk.TOP, fill = 'both', anchor = tk.N, expand = True, padx = 2, pady = 2)
+
+    # loading bar stuff
+    xraysonbar = ctk.CTkProgressBar(LHSframe, width=50, mode='indeterminate')
+    xraysonbar.pack(side = tk.BOTTOM, anchor = tk.S, fill = 'x', expand = False, padx=8, pady=[4, 4])
+
+    assayprogressbar = ctk.CTkProgressBar(LHSframe, width=50, mode='determinate')
+    assayprogressbar.pack(side = tk.BOTTOM, anchor = tk.S, fill = 'x', expand = False, padx=8, pady=[8, 4])
+    assayprogressbar.set(0)
+
+
+    # Tabview for controls LHS
+    ctrltabview = ctk.CTkTabview(LHSframe, height = 300)
+    #ctrltabview.grid(row=1, column=1, padx=10, pady=[10, 5], sticky=tk.NSEW)
+    ctrltabview.pack(side = tk.TOP, anchor = tk.N, fill = 'x', expand = False, padx=8, pady=[8, 4])
+    ctrltabview.add('Assay Controls')
+    ctrltabview.add('Instrument Settings')
+    ctrltabview.add('About')
+    ctrltabview.tab('Assay Controls').grid_columnconfigure(0, weight=1)
+    ctrltabview.tab('Instrument Settings').grid_columnconfigure(0, weight=1)
+    ctrltabview.tab('About').grid_columnconfigure(0, weight=1)
+
+    appmethodframe = ctk.CTkFrame(ctrltabview.tab('Assay Controls'), fg_color= '#c5c5c5')
+    appmethodframe.grid(row=2, column=0, columnspan = 2, rowspan = 2, padx=4, pady=4, sticky=tk.NSEW)
+
+    phaseframe = ctk.CTkFrame(ctrltabview.tab('Assay Controls'), fg_color= '#c5c5c5')
+    phaseframe.grid(row=4, column=0, columnspan = 2, rowspan = 2, padx=4, pady=4, sticky=tk.NSEW)
+
+    # About Section
+    about_blurb1 = ctk.CTkLabel(ctrltabview.tab('About'), text=f'S1Control {versionNum} ({versionDate})\nCreated by Zeb Hall for Portable Spectral Services\nContact: service@portaspecs.com', justify = tk.LEFT, font=ctk_consolas11, text_color=CHARCOAL)
+    about_blurb1.grid(row=1, column=0, columnspan = 2, rowspan = 2, padx=4, pady=4, sticky=tk.NSEW)
+    # Buttons
+    button_assay_text = ctk.StringVar()
+    button_assay_text.set('\u2BC8 Start Assay')
+    #button_assay_text.set('\u2715 Stop Assay')
+    #\u2BC0
+    button_assay = ctk.CTkButton(ctrltabview.tab('Assay Controls'), width = 13, textvariable = button_assay_text, command = startAssayClicked, fg_color = '#33AF56', hover_color = '#237A3C')#, font = ctk_default_largeB,)
+    button_assay.grid(row=1, column=0, padx=4, pady=4, sticky=tk.NSEW)
+
+    #button_startlistener = tk.Button(width = 15, text = "start listen", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = lambda:xrfListenLoop_Start(None)).pack(ipadx=8,ipady=2)
+
+    #button_getinstdef = tk.Button(width = 15, text = "get instdef", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = getInfoClicked).pack(ipadx=8,ipady=2)
+    # button_enablespectra = ctk.CTkButton(ctrltabview.tab("Instrument Settings"), width = 13, text = "Enable Spectra Transmit", command = instrument_ConfigureTransmitSpectraEnable)
+    # button_enablespectra.grid(row=1, column=0, padx=4, pady=4, sticky=tk.NSEW)
+    button_disablespectra = ctk.CTkButton(ctrltabview.tab("Instrument Settings"), width = 13, text = "Disable Spectra Transmit", command = instrument_ConfigureTransmitSpectraDisable)
+    button_disablespectra.grid(row=1, column=0, padx=4, pady=4, sticky=tk.NSEW)
+    button_setsystemtime = ctk.CTkButton(ctrltabview.tab("Instrument Settings"), width = 13, text = "Sync System Time", command = instrument_ConfigureSystemTime)
+    button_setsystemtime.grid(row=1, column=1, padx=4, pady=4, sticky=tk.NSEW)
+
+    button_gets1softwareversion = ctk.CTkButton(ctrltabview.tab("Instrument Settings"), width = 13, text = "Check Software Version", command = instrument_QuerySoftwareVersion)
+    button_gets1softwareversion.grid(row=2, column=0, padx=4, pady=4, sticky=tk.NSEW)
+
+    button_getnosetemp = ctk.CTkButton(ctrltabview.tab("Instrument Settings"), width = 13, text = "Get Nose Temp", command = instrument_QueryNoseTemp)
+    button_getnosetemp.grid(row=2, column=1, padx=4, pady=4, sticky=tk.NSEW)
+
+
+    #button_getapplicationprefs = tk.Button(configframe, width = 25, text = "get current app prefs", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = instrument_QueryCurrentApplicationPreferences)
+    #button_getapplicationprefs.grid(row=7, column=1, padx=2, pady=2, ipadx=4, ipady=0, sticky=tk.NSEW)
+
+    # button_getapplicationphasetimes = ctk.CTkButton(ctrltabview.tab("Instrument Settings"), width = 13, text = "Get Phase Times", command = instrument_QueryCurrentApplicationPhaseTimes)
+    # button_getapplicationphasetimes.grid(row=2, column=1, padx=4, pady=4, sticky=tk.NSEW)
+
+
+    # Current Instrument Info stuff
+    # label_currentapplication_text = ctk.StringVar()
+    applicationselected_stringvar = ctk.StringVar(value='Application')
+    methodselected_stringvar = ctk.StringVar(value='Method')
+    instr_applicationspresent = []
+    instr_methodsforcurrentapplication = []
+
+    # Consecutive Tests Section
+    repeats_choice_var = ctk.StringVar(value='\u2B6F Consecutive')
+    repeats_choice_list = ['1','2','3','4','5','6','7','8','9','10','15','20','50','100']
+    dropdown_repeattests = ctk.CTkOptionMenu(ctrltabview.tab("Assay Controls"), variable=repeats_choice_var, values=repeats_choice_list, command=repeatsChoiceMade, dynamic_resizing=False)
+    dropdown_repeattests.grid(row=1,column=1,padx=4, pady=4, sticky=tk.NSEW)
+
+
+    # Log Box
+
+    #logbox_xscroll = tk.Scrollbar(infoframe, orient = 'horizontal')
+    #logbox_xscroll.grid(row = 3, column = 1, columnspan = 2, sticky = tk.NSEW)
+    #logbox_yscroll = tk.Scrollbar(infoframe, orient = 'vertical')
+    #logbox_yscroll.grid(row = 1, column = 3, columnspan = 1, rowspan= 2, sticky = tk.NSEW)
+    logbox = ctk.CTkTextbox(LHSframe, corner_radius=5, height = 250, width = 320, font = ctk_consolas11, text_color=WHITEISH, fg_color=CHARCOAL, wrap = tk.NONE)
+    logbox.pack(side = tk.TOP, anchor = tk.N, fill = 'both', expand = True, padx=8, pady=[4, 4])
+    #logbox.pack(side = tk.TOP, fill = 'both', expand = True, anchor = tk.N)
+    logbox.configure(state = 'disabled')
+    #logbox_xscroll.config(command = logbox.xview)
+    #logbox_yscroll.config(command = logbox.yview)
+
+    # Spectraframe Stuff
+
+    fig = Figure(figsize = (10, 4), dpi = 100, frameon=False)
+    fig.set_tight_layout(True)
+    fig.set_facecolor('#dbdbdb')
+    fig.set_edgecolor('#dbdbdb')
+    #print(plt.style.available)
+    #plt.style.use('seaborn-paper')
+    plt.style.use("seaborn-v0_8-whitegrid")
+    plt.rcParams["font.family"] = "Consolas"
+    plt.rcParams["font.sans-serif"] = "Helvetica"
+    plt.rcParams["font.size"] = 9
+    spectra_ax = fig.add_subplot(111)
+    spectra_ax.set_xlabel('Energy (keV)')
+    spectra_ax.set_ylabel('Counts')
+    spectra_ax.set_xlim(xmin=0, xmax=50)
+    #spectra_ax.set_ylim(ymin=0, ymax=50000)
+    #spectra_ax.autoscale_view()
+    spectra_ax.autoscale(enable=True,tight=True)
+    #spectra_ax.axhline(y=0, color='k')
+    #spectra_ax.axvline(x=0, color='k')
+    spectracanvas = FigureCanvasTkAgg(fig,master = spectraframe)
+
+    spectracanvas.draw()
+    spectratoolbar = NavigationToolbar2Tk(spectracanvas,spectraframe,pack_toolbar=False)
+
+    spectratoolbar.config(background='#dbdbdb')
+    spectratoolbar._message_label.config(background='#dbdbdb')
+    spectracanvas.get_tk_widget().pack(side=tk.TOP, fill = 'both', expand = True, padx = 8, pady = [8,0])
+    spectratoolbar.pack(side=tk.LEFT, fill = 'x', padx = 8, pady = 4, ipadx = 5)
+    for child in spectratoolbar.winfo_children():
+        child.config(background='#dbdbdb')
+
+    # Other Toolbar widgets
+    button_configureemissionlines = ctk.CTkButton(spectraframe, width = 13, text = "Configure Emission Lines", command = configureEmissionLinesClicked)
+    button_configureemissionlines.pack(side=tk.RIGHT, fill = 'x', padx = 8, pady = 4)
+
+    # button_clearemissionlines = ctk.CTkButton(spectraframe, width = 13, text = "Clear Emission Lines", command = clearEmissionLinesClicked)
+    # button_clearemissionlines.pack(side=tk.RIGHT, fill = 'x', padx = 0, pady = 4)
+
+    button_analysepeak = ctk.CTkButton(spectraframe, width = 13, text = "Identify Peak", command = startPlotClickListener)
+    button_analysepeak.pack(side=tk.RIGHT, fill = 'x', padx = 0, pady = 4)
+
+
+    # Assays Frame Stuff
+    assaysColumns = ('t_num', 't_app', 't_time', 't_timeelapsed')
+    assaysTable = Treeview(assaytableframe, columns = assaysColumns, height = "14",  selectmode = "browse", style = 'mystyle.Treeview')
+    assaysTable.pack(side="top", fill="both", expand=True)
+
+    assaysTable.heading('t_num', text = "Assay", anchor = tk.W, command=lambda _col='t_num': treeview_sort_column(assaysTable, _col, False))                  
+    assaysTable.heading('t_app', text = "Application", anchor = tk.W, command=lambda _col='t_app': treeview_sort_column(assaysTable, _col, False)) 
+    assaysTable.heading('t_time', text = "Time Completed", anchor = tk.W, command=lambda _col='t_time': treeview_sort_column(assaysTable, _col, False))
+    assaysTable.heading('t_timeelapsed', text = "Elapsed", anchor = tk.W, command=lambda _col='t_timeelapsed': treeview_sort_column(assaysTable, _col, False))     
+
+    assaysTable.column('t_num', minwidth = 50, width = 60, stretch = 0, anchor = tk.W)
+    assaysTable.column('t_app', minwidth = 125, width = 100, stretch = 1, anchor = tk.W)
+    assaysTable.column('t_time', minwidth = 100, width = 115, stretch = 0, anchor = tk.W)
+    assaysTable.column('t_timeelapsed', minwidth = 80, width = 60, stretch = 0, anchor = tk.W)
+
+    # assaysTableScrollbarY = ttk.Scrollbar(resultsframe, command=assaysTable.yview)
+    # assaysTableScrollbarY.grid(column=1, row=0, padx=[0,2], pady=0, sticky = tk.NS)
+
+    # resultsTableScrollbarX = ttk.Scrollbar(resultsframe, orient = 'horizontal', command=assaysTable.xview)
+    # resultsTableScrollbarX.grid(column=0, row=1, padx=0, pady=[0,2], sticky = tk.EW)
+
+    # assaysTableScrollbarY = ctk.CTkScrollbar(resultsframe, command=assaysTable.yview)
+    # assaysTableScrollbarY.grid(column=1, row=0, padx=[0,2], pady=[8,0], sticky = tk.NS)
+    assaysTableScrollbarY = ctk.CTkScrollbar(resultsframe, command=assaysTable.yview)
+    assaysTableScrollbarY.pack(side = tk.LEFT, fill = 'y', expand = False, padx=[0,8], pady=8)
+
+    # resultsTableScrollbarX = ctk.CTkScrollbar(resultsframe, orientation= 'horizontal', command=assaysTable.xview)
+    # resultsTableScrollbarX.grid(column=0, row=1, padx=0, pady=[0,2], sticky = tk.EW)
+
+    assaysTable.configure(yscrollcommand=assaysTableScrollbarY.set)
+    # assaysTable.configure(xscrollcommand=resultsTableScrollbarX.set)
+
+    assaysTable.bind('<<TreeviewSelect>>', assaySelected)
+    assaysTable.configure(show = 'headings')
+
+    tables = []
+    tables.append(assaysTable)
+
+    # Resultsbox stuff
+
+    # resultsbox = ctk.CTkTextbox(resultsframe, corner_radius=5, height = 250, width = 150, font = ctk_consolas11, wrap = tk.NONE)
+    # resultsbox.pack(side = tk.RIGHT, fill = 'both', expand = True, padx=8, pady=8)
+    # resultsbox.configure(state = 'disabled')
+
+    resultsColumns = ('results_Z', 'results_Compound', 'results_Concentration', 'results_Error')
+    resultsTable = Treeview(resultsframe, columns = resultsColumns, height = "14",  selectmode = "browse", style = 'mystyle.Treeview')
+    resultsTable.pack(side = tk.LEFT, fill = 'both', expand = True, padx=[8,0], pady=8)
+
+    resultsTable.heading('results_Z', text = 'Z', anchor = tk.W, command=lambda _col='results_Z': treeview_sort_column(resultsTable, _col, False))    
+    resultsTable.heading('results_Compound', text = 'Compound', anchor = tk.W, command=lambda _col='results_Compound': treeview_sort_column(resultsTable, _col, False))    
+    resultsTable.heading('results_Concentration', text = 'Concentration %', anchor = tk.W, command=lambda _col='results_Concentration': treeview_sort_column(resultsTable, _col, False))    
+    resultsTable.heading('results_Error', text = 'Error (1\u03C3)', anchor = tk.W, command=lambda _col='results_Error': treeview_sort_column(resultsTable, _col, False))    
+
+    resultsTable.column('results_Z', minwidth = 25, width = 30, stretch = 0, anchor = tk.W)
+    resultsTable.column('results_Compound', minwidth = 70, width = 70, stretch = 0, anchor = tk.W)
+    resultsTable.column('results_Concentration', minwidth = 120, width = 120, stretch = 0, anchor = tk.W)
+    resultsTable.column('results_Error', minwidth = 110, width = 120, anchor = tk.W)
+
+    resultsTableScrollbarY = ctk.CTkScrollbar(resultsframe, command=resultsTable.yview)
+    resultsTableScrollbarY.pack(side = tk.LEFT, fill = 'y', expand = False, padx=[0,8], pady=8)
+    #resultsTable.bind('<<TreeviewSelect>>', resultCompoundSelected)
+    resultsTable.configure(show = 'headings')
+    resultsTable.configure(yscrollcommand=resultsTableScrollbarY.set)
+
+    tables.append(resultsTable)
+
+
+    logFileName = ""
+
+    # Begin Instrument Connection
+
+    instrument_Connect()
+    time.sleep(0.2)
+    statusUpdateCheckerLoop_Start(None)
+    xrfListenLoopThread_Start(None)
+    #xrfListenLoopProcess_Start()
+    time.sleep(0.2)
+    instrument_GetStates()
+    time.sleep(0.05)
+    instrument_GetInfo()        # Get info from IDF for log file NAMING purposes
+    time.sleep(0.3)
+    initialiseLogFile()     # Must be called after instrument and listen loop are connected and started, and getinfo has been called once, and time has been allowed for loop to read all info into vars
+    try: gui.title(f"S1Control - {driveFolderStr}")
+    except: pass
+    if instr_isloggedin == False:
+        instrument_Login()
+    time.sleep(0.05)
+    instrument_SetImportantStartupConfigurables()
+    time.sleep(0.05)
+    instrument_QueryCurrentApplicationPhaseTimes()
+
+    gui.protocol("WM_DELETE_WINDOW", onClosing)
+    gui.mainloop()
+
+    closeAllThreads()   # call after gui mainloop has ended
 
 
 
