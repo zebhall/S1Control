@@ -1,6 +1,6 @@
 # S1Control by ZH for PSS
-versionNum = 'v0.3.4'
-versionDate = '2023/01/23'
+versionNum = 'v0.4.0'
+versionDate = '2023/02/15'
 
 import os
 import sys
@@ -299,6 +299,7 @@ def resource_path(relative_path):
     base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
     return os.path.join(base_path, relative_path)
     
+
 
 def initialiseLogFile():
     global logFile
@@ -804,7 +805,9 @@ def xrfListenLoop():
         elif datatype == XML_APPS_PRESENT_RESPONSE:    
             try:
                 instr_applicationspresent = data['Response']['ApplicationList']['Application']
-                printAndLog(f"Applications Available: {data['Response']['ApplicationList']['Application']}")
+                if isinstance(instr_applicationspresent, str):
+                    instr_applicationspresent = [instr_applicationspresent]
+                printAndLog(f"Applications Available: {instr_applicationspresent}")
             except:
                 printAndLog(f"Applications Available: Error: Not Found - Was the instrument busy when it was connected?")
 
@@ -965,17 +968,17 @@ def statusUpdateChecker():
 
         if instr_isloggedin == False:
             instr_DANGER_stringvar.set('Not Logged In!')
-            statuslabel.configure(text_color = WHITEISH, fg_color = '#939BA2')  # Def background colour: '#3A3A3A' 
-            statusframe.configure(fg_color = '#939BA2')
-            xraysonbar.configure(progress_color = '#939BA2')
+            statuslabel.configure(text_color = WHITEISH, fg_color = ('#939BA2','#454D50'))  # Def background colour: '#3A3A3A' 
+            statusframe.configure(fg_color = ('#939BA2','#454D50'))
+            xraysonbar.configure(progress_color = ('#939BA2','#454D50'))
             if button_assay.cget('state') == 'normal':
                 button_assay.configure(state = 'disabled')
 
         elif instr_isarmed == False:
             instr_DANGER_stringvar.set('Not Armed!')
-            statuslabel.configure(text_color = WHITEISH, fg_color = '#939BA2') 
-            statusframe.configure(fg_color = '#939BA2')
-            xraysonbar.configure(progress_color = '#939BA2')
+            statuslabel.configure(text_color = WHITEISH, fg_color = ('#939BA2','#454D50')) 
+            statusframe.configure(fg_color = ('#939BA2','#454D50'))
+            xraysonbar.configure(progress_color = ('#939BA2','#454D50'))
             if button_assay.cget('state') == 'normal':
                 button_assay.configure(state = 'disabled')
             
@@ -1004,9 +1007,9 @@ def statusUpdateChecker():
             
         else:
             instr_DANGER_stringvar.set('Ready')
-            statuslabel.configure(text_color = WHITEISH, fg_color = '#3A3A3A') 
-            statusframe.configure(fg_color = '#3A3A3A')     # default ctk blue '#3B8ED0' - complim green '#33AF56'
-            xraysonbar.configure(progress_color = '#939BA2')
+            statuslabel.configure(text_color = WHITEISH, fg_color = ('#3A3A3A','#454D50')) 
+            statusframe.configure(fg_color = ('#3A3A3A','#454D50'))     # default ctk blue '#3B8ED0' - complim green '#33AF56'
+            xraysonbar.configure(progress_color = ('#939BA2','#454D50'))
             if button_assay.cget('state') == 'disabled':
                 button_assay.configure(state = 'normal')
 
@@ -1044,7 +1047,7 @@ def plotSpectrum(spectrum, specenergy, colour, spectrum_legend):
     bins = bins + ev_channel_start 
     bins = bins / 1000       # TO GET keV instead of eV
 
-    plottedspectrum = spectra_ax.plot(bins, counts, color=colour,linewidth=0.5, label=spectrum_legend)
+    plottedspectrum = spectra_ax.plot(bins, counts, color=colour,linewidth=1, label=spectrum_legend)
     spectra_ax.legend()
     
     plottedspectra.append(plottedspectrum)  # adds spectrum to list of currently plotted spectra, for ease of removal later
@@ -1200,7 +1203,7 @@ def displayResults(assay):
     clearResultsfromTable()
     data = assay.results
     for index, row in data.iterrows():
-        resultsTable.insert(parent = '',index='end', values = [row[0],row[1],row[2],row[3]])
+        resultsTable.insert(parent = '',index='end', values = [f'{row[0]:03}',row[1],f'{row[2]:.4f}',f'{row[3]:.4f}'])
 
 
 def loginClicked():
@@ -1536,10 +1539,35 @@ def toggleEmissionLine(Z):
 
 if __name__ == '__main__':
     # GUI
-
     thread_halt = False
 
-    ctk.set_appearance_mode("light")  # Modes: system (default), light, dark
+    # Colour Assignments
+    WHITEISH = "#FAFAFA"
+    NAVYGREY = "#566573"
+    CHARCOAL = "#181819"
+    GRAPHITE = "#29292B"
+
+    PSS_DARKBLUE = "#252D5C"
+    PSS_LIGHTBLUE = "#1B75BC"
+    PSS_ORANGE = "#D85820"
+    PSS_GREY = "#9E9FA3"
+
+    CROW_LGREY = "#4e576c"
+    CROW_DGREY = "#394d60"
+    CROW_LBLUE = "#316d90"
+    CROW_MBLUE = "#1e5073"
+    CROW_DBLUE = "#062435"
+
+    # Colours Used
+    buttonbg1 = CROW_LBLUE
+    buttonfg1 = WHITEISH
+    buttonbg2 = CROW_MBLUE
+    buttonfg2 = WHITEISH
+    buttonbg3 = CROW_DBLUE
+    buttonfg3 = WHITEISH
+    textfg1 = CHARCOAL
+
+    ctk.set_appearance_mode("system")  # Modes: system (default), light, dark
     ctk.set_default_color_theme("blue")  # Themes: blue (default), dark-blue, green
 
     gui = ctk.CTk()
@@ -1551,6 +1579,57 @@ if __name__ == '__main__':
     energiescsvpath = resource_path("energies.csv")
     gui.iconbitmap(iconpath)
 
+    # Fonts
+    consolas24 = font.Font(family='Consolas', size=24)
+    consolas20 = font.Font(family='Consolas', size=20)
+    consolas18 = font.Font(family='Consolas', size=18)
+    consolas18B = font.Font(family='Consolas', size=18, weight = 'bold')
+    consolas16 = font.Font(family='Consolas', size=16)
+    consolas13 = font.Font(family='Consolas', size=13)
+    consolas12 = font.Font(family='Consolas', size=12)
+    consolas10 = font.Font(family='Consolas', size=10)
+    consolas10B = font.Font(family='Consolas', size=10, weight = 'bold')
+    consolas09 = font.Font(family='Consolas', size=9)
+    consolas08 = font.Font(family='Consolas', size=8)
+    consolas07 = font.Font(family='Consolas', size=7)
+    roboto09 = font.Font(family='Roboto', size=9)
+    plotfont = {'fontname':'Consolas'}
+    ctk_segoe14B = ctk.CTkFont(family = 'Segoe UI', size = 14, weight= 'bold')
+    ctk_segoe12B = ctk.CTkFont(family = 'Segoe UI', size = 12, weight= 'bold')
+    ctk_consolas08 = ctk.CTkFont(family = 'Consolas', size = 8)
+    ctk_consolas10 = ctk.CTkFont(family = 'Consolas', size = 10)
+    ctk_consolas11 = ctk.CTkFont(family = 'Consolas', size = 11)
+    ctk_consolas12 = ctk.CTkFont(family = 'Consolas', size = 12)
+    ctk_consolas12B = ctk.CTkFont(family = 'Consolas', size = 12, weight = 'bold')
+    ctk_consolas13 = ctk.CTkFont(family = 'Consolas', size = 13)
+    ctk_consolas14B = ctk.CTkFont(family = 'Consolas', size = 14, weight = 'bold')
+    ctk_consolas15B = ctk.CTkFont(family = 'Consolas', size = 15, weight = 'bold')
+    ctk_consolas18B = ctk.CTkFont(family = 'Consolas', size = 18, weight = 'bold')
+    ctk_consolas20B = ctk.CTkFont(family = 'Consolas', size = 20, weight = 'bold')
+    ctk_default_largeB = ctk.CTkFont(weight = 'bold')
+
+
+    match ctk.get_appearance_mode():
+        case 'Dark':
+            plottoolbarColour = '#4a4a4a'
+            treeviewColour_bg = '#4a4a4a'
+            plottextColour = WHITEISH
+        case 'Light':
+            plottoolbarColour = '#dbdbdb'
+            treeviewColour_bg = '#dbdbdb'
+            plottextColour = CHARCOAL
+        case _:
+            plottoolbarColour = '#dbdbdb'
+            treeviewColour_bg = '#dbdbdb'
+            plottextColour = CHARCOAL
+
+    # Styles
+    guiStyle = ttk.Style()
+    #guiStyle.theme_use('clam')
+    guiStyle.configure('Treeview', highlightthickness=0, bd=0, font=consolas10)#, background=treeviewColour_bg, fieldbackground=treeviewColour_bg, foreground = treeviewColour_bg)        # Modify the font of the body
+    guiStyle.configure('Treeview.Heading', font = consolas10B)                                    # Modify the font of the headings)
+    
+    
     instr_isarmed = False
     instr_isloggedin = False
     instr_assayisrunning = False
@@ -1584,7 +1663,8 @@ if __name__ == '__main__':
     #spec_channels = np.array(list(range(1, total_spec_channels+1)))
     spec_channels = np.array(list(range(0, total_spec_channels)))
 
-    plotphasecolours = ['blue', 'red', 'green', 'pink', 'yellow']
+    #plotphasecolours = ['blue', 'red', 'green', 'pink', 'yellow']
+    plotphasecolours = ['#5BB5F1', '#53bf47', '#F15BB5', '#FEE440', '#9B5DE5']
     plottedspectra = []
     plottedemissionlineslist = []
     
@@ -1778,68 +1858,18 @@ if __name__ == '__main__':
         (117, 'Ts', 'Tennessine', 7, 17, HALOGENS),
         (118, 'Og', 'Oganesson', 7, 18, NOBLE_GASES)]
 
-    # Fonts
-    consolas24 = font.Font(family='Consolas', size=24)
-    consolas20 = font.Font(family='Consolas', size=20)
-    consolas18 = font.Font(family='Consolas', size=18)
-    consolas18B = font.Font(family='Consolas', size=18, weight = 'bold')
-    consolas16 = font.Font(family='Consolas', size=16)
-    consolas13 = font.Font(family='Consolas', size=13)
-    consolas12 = font.Font(family='Consolas', size=12)
-    consolas10 = font.Font(family='Consolas', size=10)
-    consolas10B = font.Font(family='Consolas', size=10, weight = 'bold')
-    consolas09 = font.Font(family='Consolas', size=9)
-    consolas08 = font.Font(family='Consolas', size=8)
-    consolas07 = font.Font(family='Consolas', size=7)
-    plotfont = {'fontname':'Consolas'}
-    ctk_segoe14B = ctk.CTkFont(family = 'Segoe UI', size = 14, weight= 'bold')
-    ctk_segoe12B = ctk.CTkFont(family = 'Segoe UI', size = 12, weight= 'bold')
-    ctk_consolas08 = ctk.CTkFont(family = 'Consolas', size = 8)
-    ctk_consolas10 = ctk.CTkFont(family = 'Consolas', size = 10)
-    ctk_consolas11 = ctk.CTkFont(family = 'Consolas', size = 11)
-    ctk_consolas12 = ctk.CTkFont(family = 'Consolas', size = 12)
-    ctk_consolas12B = ctk.CTkFont(family = 'Consolas', size = 12, weight = 'bold')
-    ctk_consolas13 = ctk.CTkFont(family = 'Consolas', size = 13)
-    ctk_consolas14B = ctk.CTkFont(family = 'Consolas', size = 14, weight = 'bold')
-    ctk_consolas15B = ctk.CTkFont(family = 'Consolas', size = 15, weight = 'bold')
-    ctk_consolas18B = ctk.CTkFont(family = 'Consolas', size = 18, weight = 'bold')
-    ctk_consolas20B = ctk.CTkFont(family = 'Consolas', size = 20, weight = 'bold')
-    ctk_default_largeB = ctk.CTkFont(weight = 'bold')
+    # TESTING, REMOVE THIS FOR SPEED PROBABLY
+    # global element_colour_dict
+    # element_colour_dict = {}
+    # for e in element_info:
+    #     element_colour_dict[e[1]]=e[5]
+    
+    # print(element_colour_dict)
 
 
-    # Colour Assignments
-    WHITEISH = "#FAFAFA"
-    NAVYGREY = "#566573"
-    CHARCOAL = "#181819"
-    GRAPHITE = "#29292B"
 
-    PSS_DARKBLUE = "#252D5C"
-    PSS_LIGHTBLUE = "#1B75BC"
-    PSS_ORANGE = "#D85820"
-    PSS_GREY = "#9E9FA3"
 
-    CROW_LGREY = "#4e576c"
-    CROW_DGREY = "#394d60"
-    CROW_LBLUE = "#316d90"
-    CROW_MBLUE = "#1e5073"
-    CROW_DBLUE = "#062435"
-
-    # Colours Used
-    buttonbg1 = CROW_LBLUE
-    buttonfg1 = WHITEISH
-    buttonbg2 = CROW_MBLUE
-    buttonfg2 = WHITEISH
-    buttonbg3 = CROW_DBLUE
-    buttonfg3 = WHITEISH
-    textfg1 = CHARCOAL
-
-    # Styles
-    # Astyle = ttk.Style()
-    # Astyle.configure('my.TMenubutton', font = consolas10)
-
-    guiStyle = ttk.Style()
-    guiStyle.configure('mystyle.Treeview', highlightthickness=0, bd=0, font= consolas10)        # Modify the font of the body
-    guiStyle.configure('mystyle.Treeview.Heading', font = consolas10B)                                    # Modify the font of the headings)
+    
 
 
 
@@ -1856,12 +1886,12 @@ if __name__ == '__main__':
 
     # spectraframe = ctk.CTkFrame(RHSframe, width = 700, height = 50, corner_radius = 5)
     # spectraframe.grid(row=0, column=0, pady = 10, padx = 10, ipadx = 10, ipady = 5, sticky= tk.NSEW)
-    spectraframe = ctk.CTkFrame(RHSframe, width = 700, height = 50, corner_radius = 5)
+    spectraframe = ctk.CTkFrame(RHSframe, width = 700, height = 50, corner_radius = 5, fg_color=plottoolbarColour)
     spectraframe.pack(side=tk.TOP, fill = 'both', anchor = tk.N, expand = True, padx = 8, pady = [8,4], ipadx = 4, ipady = 4)
 
     # resultsframe = ctk.CTkFrame(RHSframe, width = 700, height = 300)
     # resultsframe.grid(row=1, column=0, pady = 10, padx = 10, ipadx = 10, ipady = 10, sticky= tk.NSEW)
-    resultsframe = ctk.CTkFrame(RHSframe, width = 700, height = 300)
+    resultsframe = ctk.CTkFrame(RHSframe, width = 700, height = 300, fg_color=('#dbdbdb', '#333333'))
     resultsframe.pack(side=tk.BOTTOM, fill = 'x', anchor = tk.SW, expand = False, padx = 8, pady = [4,8], ipadx = 4, ipady = 4)
 
 
@@ -1892,7 +1922,7 @@ if __name__ == '__main__':
     # Tabview for controls LHS
     ctrltabview = ctk.CTkTabview(LHSframe, height = 300)
     #ctrltabview.grid(row=1, column=1, padx=10, pady=[10, 5], sticky=tk.NSEW)
-    ctrltabview.pack(side = tk.TOP, anchor = tk.N, fill = 'x', expand = False, padx=8, pady=[8, 4])
+    ctrltabview.pack(side = tk.TOP, anchor = tk.N, fill = 'x', expand = False, padx=8, pady=[0, 4])
     ctrltabview.add('Assay Controls')
     ctrltabview.add('Instrument Settings')
     ctrltabview.add('About')
@@ -1900,14 +1930,14 @@ if __name__ == '__main__':
     ctrltabview.tab('Instrument Settings').grid_columnconfigure(0, weight=1)
     ctrltabview.tab('About').grid_columnconfigure(0, weight=1)
 
-    appmethodframe = ctk.CTkFrame(ctrltabview.tab('Assay Controls'), fg_color= '#c5c5c5')
+    appmethodframe = ctk.CTkFrame(ctrltabview.tab('Assay Controls'), fg_color= ('#c5c5c5','#444444'))
     appmethodframe.grid(row=2, column=0, columnspan = 2, rowspan = 2, padx=4, pady=4, sticky=tk.NSEW)
 
-    phaseframe = ctk.CTkFrame(ctrltabview.tab('Assay Controls'), fg_color= '#c5c5c5')
+    phaseframe = ctk.CTkFrame(ctrltabview.tab('Assay Controls'), fg_color= ('#c5c5c5','#444444'))
     phaseframe.grid(row=4, column=0, columnspan = 2, rowspan = 2, padx=4, pady=4, sticky=tk.NSEW)
 
     # About Section
-    about_blurb1 = ctk.CTkLabel(ctrltabview.tab('About'), text=f'S1Control {versionNum} ({versionDate})\nCreated by Zeb Hall for Portable Spectral Services\nContact: service@portaspecs.com', justify = tk.LEFT, font=ctk_consolas11, text_color=CHARCOAL)
+    about_blurb1 = ctk.CTkLabel(ctrltabview.tab('About'), text=f'S1Control {versionNum} ({versionDate})\nCreated by Zeb Hall for Portable Spectral Services\nContact: service@portaspecs.com', justify = tk.LEFT, font=ctk_consolas11, text_color=plottextColour)
     about_blurb1.grid(row=1, column=0, columnspan = 2, rowspan = 2, padx=4, pady=4, sticky=tk.NSEW)
     # Buttons
     button_assay_text = ctk.StringVar()
@@ -1970,16 +2000,20 @@ if __name__ == '__main__':
 
     # Spectraframe Stuff
 
-    fig = Figure(figsize = (10, 4), dpi = 100, frameon=False)
+    fig = Figure(figsize = (10, 4), dpi = 100, frameon=True, facecolor = plottoolbarColour)
     fig.set_tight_layout(True)
-    fig.set_facecolor('#dbdbdb')
-    fig.set_edgecolor('#dbdbdb')
+    #fig.set_facecolor(toolbarColour)
+    fig.set_edgecolor(plottoolbarColour)
     #print(plt.style.available)
-    #plt.style.use('seaborn-paper')
+    
     plt.style.use("seaborn-v0_8-whitegrid")
     plt.rcParams["font.family"] = "Consolas"
     plt.rcParams["font.sans-serif"] = "Helvetica"
     plt.rcParams["font.size"] = 9
+    plt.rcParams['text.color'] = CHARCOAL
+    plt.rcParams['axes.labelcolor'] = plottextColour
+    plt.rcParams['xtick.color'] = plottextColour
+    plt.rcParams['ytick.color'] = plottextColour
     spectra_ax = fig.add_subplot(111)
     spectra_ax.set_xlabel('Energy (keV)')
     spectra_ax.set_ylabel('Counts')
@@ -1987,6 +2021,7 @@ if __name__ == '__main__':
     #spectra_ax.set_ylim(ymin=0, ymax=50000)
     #spectra_ax.autoscale_view()
     spectra_ax.autoscale(enable=True,tight=True)
+    #spectra_ax.set_facecolor('#434343')
     #spectra_ax.axhline(y=0, color='k')
     #spectra_ax.axvline(x=0, color='k')
     spectracanvas = FigureCanvasTkAgg(fig,master = spectraframe)
@@ -1994,12 +2029,12 @@ if __name__ == '__main__':
     spectracanvas.draw()
     spectratoolbar = NavigationToolbar2Tk(spectracanvas,spectraframe,pack_toolbar=False)
 
-    spectratoolbar.config(background='#dbdbdb')
-    spectratoolbar._message_label.config(background='#dbdbdb')
+    spectratoolbar.config(background=plottoolbarColour)
+    spectratoolbar._message_label.config(background=plottoolbarColour)
     spectracanvas.get_tk_widget().pack(side=tk.TOP, fill = 'both', expand = True, padx = 8, pady = [8,0])
     spectratoolbar.pack(side=tk.LEFT, fill = 'x', padx = 8, pady = 4, ipadx = 5)
     for child in spectratoolbar.winfo_children():
-        child.config(background='#dbdbdb')
+        child.config(background=plottoolbarColour)
 
     # Other Toolbar widgets
     button_configureemissionlines = ctk.CTkButton(spectraframe, width = 13, text = "Configure Emission Lines", command = configureEmissionLinesClicked)
@@ -2014,7 +2049,7 @@ if __name__ == '__main__':
 
     # Assays Frame Stuff
     assaysColumns = ('t_num', 't_app', 't_time', 't_timeelapsed')
-    assaysTable = Treeview(assaytableframe, columns = assaysColumns, height = "14",  selectmode = "browse", style = 'mystyle.Treeview')
+    assaysTable = Treeview(assaytableframe, columns = assaysColumns, height = "14",  selectmode = "browse")
     assaysTable.pack(side="top", fill="both", expand=True)
 
     assaysTable.heading('t_num', text = "Assay", anchor = tk.W, command=lambda _col='t_num': treeview_sort_column(assaysTable, _col, False))                  
@@ -2057,7 +2092,7 @@ if __name__ == '__main__':
     # resultsbox.configure(state = 'disabled')
 
     resultsColumns = ('results_Z', 'results_Compound', 'results_Concentration', 'results_Error')
-    resultsTable = Treeview(resultsframe, columns = resultsColumns, height = "14",  selectmode = "browse", style = 'mystyle.Treeview')
+    resultsTable = Treeview(resultsframe, columns = resultsColumns, height = "14",  selectmode = "browse")
     resultsTable.pack(side = tk.LEFT, fill = 'both', expand = True, padx=[8,0], pady=8)
 
     resultsTable.heading('results_Z', text = 'Z', anchor = tk.W, command=lambda _col='results_Z': treeview_sort_column(resultsTable, _col, False))    
@@ -2067,7 +2102,7 @@ if __name__ == '__main__':
 
     resultsTable.column('results_Z', minwidth = 25, width = 30, stretch = 0, anchor = tk.W)
     resultsTable.column('results_Compound', minwidth = 70, width = 70, stretch = 0, anchor = tk.W)
-    resultsTable.column('results_Concentration', minwidth = 120, width = 120, stretch = 0, anchor = tk.W)
+    resultsTable.column('results_Concentration', minwidth = 120, width = 120, stretch = 0, anchor = tk.E)
     resultsTable.column('results_Error', minwidth = 110, width = 120, anchor = tk.W)
 
     resultsTableScrollbarY = ctk.CTkScrollbar(resultsframe, command=resultsTable.yview)
