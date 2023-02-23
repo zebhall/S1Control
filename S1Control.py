@@ -1,11 +1,11 @@
 # S1Control by ZH for PSS
-versionNum = 'v0.4.0'
-versionDate = '2023/02/15'
+versionNum = 'v0.4.1'
+versionDate = '2023/02/23'
 
 import os
 import sys
 import threading
-from multiprocessing import Process
+# from multiprocessing import Process
 import time
 import pandas as pd
 import json
@@ -23,36 +23,43 @@ from dataclasses import dataclass
 from matplotlib.figure import Figure
 from matplotlib import style
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+from PIL import Image
+import csv
 
 
 
 @dataclass
 class Assay:
-    index: str
-    time_finished: str
-    time_elapsed: str
-    application: str
+    index: str              # Index num used to track order assays were taken in software. DOES NOT NECESSARILY EQUAL PDZ FILE NUMBER !!!!
+    date_completed: str     # Date str showing date assay was completed. format YYYY/MM/DD
+    time_completed: str     # Time str showing time assay was completed. format HH:mm:ss
+    time_elapsed: str       # Actual elapsed time for Assay (finish time minus start time). from Start pressed to assay completed. typically = (time_total_set + 5n), where n is number of phases
+    time_total_set: int     # Total num seconds set for the analysis, i.e. sum of all set phase lengths. (e.g. for 3-phase analysis set to 20s per phase, would equal 60)
+    cal_application: str    # Calibration Application used (e.g. GeoExploration, REE_IDX, etc)
+    cal_method: str         # Method of the calibration application (e.g. Oxide3Phase for GeoExploration)
     results: pd.DataFrame
     spectra: list
     specenergies: list
     legends: list
+    temps: str
+    note: str
 
 
 def instrument_Connect():
     global xrf
 
-    ping = os.system('ping -n 1 -w 40 '+XRF_IP)
+    ping = os.system('ping -n 1 -w 40 '+XRF_IP_USB)
     #print(f'ping = {ping}')
     if ping != 0:
-        if messagebox.askyesno(f'Connection Problem - S1Control {versionNum}', f'S1Control has not recieved a response from the instrument at {XRF_IP}, and is unable to connect. Would you like to continue trying to connect?'):
+        if messagebox.askyesno(f'Connection Problem - S1Control {versionNum}', f'S1Control has not recieved a response from the instrument at {XRF_IP_USB}, and is unable to connect. Would you like to continue trying to connect?'):
             connection_attempt_count = 0
             while ping != 0:       # ping will only equal 0 if there are no errors or timeouts
-                ping = os.system('ping -n 1 -w 40 '+XRF_IP)
+                ping = os.system('ping -n 1 -w 40 '+XRF_IP_USB)
                 time.sleep(0.1)
                 print(f'ping = {ping}')
                 connection_attempt_count += 1
                 if connection_attempt_count >= 5:
-                    if messagebox.askyesno(f'Connection Problem - S1Control {versionNum}', f'S1Control has still not recieved a response from the instrument at {XRF_IP}, and is still unable to connect. Would you like to continue trying to connect?'):
+                    if messagebox.askyesno(f'Connection Problem - S1Control {versionNum}', f'S1Control has still not recieved a response from the instrument at {XRF_IP_USB}, and is still unable to connect. Would you like to continue trying to connect?'):
                         connection_attempt_count = 0
                     else:
                         raise SystemExit(0)
@@ -64,7 +71,7 @@ def instrument_Connect():
             gui.destroy()
 
     try:
-        xrf.connect((XRF_IP, XRF_PORT))
+        xrf.connect((XRF_IP_USB, XRF_PORT_USB))
     except:
         print('Connection Error. Check instrument has booted to login screen and is properly connected before restarting the program.')
 
@@ -242,7 +249,9 @@ def recvData(s):
 
 
 def elementZtoSymbol(Z):        # Returns 1-2 character Element symbol as a string
-    if Z <= 118:
+    if Z == 0:
+        return ''
+    elif Z <= 118:
         elementSymbols = ['H', 'He', 'Li', 'Be', 'B', 'C', 'N', 'O', 'F', 'Ne', 'Na', 'Mg', 'Al', 'Si', 'P', 'S', 'Cl', 'Ar', 'K', 'Ca', 'Sc', 'Ti', 'V', 'Cr', 'Mn', 'Fe', 'Co', 'Ni', 'Cu', 'Zn', 'Ga', 'Ge', 'As', 'Se', 'Br', 'Kr', 'Rb', 'Sr', 'Y', 'Zr', 'Nb', 'Mo', 'Tc', 'Ru', 'Rh', 'Pd', 'Ag', 'Cd', 'In', 'Sn', 'Sb', 'Te', 'I', 'Xe', 'Cs', 'Ba', 'La', 'Ce', 'Pr', 'Nd', 'Pm', 'Sm', 'Eu', 'Gd', 'Tb', 'Dy', 'Ho', 'Er', 'Tm', 'Yb', 'Lu', 'Hf', 'Ta', 'W', 'Re', 'Os', 'Ir', 'Pt', 'Au', 'Hg', 'Tl', 'Pb', 'Bi', 'Po', 'At', 'Rn', 'Fr', 'Ra', 'Ac', 'Th', 'Pa', 'U', 'Np', 'Pu', 'Am', 'Cm', 'Bk', 'Cf', 'Es', 'Fm', 'Md', 'No', 'Lr', 'Rf', 'Db', 'Sg', 'Bh', 'Hs', 'Mt', 'Ds', 'Rg', 'Cn', 'Nh', 'Fl', 'Mc', 'Lv', 'Ts', 'Og']
         return elementSymbols[Z-1]
     else:
@@ -308,6 +317,7 @@ def initialiseLogFile():
     global logFilePath
     global driveFolderStr
     global instr_serialnumber
+    global datetimeString
         # Set PC user and name for log file
     try:
         pc_user = os.getlogin()
@@ -455,6 +465,7 @@ def xrfListenLoop():
     global s1ver_inlog
     global assay_start_time
     global assay_end_time
+    global assay_time_total_set_seconds
     global xraysonbar
     global assay_phase_spectrumpacketcounter
 
@@ -479,10 +490,14 @@ def xrfListenLoop():
                 if statusparam == 'Assay' and statustext == 'Start':
                     instr_currentphase = 0
                     instr_currentphaselength_s = int(phasedurations[instr_currentphase])
+                    assay_time_total_set_seconds = 0
+                    for dur in phasedurations:
+                        assay_time_total_set_seconds += int(dur)
                     assay_start_time = time.time()
                     instr_assayisrunning = True
                     assay_phase_spectrumpacketcounter = 0
                     xraysonbar.start()
+                    
                     if plotLiveSpectra:
                         clearCurrentSpectra()
 
@@ -494,26 +509,28 @@ def xrfListenLoop():
                     try:
                         instr_currentassayspectra.append(spectra[-1])
                         instr_currentassayspecenergies.append(specenergies[-1])
-                        legend = f"Phase {instr_currentphase+1}: {txt['sngHVADC']}kV, {round(float(txt['sngCurADC']),2)}μA"
+                        #legend = f"Phase {instr_currentphase+1}: {txt['sngHVADC']}kV, {round(float(txt['sngCurADC']),2)}\u03bcA"
+                        legend = f"Phase {instr_currentphase+1}({instr_currentphaselength_s}s): {txt['sngHVADC']}kV, {round(float(txt['sngCurADC']),2)}\u03bcA {txt['fltDescription']}"
                         instr_currentassaylegends.append(legend)
                         plotSpectrum(spectra[-1], specenergies[-1], plotphasecolours[instr_currentphase],legend)
                     except: printAndLog('Issue with Spectra experienced after completion of Assay.')
 
-                    printAndLog(f'Temps: Detector {instr_currentdettemp}°C, Ambient {instr_currentambtemp}°C')
+                    assay_finaltemps = f"Detector {instr_currentdettemp}°C, Ambient {instr_currentambtemp}°C"
+                    printAndLog(f'Temps: {assay_finaltemps}')
                     #printAndLog(f'Amb Temp F: {instr_currentambtemp_F}°F')
                     #instrument_QueryNoseTemp()
 
                     # add full assay with all phases to table and catalogue. this 'assay complete' response is usually recieved at very end of assay, when all other values are in place.
-                    try:
-                        completeAssay(instr_currentapplication, instr_currentassayresults, instr_currentassayspectra, instr_currentassayspecenergies, instr_currentassaylegends)
-                    except:
-                        printAndLog('Error: Assay results and spectra were unable to be saved to the table. Was the assay too short to have results? Or did an error occur?')
+                    if instr_currentassayresults.equals(defaultassayresults):
+                        completeAssay(instr_currentapplication, instr_currentmethod, assay_time_total_set_seconds, defaultassayresults, instr_currentassayspectra, instr_currentassayspecenergies, instr_currentassaylegends, assay_finaltemps)
+                    else:
+                        completeAssay(instr_currentapplication, instr_currentmethod, assay_time_total_set_seconds, instr_currentassayresults, instr_currentassayspectra, instr_currentassayspecenergies, instr_currentassaylegends, assay_finaltemps)
                     
                     #reset variables for next assay
                     instr_currentassayspectra = []
                     instr_currentassayspecenergies = []
                     instr_currentassaylegends = []
-                    instr_currentassayresults = instr_currentassayresults.iloc[0:0]
+                    instr_currentassayresults = defaultassayresults
 
                     instr_assayrepeatsleft -= 1
                     if instr_assayrepeatsleft <= 0:
@@ -533,7 +550,8 @@ def xrfListenLoop():
                     #try:
                     instr_currentassayspectra.append(spectra[-1])
                     instr_currentassayspecenergies.append(specenergies[-1])
-                    legend = f"Phase {instr_currentphase+1}: {txt['sngHVADC']}kV, {round(float(txt['sngCurADC']),2)}μA"
+                    legend = f"Phase {instr_currentphase+1}({instr_currentphaselength_s}s): {txt['sngHVADC']}kV, {round(float(txt['sngCurADC']),2)}\u03bcA {txt['fltDescription']}"
+                    #legend = f"Phase {instr_currentphase+1}: {txt['sngHVADC']}kV, {round(float(txt['sngCurADC']),2)}\u03bcA"
                     instr_currentassaylegends.append(legend)
 
                     #printAndLog(f'Temps: Detector {instr_currentdettemp}°C, Ambient {instr_currentambtemp}°F')
@@ -598,15 +616,15 @@ def xrfListenLoop():
                 if instr_detectortype[1] in 'PMK':  # Older detectors with Beryllium windows. eg SPX, SMA, SK6, etc
                     instr_detectorwindowtype = 'Beryllium'
                     try:
-                        instr_detectorwindowthickness = vers_info['Detector']['BerylliumWindowThicknessInuM'] + 'μM'
+                        instr_detectorwindowthickness = vers_info['Detector']['BerylliumWindowThicknessInuM'] + '\u03bcM'
                     except KeyError:
                         instr_detectorwindowthickness = 'Unknown'
                 if instr_detectortype[1] in 'G':
                     instr_detectorwindowtype = 'Graphene'
                     try:
-                        instr_detectorwindowthickness = vers_info['Detector']['GrapheneWindowThicknessInuM'] + 'μM'    # In case instrument def is wrong (eg. Martin has graphene det, but only beryllium thickness listed)
+                        instr_detectorwindowthickness = vers_info['Detector']['GrapheneWindowThicknessInuM'] + '\u03bcM'    # In case instrument def is wrong (eg. Martin has graphene det, but only beryllium thickness listed)
                     except KeyError:
-                        instr_detectorwindowthickness = '?μM'
+                        instr_detectorwindowthickness = '?\u03bcM'
                 instr_detectorresolution = vers_info['Detector']['TypicalResolutionIneV'] + 'eV'
                 instr_detectormaxTemp = vers_info['Detector']['OperatingTempMaxInC'] + '°C'
                 instr_detectorminTemp = vers_info['Detector']['OperatingTempMinInC'] + '°C'
@@ -617,8 +635,8 @@ def xrfListenLoop():
                 instr_sourcetargetName = elementZtoName(int(instr_sourcetargetZ))
                 instr_sourcemaxV = vers_info['XrayTube']['OperatingLimits']['MaxHighVoltage'] + 'kV'
                 instr_sourceminV = vers_info['XrayTube']['OperatingLimits']['MinHighVoltage'] + 'kV'
-                instr_sourcemaxI = vers_info['XrayTube']['OperatingLimits']['MaxAnodeCurrentInuA'] + 'μA'
-                instr_sourceminI = vers_info['XrayTube']['OperatingLimits']['MinAnodeCurrentInuA'] + 'μA'
+                instr_sourcemaxI = vers_info['XrayTube']['OperatingLimits']['MaxAnodeCurrentInuA'] + '\u03bcA'
+                instr_sourceminI = vers_info['XrayTube']['OperatingLimits']['MinAnodeCurrentInuA'] + '\u03bcA'
                 instr_sourcemaxP = vers_info['XrayTube']['OperatingLimits']['MaxOutputPowerInmW'] + 'mW'
                 instr_sourcespotsize = vers_info['SpotSize']['Size'] + 'mm'
                 instr_sourcehaschangeablecollimator = vers_info['HasChangeableCollimator']
@@ -873,6 +891,32 @@ def setSpectrum(data):
     instr_currentdettemp = round((instr_currentdettemp / 2), 2)     # halves and rounds (halves because see above comment)
     # printAndLog(f'Temps: Detector {instr_currentdettemp}°C, Ambient {instr_currentambtemp}°F')
 
+    e1 = elementZtoSymbol(int(txt['fltElement1']))
+    e2 = elementZtoSymbol(int(txt['fltElement2']))
+    e3 = elementZtoSymbol(int(txt['fltElement3']))
+
+    if txt['fltThickness1'] == 0:
+        t1 = ''
+    else:
+        t1 = f":{txt['fltThickness1']}\u03bcm"
+
+    if txt['fltThickness2'] == 0:
+        t2 = ''
+    else:
+        t2 = f":{txt['fltThickness2']}\u03bcm"
+        t1 = f"{t1}/"
+
+    if txt['fltThickness3'] == 0:
+        t3 = ''
+    else:
+        t3 = f":{txt['fltThickness3']}\u03bcm"
+        t2 = f"{t2}/"
+    
+    txt['fltDescription'] = f"({e1}{t1}{e2}{t2}{e3}{t3})"
+    if txt['fltDescription'] == '()':
+        txt['fltDescription'] = '(No Filter)'
+
+
     idx = len(spectra)-1
     if idx<0 or a['lPacket_Cnt'] == 1:
         spectra.append(a)
@@ -895,21 +939,28 @@ def setSpecEnergy(data):
 
 
 
-def completeAssay(assay_application:str, assay_results:pd.DataFrame, assay_spectra:list, assay_specenergies:list, assay_legends:list):
+def completeAssay(assay_application:str, assay_method:str, assay_time_total_set:int, assay_results:pd.DataFrame, assay_spectra:list, assay_specenergies:list, assay_legends:list, assay_finaltemps:str, assay_note:str=''):
     global assay_catalogue
     global assay_catalogue_num
     global assay_start_time
     global assay_end_time
 
+    t = time.localtime()
+
     newassay = Assay(index = str(assay_catalogue_num).zfill(4),
-                     time_finished = time.strftime("%H:%M:%S", time.localtime()),
+                     date_completed = time.strftime("%Y/%m/%d", t),
+                     time_completed = time.strftime("%H:%M:%S", t),
                      time_elapsed = f'{round((assay_end_time - assay_start_time),2)}s',
-                     application = assay_application,
+                     time_total_set = assay_time_total_set,
+                     cal_application = assay_application,
+                     cal_method = assay_method,
                      results = assay_results,
                      spectra = assay_spectra,
                      specenergies = assay_specenergies,
-                     legends=assay_legends
-                        )
+                     legends=assay_legends,
+                     temps= assay_finaltemps,
+                     note = assay_note
+                    )
 
     assay_catalogue_num+=1
 
@@ -920,13 +971,16 @@ def completeAssay(assay_application:str, assay_results:pd.DataFrame, assay_spect
     assay_catalogue.append(newassay)
     
     # add entry to assays table
-    assaysTable.insert(parent = '',index='end',iid = newassay.index, values = [newassay.index, newassay.application, newassay.time_finished, newassay.time_elapsed])
+    assaysTable.insert(parent = '',index='end',iid = newassay.index, values = [newassay.index, newassay.cal_application, newassay.time_completed, newassay.time_elapsed])
 
     # plot, display, and print to log
     plotAssay(newassay)
     displayResults(newassay)
     printAndLog(assay_results)
     printAndLog(f'Assay # {newassay.index} processed sucessfully ({newassay.time_elapsed})')
+    if enableautoassayCSV.get() == 'on':
+        saveAssayToCSV(newassay)
+
 
     # increment catalogue index number for next assay
 
@@ -1185,14 +1239,6 @@ def getNearbyEnergies(energy, qty):
     printAndLog(closest.to_string(index = False))
 
 
-def displayResults_logbox_deprecated(assay):    # OLD VERSION FOR TEXTBOX
-    global resultsbox
-    data = assay[3]
-    resultsbox.configure(state = 'normal')
-    resultsbox.delete(1.0,tk.END)
-    resultsbox.insert('end', data.to_string(index = False))
-    resultsbox.configure(state = 'disabled')
-
 def clearResultsfromTable():     # Clears all data from results table
     for item in resultsTable.get_children():
       resultsTable.delete(item)
@@ -1429,6 +1475,36 @@ def savePhaseTimes():
         msg = msg+ph3
     msg = msg+msg_end
     sendCommand(xrf,msg)
+
+# CTK appearance mode switcher
+def ctk_change_appearance_mode_event(new_appearance_mode: str):
+    global fig
+    global spectra_ax
+    ctk.set_appearance_mode(new_appearance_mode)
+    match new_appearance_mode:
+        case 'dark':
+            plottoolbarColour = '#4a4a4a'
+            treeviewColour_bg = '#4a4a4a'
+            plottextColour = WHITEISH
+        case 'light':
+            plottoolbarColour = '#dbdbdb'
+            treeviewColour_bg = '#dbdbdb'
+            plottextColour = CHARCOAL
+        case _:
+            plottoolbarColour = '#dbdbdb'
+            treeviewColour_bg = '#dbdbdb'
+            plottextColour = CHARCOAL
+    
+    fig.set_edgecolor = plottoolbarColour
+    fig.set_facecolor = plottoolbarColour
+    spectra_ax.set_facecolor = plottextColour
+    spectratoolbar.config(background=plottoolbarColour)
+    spectratoolbar._message_label.config(background=plottoolbarColour)
+    for child in spectratoolbar.winfo_children():
+        child.config(background=plottoolbarColour)
+    
+    plt.rcParams.update({'text.color': CHARCOAL,'axes.labelcolor':plottextColour, 'xtick.color':plottextColour, 'ytick.color':plottextColour})
+    plt.draw()
     
     
 def onClosing():
@@ -1490,11 +1566,6 @@ def clearEmissionLinesClicked():
 
 
 
-def lineCfgOnClosing():
-    # .withdraw() hides, .deiconify() brings back.
-    linecfgwindows[0].withdraw()
-
-
 def toggleEmissionLine(Z):
     global emissionLinesElementslist
     global emissionLineElementButtonIDs
@@ -1533,8 +1604,64 @@ def toggleEmissionLine(Z):
     #energies = [6.40, 7.06]
     linecfgwindows[0].update()
     plotEmissionLines()
-    
 
+
+def lineCfgOnClosing():
+    # .withdraw() hides, .deiconify() brings back.
+    linecfgwindows[0].withdraw()
+
+    
+def saveAssayToCSV(assay:Assay):
+    assayFolderName = f'Assays_{datetimeString}_{instr_serialnumber}'
+    assayFolderPath = f'{os.getcwd()}\Assays\{assayFolderName}'
+    assayFileName = f'{assay.index}_{assay.cal_application}_{datetimeString}.csv'
+
+    if not os.path.exists(assayFolderPath):
+        os.makedirs(assayFolderPath)
+
+    with open((f'{assayFolderPath}/{assayFileName}'), 'x', newline='', encoding= 'utf-8') as assayFile:
+            writer = csv.writer(assayFile)
+            writer.writerow(['Instrument',instr_serialnumber])
+            writer.writerow(['Date',assay.date_completed])
+            writer.writerow(['Time',assay.time_completed])
+            writer.writerow(['Assay #',assay.index])
+            writer.writerow(['Application',assay.cal_application])
+            writer.writerow(['Method',assay.cal_method])
+            writer.writerow(['Assay Duration (set)',f'{assay.time_total_set}s'])
+            writer.writerow(['Assay Duration (total actual)', assay.time_elapsed])
+            writer.writerow(['Temperature (Detector)', assay.temps.split(',')[0].split()[1].replace('°',' ')])
+            writer.writerow(['Temperature (Ambient)', assay.temps.split(',')[1].split()[1].replace('°',' ')])
+            writer.writerow(['Phase Count',len(assay.spectra)])
+            writer.writerow(['Phases', (assay.legends[0].replace('\u03bc','u') if 0 < len(assay.legends) else ''), (assay.legends[1].replace('\u03bc','u') if 1 < len(assay.legends) else ''), (assay.legends[2].replace('\u03bc','u') if 2 < len(assay.legends) else '')])
+            writer.writerow([' '])
+            writer.writerow([' '])
+            writer.writerow(['RESULTS:'])
+            writer.writerow(list(assay.results.columns))
+            for index, row in assay.results.iterrows():
+                writer.writerow(row)
+            writer.writerow([' '])
+            writer.writerow([' '])
+            writer.writerow(['SPECTRA:'])
+            writer.writerow(['eV Channel Start', (assay.specenergies[0]['fEVChanStart'] if 0 < len(assay.specenergies) else ''), (assay.specenergies[1]['fEVChanStart'] if 1 < len(assay.specenergies) else ''), (assay.specenergies[2]['fEVChanStart'] if 2 < len(assay.specenergies) else '')])
+            writer.writerow(['eV per Channel', (assay.specenergies[0]['fEVPerChannel'] if 0 < len(assay.specenergies) else ''), (assay.specenergies[1]['fEVPerChannel'] if 1 < len(assay.specenergies) else ''), (assay.specenergies[2]['fEVPerChannel'] if 2 < len(assay.specenergies) else '')])
+            writer.writerow([' '])
+            writer.writerow(['Energy (eV)', 'Counts (Phase 1)', 'Counts (Phase 2)', 'Counts (Phase 3)',])
+            n = 0
+            inc = assay.specenergies[0]['fEVPerChannel']
+            energy = assay.specenergies[0]['fEVChanStart']
+
+            phasect = len(assay.spectra)
+            for channel in assay.spectra[0]['data']:
+                writer.writerow([energy ,(assay.spectra[0]['data'][n] if 0 < phasect else ''), (assay.spectra[1]['data'][n] if 1 < phasect else ''), (assay.spectra[2]['data'][n] if 2 < phasect else '')])
+                energy += inc
+                n += 1
+
+            #writer.writerow(['']) want to put dead time % here?
+
+
+            # for row in timestamps:
+            #     writer.writerow(row)
+    printAndLog(f'Assay # {assay.index} saved as CSV file.')
 
 
 if __name__ == '__main__':
@@ -1567,7 +1694,7 @@ if __name__ == '__main__':
     buttonfg3 = WHITEISH
     textfg1 = CHARCOAL
 
-    ctk.set_appearance_mode("system")  # Modes: system (default), light, dark
+    ctk.set_appearance_mode("dark")  # Modes: system (default), light, dark
     ctk.set_default_color_theme("blue")  # Themes: blue (default), dark-blue, green
 
     gui = ctk.CTk()
@@ -1575,8 +1702,15 @@ if __name__ == '__main__':
     #gui.wm_attributes('-toolwindow', 'True',)
     gui.geometry('+5+5')
     #gui.geometry('1380x855')
+
+    # Icons and Resources
     iconpath = resource_path("pss_lb.ico")
     energiescsvpath = resource_path("energies.csv")
+    #consecutive_iconpath = resource_path("repeat.svg")
+    #consecutive_iconpath_darkmode = resource_path("repeat_w.svg")
+    #icon_consecutive = ctk.CTkImage(light_image=Image.open(consecutive_iconpath), dark_image=Image.open(consecutive_iconpath_darkmode), size=(20, 20))
+
+
     gui.iconbitmap(iconpath)
 
     # Fonts
@@ -1611,14 +1745,17 @@ if __name__ == '__main__':
 
     match ctk.get_appearance_mode():
         case 'Dark':
+            plotCTKColour = ('#dbdbdb','#4a4a4a')
             plottoolbarColour = '#4a4a4a'
             treeviewColour_bg = '#4a4a4a'
             plottextColour = WHITEISH
         case 'Light':
+            plotCTKColour = ('#dbdbdb','#4a4a4a')
             plottoolbarColour = '#dbdbdb'
             treeviewColour_bg = '#dbdbdb'
             plottextColour = CHARCOAL
         case _:
+            plotCTKColour = ('#dbdbdb','#4a4a4a')
             plottoolbarColour = '#dbdbdb'
             treeviewColour_bg = '#dbdbdb'
             plottextColour = CHARCOAL
@@ -1676,12 +1813,20 @@ if __name__ == '__main__':
     instr_currentassayspectra = []
     instr_currentassayspecenergies = []
     instr_currentassaylegends = []
+    #instr_currentassayresults = 
     instr_currentambtemp = ''
     instr_currentdettemp = ''
 
-    XRF_IP = '192.168.137.139'      
-    XRF_IP_ALTERNATE = '190.168.137.139' # In some VERY UNUSUAL cases, I have seen instuments come back from Bruker servicing with this IP changed to 190 instead of 192. Worth checking if it breaks.
-    XRF_PORT = 55204
+    # CONNECTION DETAILS FOR TCP/IP VIA USB (Recommended)
+    XRF_IP_USB = '192.168.137.139'
+    XRF_PORT_USB = 55204
+
+    # CONNECTION DETAILS FOR WIFI  (Not Recommended - Also, DHCP will cause IP to change. Port may change as well?) Wifi is unreliable and prone to massive packet loss and delayed commands/info transmit.
+    XRF_IP_WIFI = '192.168.153.167'   # '192.168.153.167:55101' found to work for ruffo when on phone hotspot network. both values may change depending on network settings?
+    XRF_PORT_WIFI = 55101
+
+    XRF_IP_USB_ALTERNATE = '190.168.137.139' # In some VERY UNUSUAL cases, I have seen instuments come back from Bruker servicing with this IP changed to 190 instead of 192. Worth checking if it breaks.
+    
     xrf =  socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     # BRUKER API COMMANDS to be used with sendCommand
@@ -1866,12 +2011,12 @@ if __name__ == '__main__':
     
     # print(element_colour_dict)
 
-
-
-
-    
-
-
+    # Default DF to use in case no results provided.
+    defaultassayresults = pd.DataFrame.from_dict({
+                    'Z': [0],
+                    'Compound': ['No Results'],
+                    'Concentration(%)': [0],
+                    'Error(1SD)': [0]})
 
     # Frames
     # LHSframe = ctk.CTkFrame(gui, width=340, corner_radius=0)
@@ -1886,7 +2031,7 @@ if __name__ == '__main__':
 
     # spectraframe = ctk.CTkFrame(RHSframe, width = 700, height = 50, corner_radius = 5)
     # spectraframe.grid(row=0, column=0, pady = 10, padx = 10, ipadx = 10, ipady = 5, sticky= tk.NSEW)
-    spectraframe = ctk.CTkFrame(RHSframe, width = 700, height = 50, corner_radius = 5, fg_color=plottoolbarColour)
+    spectraframe = ctk.CTkFrame(RHSframe, width = 700, height = 50, corner_radius = 5, fg_color=plotCTKColour)
     spectraframe.pack(side=tk.TOP, fill = 'both', anchor = tk.N, expand = True, padx = 8, pady = [8,4], ipadx = 4, ipady = 4)
 
     # resultsframe = ctk.CTkFrame(RHSframe, width = 700, height = 300)
@@ -1924,10 +2069,12 @@ if __name__ == '__main__':
     #ctrltabview.grid(row=1, column=1, padx=10, pady=[10, 5], sticky=tk.NSEW)
     ctrltabview.pack(side = tk.TOP, anchor = tk.N, fill = 'x', expand = False, padx=8, pady=[0, 4])
     ctrltabview.add('Assay Controls')
-    ctrltabview.add('Instrument Settings')
+    ctrltabview.add('Instrument')
+    ctrltabview.add('Options')    
     ctrltabview.add('About')
     ctrltabview.tab('Assay Controls').grid_columnconfigure(0, weight=1)
-    ctrltabview.tab('Instrument Settings').grid_columnconfigure(0, weight=1)
+    ctrltabview.tab('Instrument').grid_columnconfigure(0, weight=1)
+    ctrltabview.tab('Options').grid_columnconfigure(1, weight=1)
     ctrltabview.tab('About').grid_columnconfigure(0, weight=1)
 
     appmethodframe = ctk.CTkFrame(ctrltabview.tab('Assay Controls'), fg_color= ('#c5c5c5','#444444'))
@@ -1950,26 +2097,36 @@ if __name__ == '__main__':
     #button_startlistener = tk.Button(width = 15, text = "start listen", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = lambda:xrfListenLoop_Start(None)).pack(ipadx=8,ipady=2)
 
     #button_getinstdef = tk.Button(width = 15, text = "get instdef", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = getInfoClicked).pack(ipadx=8,ipady=2)
-    # button_enablespectra = ctk.CTkButton(ctrltabview.tab("Instrument Settings"), width = 13, text = "Enable Spectra Transmit", command = instrument_ConfigureTransmitSpectraEnable)
+
+    # button_enablespectra = ctk.CTkButton(ctrltabview.tab("Instrument"), width = 13, text = "Enable Spectra Transmit", command = instrument_ConfigureTransmitSpectraEnable)
     # button_enablespectra.grid(row=1, column=0, padx=4, pady=4, sticky=tk.NSEW)
-    button_disablespectra = ctk.CTkButton(ctrltabview.tab("Instrument Settings"), width = 13, text = "Disable Spectra Transmit", command = instrument_ConfigureTransmitSpectraDisable)
-    button_disablespectra.grid(row=1, column=0, padx=4, pady=4, sticky=tk.NSEW)
-    button_setsystemtime = ctk.CTkButton(ctrltabview.tab("Instrument Settings"), width = 13, text = "Sync System Time", command = instrument_ConfigureSystemTime)
-    button_setsystemtime.grid(row=1, column=1, padx=4, pady=4, sticky=tk.NSEW)
 
-    button_gets1softwareversion = ctk.CTkButton(ctrltabview.tab("Instrument Settings"), width = 13, text = "Check Software Version", command = instrument_QuerySoftwareVersion)
-    button_gets1softwareversion.grid(row=2, column=0, padx=4, pady=4, sticky=tk.NSEW)
+    # button_disablespectra = ctk.CTkButton(ctrltabview.tab("Instrument"), width = 13, text = "Disable Spectra Transmit", command = instrument_ConfigureTransmitSpectraDisable)
+    # button_disablespectra.grid(row=2, column=0, padx=4, pady=4, sticky=tk.NSEW)
 
-    button_getnosetemp = ctk.CTkButton(ctrltabview.tab("Instrument Settings"), width = 13, text = "Get Nose Temp", command = instrument_QueryNoseTemp)
-    button_getnosetemp.grid(row=2, column=1, padx=4, pady=4, sticky=tk.NSEW)
+    button_setsystemtime = ctk.CTkButton(ctrltabview.tab("Instrument"), width = 13, text = "Sync System Time", command = instrument_ConfigureSystemTime)
+    button_setsystemtime.grid(row=2, column=0, padx=4, pady=4, sticky=tk.NSEW)
+
+    button_gets1softwareversion = ctk.CTkButton(ctrltabview.tab("Instrument"), width = 13, text = "Check Software Version", command = instrument_QuerySoftwareVersion)
+    button_gets1softwareversion.grid(row=1, column=0, padx=4, pady=4, sticky=tk.NSEW)
+
+    button_getnosetemp = ctk.CTkButton(ctrltabview.tab("Instrument"), width = 13, text = "Get Nose Temp", command = instrument_QueryNoseTemp)
+    button_getnosetemp.grid(row=3, column=0, padx=4, pady=4, sticky=tk.NSEW)
 
 
     #button_getapplicationprefs = tk.Button(configframe, width = 25, text = "get current app prefs", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = instrument_QueryCurrentApplicationPreferences)
     #button_getapplicationprefs.grid(row=7, column=1, padx=2, pady=2, ipadx=4, ipady=0, sticky=tk.NSEW)
 
-    # button_getapplicationphasetimes = ctk.CTkButton(ctrltabview.tab("Instrument Settings"), width = 13, text = "Get Phase Times", command = instrument_QueryCurrentApplicationPhaseTimes)
+    # button_getapplicationphasetimes = ctk.CTkButton(ctrltabview.tab("Instrument"), width = 13, text = "Get Phase Times", command = instrument_QueryCurrentApplicationPhaseTimes)
     # button_getapplicationphasetimes.grid(row=2, column=1, padx=4, pady=4, sticky=tk.NSEW)
 
+    enableautoassayCSV = tk.StringVar(value='on')
+    checkbox_enableautoassayCSV = ctk.CTkCheckBox(ctrltabview.tab('Options'), text= 'Automatically Save Assay CSV Files', variable= enableautoassayCSV, onvalue= 'on', offvalue= 'off')
+    checkbox_enableautoassayCSV.grid(row=1, column=1, padx=4, pady=4, sticky=tk.NSEW)
+
+    enabledarkmode = tk.StringVar(value='dark')
+    checkbox_enabledarkmode = ctk.CTkCheckBox(ctrltabview.tab('Options'), text= 'Enable Dark Mode', variable= enabledarkmode, onvalue= 'dark', offvalue= 'light', command=lambda:ctk_change_appearance_mode_event(enabledarkmode.get()))
+    checkbox_enabledarkmode.grid(row=2, column=1, padx=4, pady=4, sticky=tk.NSEW)
 
     # Current Instrument Info stuff
     # label_currentapplication_text = ctk.StringVar()
@@ -1980,6 +2137,7 @@ if __name__ == '__main__':
 
     # Consecutive Tests Section
     repeats_choice_var = ctk.StringVar(value='\u2B6F Consecutive')
+    #repeats_choice_var = ctk.StringVar(value='Consecutive')
     repeats_choice_list = ['1','2','3','4','5','6','7','8','9','10','15','20','50','100']
     dropdown_repeattests = ctk.CTkOptionMenu(ctrltabview.tab("Assay Controls"), variable=repeats_choice_var, values=repeats_choice_list, command=repeatsChoiceMade, dynamic_resizing=False)
     dropdown_repeattests.grid(row=1,column=1,padx=4, pady=4, sticky=tk.NSEW)
@@ -2014,13 +2172,19 @@ if __name__ == '__main__':
     plt.rcParams['axes.labelcolor'] = plottextColour
     plt.rcParams['xtick.color'] = plottextColour
     plt.rcParams['ytick.color'] = plottextColour
+    plt.rcParams['path.simplify'] = True
+    plt.rcParams["path.simplify_threshold"] = 0.1   # 0.0 no simplification, 1.0 full simplification. 0.111111 is def. 0.0 supposed to be faster, but did not see significant performance improvement.
+
+
     spectra_ax = fig.add_subplot(111)
     spectra_ax.set_xlabel('Energy (keV)')
     spectra_ax.set_ylabel('Counts')
-    spectra_ax.set_xlim(xmin=0, xmax=50)
-    #spectra_ax.set_ylim(ymin=0, ymax=50000)
+    spectra_ax.set_xlim(xmin=0, xmax=40)
+    spectra_ax.set_ylim(ymin=0, ymax=10000)
     #spectra_ax.autoscale_view()
-    spectra_ax.autoscale(enable=True,tight=True)
+    spectra_ax.autoscale(enable=True,tight=False)
+    spectra_ax.locator_params(axis='x', nbins=23)
+    spectra_ax.locator_params(axis='y', nbins=10)
     #spectra_ax.set_facecolor('#434343')
     #spectra_ax.axhline(y=0, color='k')
     #spectra_ax.axvline(x=0, color='k')
@@ -2113,7 +2277,6 @@ if __name__ == '__main__':
 
     tables.append(resultsTable)
 
-
     logFileName = ""
 
     # Begin Instrument Connection
@@ -2129,10 +2292,13 @@ if __name__ == '__main__':
     instrument_GetInfo()        # Get info from IDF for log file NAMING purposes
     time.sleep(0.3)
     initialiseLogFile()     # Must be called after instrument and listen loop are connected and started, and getinfo has been called once, and time has been allowed for loop to read all info into vars
+    
     try: gui.title(f"S1Control - {driveFolderStr}")
     except: pass
+    
     if instr_isloggedin == False:
         instrument_Login()
+
     time.sleep(0.05)
     instrument_SetImportantStartupConfigurables()
     time.sleep(0.05)

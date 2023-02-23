@@ -1,0 +1,12 @@
+Instrument,800N8573
+Date,2023/02/23
+Time,11:56:14
+Assay #,0001
+Application,Geo
+Method,Geo
+Assay Duration (set),30s
+Assay Duration (total actual),41.91s
+Phase Count,3
+eV Channel Start,0.2940753400325775,-0.02487305924296379,-0.10188724845647812
+eV per Channel,19.983224868774414,19.983224868774414,19.983224868774414
+""
