@@ -18,13 +18,16 @@
   <a target="code" href="///C:/Users/user/Documents/GitHub/S1Control/S1Control.py" type="text/plain"><tt>S1Control.py</tt></a>
 <span class="moduletype">Script</span>  <div class="import">
 imports:
-    <a href="#_collections_abc">_collections_abc</a>
+    <a href="#PIL">PIL</a>
+ &#8226;   <a href="#PIL.Image">PIL.Image</a>
+ &#8226;   <a href="#_collections_abc">_collections_abc</a>
  &#8226;   <a href="#_weakrefset">_weakrefset</a>
  &#8226;   <a href="#abc">abc</a>
  &#8226;   <a href="#codecs">codecs</a>
  &#8226;   <a href="#collections">collections</a>
  &#8226;   <a href="#collections.abc">collections.abc</a>
  &#8226;   <a href="#copyreg">copyreg</a>
+ &#8226;   <a href="#csv">csv</a>
  &#8226;   <a href="#customtkinter">customtkinter</a>
  &#8226;   <a href="#dataclasses">dataclasses</a>
  &#8226;   <a href="#encodings">encodings</a>
@@ -164,8 +167,6 @@ imports:
  &#8226;   <a href="#matplotlib.figure">matplotlib.figure</a>
  &#8226;   <a href="#matplotlib.pyplot">matplotlib.pyplot</a>
  &#8226;   <a href="#matplotlib.style">matplotlib.style</a>
- &#8226;   <a href="#multiprocessing">multiprocessing</a>
- &#8226;   <a href="#multiprocessing.Process">multiprocessing.Process</a>
  &#8226;   <a href="#ntpath">ntpath</a>
  &#8226;   <a href="#numpy">numpy</a>
  &#8226;   <a href="#operator">operator</a>
@@ -1011,6 +1012,7 @@ imported by:
  &#8226;   <a href="#PIL._version">PIL._version</a>
  &#8226;   <a href="#PIL._webp">PIL._webp</a>
  &#8226;   <a href="#PIL.features">PIL.features</a>
+ &#8226;   <a href="#S1Control.py">S1Control.py</a>
  &#8226;   <a href="#customtkinter.windows.widgets.image.ctk_image">customtkinter.windows.widgets.image.ctk_image</a>
  &#8226;   <a href="#matplotlib.backends._backend_tk">matplotlib.backends._backend_tk</a>
  &#8226;   <a href="#matplotlib.backends.backend_webagg_core">matplotlib.backends.backend_webagg_core</a>
@@ -1631,6 +1633,7 @@ imported by:
  &#8226;   <a href="#PIL.XbmImagePlugin">PIL.XbmImagePlugin</a>
  &#8226;   <a href="#PIL.XpmImagePlugin">PIL.XpmImagePlugin</a>
  &#8226;   <a href="#PIL.features">PIL.features</a>
+ &#8226;   <a href="#S1Control.py">S1Control.py</a>
  &#8226;   <a href="#customtkinter.windows.widgets.image.ctk_image">customtkinter.windows.widgets.image.ctk_image</a>
  &#8226;   <a href="#matplotlib.backends._backend_tk">matplotlib.backends._backend_tk</a>
  &#8226;   <a href="#matplotlib.backends.backend_webagg_core">matplotlib.backends.backend_webagg_core</a>
@@ -6709,7 +6712,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#importlib.metadata">importlib.metadata</a>
+    <a href="#S1Control.py">S1Control.py</a>
+ &#8226;   <a href="#importlib.metadata">importlib.metadata</a>
  &#8226;   <a href="#pandas._testing.contexts">pandas._testing.contexts</a>
  &#8226;   <a href="#pandas.core.arrays.categorical">pandas.core.arrays.categorical</a>
  &#8226;   <a href="#pandas.io.formats.csvs">pandas.io.formats.csvs</a>
@@ -13690,7 +13694,6 @@ imports:
  &#8226;   <a href="#importlib">importlib</a>
  &#8226;   <a href="#importlib._bootstrap">importlib._bootstrap</a>
  &#8226;   <a href="#importlib._bootstrap_external">importlib._bootstrap_external</a>
- &#8226;   <a href="#importlib.machinery">importlib.machinery</a>
  &#8226;   <a href="#sys">sys</a>
  &#8226;   <a href="#warnings">warnings</a>
 
@@ -13847,7 +13850,6 @@ imports:
 imported by:
     <a href="#ctypes.util">ctypes.util</a>
  &#8226;   <a href="#imp">imp</a>
- &#8226;   <a href="#importlib">importlib</a>
  &#8226;   <a href="#importlib.abc">importlib.abc</a>
  &#8226;   <a href="#inspect">inspect</a>
  &#8226;   <a href="#numpy.compat.py3k">numpy.compat.py3k</a>
@@ -18560,7 +18562,6 @@ imports:
     <a href="#multiprocessing">multiprocessing</a>
  &#8226;   <a href="#multiprocessing.AuthenticationError">multiprocessing.AuthenticationError</a>
  &#8226;   <a href="#multiprocessing.BufferTooShort">multiprocessing.BufferTooShort</a>
- &#8226;   <a href="#multiprocessing.Process">multiprocessing.Process</a>
  &#8226;   <a href="#multiprocessing.TimeoutError">multiprocessing.TimeoutError</a>
  &#8226;   <a href="#multiprocessing.connection">multiprocessing.connection</a>
  &#8226;   <a href="#multiprocessing.context">multiprocessing.context</a>
@@ -18581,8 +18582,7 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#S1Control.py">S1Control.py</a>
- &#8226;   <a href="#concurrent.futures.process">concurrent.futures.process</a>
+    <a href="#concurrent.futures.process">concurrent.futures.process</a>
  &#8226;   <a href="#multiprocessing">multiprocessing</a>
  &#8226;   <a href="#multiprocessing.connection">multiprocessing.connection</a>
  &#8226;   <a href="#multiprocessing.context">multiprocessing.context</a>
@@ -18630,18 +18630,6 @@ imported by:
 imported by:
     <a href="#multiprocessing">multiprocessing</a>
  &#8226;   <a href="#multiprocessing.connection">multiprocessing.connection</a>
-
-  </div>
-
-</div>
-
-<div class="node">
-  <a name="multiprocessing.Process"></a>
-  <a target="code" href="" type="text/plain"><tt>multiprocessing.Process</tt></a>
-<span class="moduletype">MissingModule</span>  <div class="import">
-imported by:
-    <a href="#S1Control.py">S1Control.py</a>
- &#8226;   <a href="#multiprocessing">multiprocessing</a>
 
   </div>
 

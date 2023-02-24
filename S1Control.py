@@ -1,11 +1,10 @@
 # S1Control by ZH for PSS
-versionNum = 'v0.4.1'
-versionDate = '2023/02/23'
+versionNum = 'v0.4.2'
+versionDate = '2023/02/24'
 
 import os
 import sys
 import threading
-# from multiprocessing import Process
 import time
 import pandas as pd
 import json
@@ -113,8 +112,6 @@ def instrument_QueryCurrentApplicationPhaseTimes():
     sendCommand(xrf, bruker_query_currentapplicationphasetimes)
 
 def instrument_QuerySoftwareVersion():
-    global s1ver_inlog
-    s1ver_inlog = False
     sendCommand(xrf, bruker_query_softwareversion)
 
 def instrument_QueryNoseTemp():
@@ -462,7 +459,7 @@ def xrfListenLoop():
     global instr_DANGER_stringvar
     global instr_assayisrunning
     global instr_currentnosetemp
-    global s1ver_inlog
+    global s1vermanuallyrequested
     global assay_start_time
     global assay_end_time
     global assay_time_total_set_seconds
@@ -653,11 +650,8 @@ def xrfListenLoop():
                 printAndLog(f'Model: {instr_model}')
                 printAndLog(f'Serial Number: {instr_serialnumber}')
                 printAndLog(f'Build Number: {instr_buildnumber}')
-                try: 
-                    printAndLog(f'Software: S1 Version {instr_softwareS1version}')
-                    s1ver_inlog = True
-                except: 
-                    s1ver_inlog = False
+                try: printAndLog(f'Software: S1 Version {instr_softwareS1version}')
+                except: pass
                 printAndLog(f'Firmware: SuP {instr_firmwareSUPversion}, UuP {instr_firmwareUUPversion}')
                 printAndLog(f'Detector: {instr_detectormodel}')
                 printAndLog(f'Detector Specs: {instr_detectortype} - {instr_detectorwindowthickness} {instr_detectorwindowtype} window, {instr_detectorresolution} resolution, operating temps {instr_detectormaxTemp} - {instr_detectorminTemp}')
@@ -781,11 +775,9 @@ def xrfListenLoop():
             elif ('@parameter' in data['Response']) and (data['Response']['@parameter'] == 'version'):
                 try: instr_softwareS1version = data['Response']['#text']
                 except: instr_softwareS1version = 'UNKNOWN'
-                try: 
-                    if s1ver_inlog == False:
-                        printAndLog(f'Software: S1 Version {instr_softwareS1version}')
-                        s1ver_inlog = True
-                except: pass
+                if s1vermanuallyrequested == True:
+                    printAndLog(f'Software: S1 Version {instr_softwareS1version}')
+                
             
             # Secondary Response for Assay Start and Stop for some instruments??? Idk why, should NOT RELY ON
             elif ('#text' in data['Response']) and ('Assay St' in data['Response']['#text']):
@@ -1102,7 +1094,10 @@ def plotSpectrum(spectrum, specenergy, colour, spectrum_legend):
     bins = bins / 1000       # TO GET keV instead of eV
 
     plottedspectrum = spectra_ax.plot(bins, counts, color=colour,linewidth=1, label=spectrum_legend)
-    spectra_ax.legend()
+    leg = spectra_ax.legend()
+    for line, text in zip(leg.get_lines(), leg.get_texts()):
+        text.set_color(plottextColour)
+
     
     plottedspectra.append(plottedspectrum)  # adds spectrum to list of currently plotted spectra, for ease of removal later
 
@@ -1160,7 +1155,9 @@ def plotEmissionLines():
     
     #labelLines(plottedemissionlineslist, align=True, yoffsets=1)
 
-    spectra_ax.legend()
+    leg = spectra_ax.legend()
+    for line, text in zip(leg.get_lines(), leg.get_texts()):
+        text.set_color(plottextColour)
     spectratoolbar.update()
     spectracanvas.draw()
 
@@ -1181,7 +1178,9 @@ def clearCurrentEmissionLines():
     #     print('error in clearing current emission lines')
     #     pass
 
-    spectra_ax.legend()
+    leg = spectra_ax.legend()
+    for line, text in zip(leg.get_lines(), leg.get_texts()):
+        text.set_color(plottextColour)
     spectratoolbar.update()
     spectracanvas.draw()
         
@@ -1258,6 +1257,11 @@ def loginClicked():
 def getInfoClicked():
     instrument_GetInfo()
     #getinfo_thread = threading.Thread(target = instrument_GetInfo).start()
+
+def getS1verClicked():
+    global s1vermanuallyrequested
+    s1vermanuallyrequested = True
+    instrument_QuerySoftwareVersion()
 
 def startAssayClicked():
     global instr_assayisrunning
@@ -1478,34 +1482,54 @@ def savePhaseTimes():
 
 # CTK appearance mode switcher
 def ctk_change_appearance_mode_event(new_appearance_mode: str):
-    global fig
-    global spectra_ax
     ctk.set_appearance_mode(new_appearance_mode)
+    global plottoolbarColour
+    global treeviewColour_bg
+    global plotbgColour
+    global plottextColour
+    global plotgridColour
     match new_appearance_mode:
         case 'dark':
             plottoolbarColour = '#4a4a4a'
             treeviewColour_bg = '#4a4a4a'
+            plotbgColour = '#414141'
             plottextColour = WHITEISH
+            plotgridColour = '#666666'
         case 'light':
             plottoolbarColour = '#dbdbdb'
-            treeviewColour_bg = '#dbdbdb'
+            treeviewColour_bg = '#FFFFFF'
+            plotbgColour = '#F5F5F5'
             plottextColour = CHARCOAL
+            plotgridColour = '#DCDCDC'
         case _:
             plottoolbarColour = '#dbdbdb'
-            treeviewColour_bg = '#dbdbdb'
+            treeviewColour_bg = '#FFFFFF'
+            plotbgColour = '#F5F5F5'
             plottextColour = CHARCOAL
+            plotgridColour = '#DCDCDC'
     
-    fig.set_edgecolor = plottoolbarColour
-    fig.set_facecolor = plottoolbarColour
-    spectra_ax.set_facecolor = plottextColour
+    setPlotColours()
+
+    
+    
+    #plt.rcParams.update({'text.color': CHARCOAL,'axes.labelcolor':plottextColour, 'axes.facecolor':plotbgColour, 'xtick.color':plottextColour, 'ytick.color':plottextColour, 'figure.facecolor':plotbgColour, 'figure.edgecolor':plottoolbarColour})
+
+def setPlotColours():
+    global fig
+    global spectra_ax
+    fig.patch.set_edgecolor(plottoolbarColour)
+    fig.patch.set_facecolor(plottoolbarColour)
+    spectra_ax.set_facecolor(plotbgColour)
+    spectra_ax.tick_params(axis='both', color=plottextColour, labelcolor=plottextColour)
+    spectra_ax.yaxis.label.set_color(plottextColour)
+    spectra_ax.xaxis.label.set_color(plottextColour)
+    spectra_ax.yaxis.grid(color=plotgridColour)
+    spectra_ax.xaxis.grid(color=plotgridColour)  
     spectratoolbar.config(background=plottoolbarColour)
     spectratoolbar._message_label.config(background=plottoolbarColour)
     for child in spectratoolbar.winfo_children():
         child.config(background=plottoolbarColour)
-    
-    plt.rcParams.update({'text.color': CHARCOAL,'axes.labelcolor':plottextColour, 'xtick.color':plottextColour, 'ytick.color':plottextColour})
-    plt.draw()
-    
+
     
 def onClosing():
     if messagebox.askokcancel("Quit", "Do you want to quit?"):
@@ -1694,14 +1718,18 @@ if __name__ == '__main__':
     buttonfg3 = WHITEISH
     textfg1 = CHARCOAL
 
-    ctk.set_appearance_mode("dark")  # Modes: system (default), light, dark
-    ctk.set_default_color_theme("blue")  # Themes: blue (default), dark-blue, green
 
     gui = ctk.CTk()
     gui.title("S1Control")
-    #gui.wm_attributes('-toolwindow', 'True',)
     gui.geometry('+5+5')
     #gui.geometry('1380x855')
+
+
+    # APPEARANCE MODE DEFAULT AND STRVAR FOR TOGGLE - THESE TWO MUST MATCH ################################################################################
+    ctk.set_appearance_mode("light")  # Modes: system (default), light, dark
+    enabledarkmode = tk.StringVar(value='light')  # The default state of this variable must be changed to match the default setting of ctk appearancemode.
+
+    ctk.set_default_color_theme("blue")  # Themes: blue (default), dark-blue, green
 
     # Icons and Resources
     iconpath = resource_path("pss_lb.ico")
@@ -1709,8 +1737,7 @@ if __name__ == '__main__':
     #consecutive_iconpath = resource_path("repeat.svg")
     #consecutive_iconpath_darkmode = resource_path("repeat_w.svg")
     #icon_consecutive = ctk.CTkImage(light_image=Image.open(consecutive_iconpath), dark_image=Image.open(consecutive_iconpath_darkmode), size=(20, 20))
-
-
+    
     gui.iconbitmap(iconpath)
 
     # Fonts
@@ -1742,24 +1769,29 @@ if __name__ == '__main__':
     ctk_consolas20B = ctk.CTkFont(family = 'Consolas', size = 20, weight = 'bold')
     ctk_default_largeB = ctk.CTkFont(weight = 'bold')
 
+    plotCTKColour = ('#dbdbdb','#4a4a4a')
 
     match ctk.get_appearance_mode():
         case 'Dark':
-            plotCTKColour = ('#dbdbdb','#4a4a4a')
             plottoolbarColour = '#4a4a4a'
             treeviewColour_bg = '#4a4a4a'
+            plotbgColour = '#414141'
             plottextColour = WHITEISH
+            plotgridColour = '#666666'
         case 'Light':
-            plotCTKColour = ('#dbdbdb','#4a4a4a')
             plottoolbarColour = '#dbdbdb'
-            treeviewColour_bg = '#dbdbdb'
+            treeviewColour_bg = '#FFFFFF'
+            plotbgColour = '#F5F5F5'
             plottextColour = CHARCOAL
+            plotgridColour = '#DCDCDC'
         case _:
-            plotCTKColour = ('#dbdbdb','#4a4a4a')
             plottoolbarColour = '#dbdbdb'
-            treeviewColour_bg = '#dbdbdb'
+            treeviewColour_bg = '#FFFFFF'
+            plotbgColour = '#F5F5F5'
             plottextColour = CHARCOAL
+            plotgridColour = '#DCDCDC'
 
+    
     # Styles
     guiStyle = ttk.Style()
     #guiStyle.theme_use('clam')
@@ -1804,7 +1836,6 @@ if __name__ == '__main__':
     plotphasecolours = ['#5BB5F1', '#53bf47', '#F15BB5', '#FEE440', '#9B5DE5']
     plottedspectra = []
     plottedemissionlineslist = []
-    
     assay_catalogue = []
     assay_catalogue_num = 1
 
@@ -1856,6 +1887,7 @@ if __name__ == '__main__':
     instr_approxsingleassaytime = 0
     plotLiveSpectra = True     # used for choosing whether live spectra should be plotted
     driveFolderStr = ''
+    s1vermanuallyrequested = False
 
     # Consts for datatypes on recv
     COOKED_SPECTRUM = '1'
@@ -2104,13 +2136,13 @@ if __name__ == '__main__':
     # button_disablespectra = ctk.CTkButton(ctrltabview.tab("Instrument"), width = 13, text = "Disable Spectra Transmit", command = instrument_ConfigureTransmitSpectraDisable)
     # button_disablespectra.grid(row=2, column=0, padx=4, pady=4, sticky=tk.NSEW)
 
-    button_setsystemtime = ctk.CTkButton(ctrltabview.tab("Instrument"), width = 13, text = "Sync System Time", command = instrument_ConfigureSystemTime)
+    button_setsystemtime = ctk.CTkButton(ctrltabview.tab("Instrument"), width = 13, text = "Sync Instrument Clock", command = instrument_ConfigureSystemTime)
     button_setsystemtime.grid(row=2, column=0, padx=4, pady=4, sticky=tk.NSEW)
 
-    button_gets1softwareversion = ctk.CTkButton(ctrltabview.tab("Instrument"), width = 13, text = "Check Software Version", command = instrument_QuerySoftwareVersion)
+    button_gets1softwareversion = ctk.CTkButton(ctrltabview.tab("Instrument"), width = 13, text = "Check Instrument Software Version", command = getS1verClicked)
     button_gets1softwareversion.grid(row=1, column=0, padx=4, pady=4, sticky=tk.NSEW)
 
-    button_getnosetemp = ctk.CTkButton(ctrltabview.tab("Instrument"), width = 13, text = "Get Nose Temp", command = instrument_QueryNoseTemp)
+    button_getnosetemp = ctk.CTkButton(ctrltabview.tab("Instrument"), width = 13, text = "Check Current Nose Temperature", command = instrument_QueryNoseTemp)
     button_getnosetemp.grid(row=3, column=0, padx=4, pady=4, sticky=tk.NSEW)
 
 
@@ -2124,7 +2156,6 @@ if __name__ == '__main__':
     checkbox_enableautoassayCSV = ctk.CTkCheckBox(ctrltabview.tab('Options'), text= 'Automatically Save Assay CSV Files', variable= enableautoassayCSV, onvalue= 'on', offvalue= 'off')
     checkbox_enableautoassayCSV.grid(row=1, column=1, padx=4, pady=4, sticky=tk.NSEW)
 
-    enabledarkmode = tk.StringVar(value='dark')
     checkbox_enabledarkmode = ctk.CTkCheckBox(ctrltabview.tab('Options'), text= 'Enable Dark Mode', variable= enabledarkmode, onvalue= 'dark', offvalue= 'light', command=lambda:ctk_change_appearance_mode_event(enabledarkmode.get()))
     checkbox_enabledarkmode.grid(row=2, column=1, padx=4, pady=4, sticky=tk.NSEW)
 
@@ -2157,13 +2188,6 @@ if __name__ == '__main__':
     #logbox_yscroll.config(command = logbox.yview)
 
     # Spectraframe Stuff
-
-    fig = Figure(figsize = (10, 4), dpi = 100, frameon=True, facecolor = plottoolbarColour)
-    fig.set_tight_layout(True)
-    #fig.set_facecolor(toolbarColour)
-    fig.set_edgecolor(plottoolbarColour)
-    #print(plt.style.available)
-    
     plt.style.use("seaborn-v0_8-whitegrid")
     plt.rcParams["font.family"] = "Consolas"
     plt.rcParams["font.sans-serif"] = "Helvetica"
@@ -2174,18 +2198,22 @@ if __name__ == '__main__':
     plt.rcParams['ytick.color'] = plottextColour
     plt.rcParams['path.simplify'] = True
     plt.rcParams["path.simplify_threshold"] = 0.1   # 0.0 no simplification, 1.0 full simplification. 0.111111 is def. 0.0 supposed to be faster, but did not see significant performance improvement.
+    # ylabel = plt.ylabel('Counts')
+    # xlabel = plt.xlabel('Energy (keV)')
 
-
+    fig = Figure(figsize = (10, 4), dpi = 100, frameon=True)
+    fig.set_tight_layout(True)
+    
     spectra_ax = fig.add_subplot(111)
     spectra_ax.set_xlabel('Energy (keV)')
     spectra_ax.set_ylabel('Counts')
+
     spectra_ax.set_xlim(xmin=0, xmax=40)
     spectra_ax.set_ylim(ymin=0, ymax=10000)
     #spectra_ax.autoscale_view()
     spectra_ax.autoscale(enable=True,tight=False)
     spectra_ax.locator_params(axis='x', nbins=23)
     spectra_ax.locator_params(axis='y', nbins=10)
-    #spectra_ax.set_facecolor('#434343')
     #spectra_ax.axhline(y=0, color='k')
     #spectra_ax.axvline(x=0, color='k')
     spectracanvas = FigureCanvasTkAgg(fig,master = spectraframe)
@@ -2199,6 +2227,9 @@ if __name__ == '__main__':
     spectratoolbar.pack(side=tk.LEFT, fill = 'x', padx = 8, pady = 4, ipadx = 5)
     for child in spectratoolbar.winfo_children():
         child.config(background=plottoolbarColour)
+
+    setPlotColours()
+
 
     # Other Toolbar widgets
     button_configureemissionlines = ctk.CTkButton(spectraframe, width = 13, text = "Configure Emission Lines", command = configureEmissionLinesClicked)
