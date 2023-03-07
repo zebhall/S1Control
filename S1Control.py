@@ -1064,7 +1064,7 @@ def statusUpdateChecker():
         # print(f'instr is logged in: {instr_isloggedin}')
         # print(f'assay is running: {instr_assayisrunning}')
 
-        time.sleep(0.2)
+        #time.sleep(0.2)
     
 
 
@@ -1101,12 +1101,6 @@ def plotSpectrum(spectrum, specenergy, colour, spectrum_legend):
     
     plottedspectra.append(plottedspectrum)  # adds spectrum to list of currently plotted spectra, for ease of removal later
 
-    #plotEmissionLines()
-
-    #spectraplot.xlim(0,50)
-    #spectraplot.ylim(bottom=0)
-    #spectra_ax.autoscale_view(tight=True)
-    #spectra_ax.autoscale(enable=True)
     spectratoolbar.update()
     spectracanvas.draw()
 
@@ -1166,18 +1160,10 @@ def clearCurrentEmissionLines():
     global spectra_ax
     global plottedemissionlineslist
     global emissionLinesElementslist
-    #try:
     for plottedemissionline in plottedemissionlineslist:
         plottedemissionline.remove()
-        # lineref = plottedemissionlines.pop()
-        # spectra_ax.remove(lineref)
-    
     plottedemissionlineslist = []
     emissionLinesElementslist = []
-    # except: 
-    #     print('error in clearing current emission lines')
-    #     pass
-
     leg = spectra_ax.legend()
     for line, text in zip(leg.get_lines(), leg.get_texts()):
         text.set_color(plottextColour)
@@ -1185,10 +1171,8 @@ def clearCurrentEmissionLines():
     spectracanvas.draw()
         
 
-def plotAssay(assay):
+def plotAssay(assay:Assay):
     clearCurrentSpectra()
-    # assay[4] should be spectra (list), one entry per phase
-    # assay[5] should be specenergies(list), same as above
     colouridx = 0
     for s, e, l, in zip(assay.spectra,assay.specenergies,assay.legends):
         plotSpectrum(s, e, plotphasecolours[colouridx],l)
@@ -1437,11 +1421,10 @@ def treeview_sort_column(treeview, col, reverse):
 
 
 def repeatsChoiceMade(val):
-    # global instr_assayrepeatsleft
     global instr_assayrepeatsselected
     printAndLog(f'Consecutive Tests Selected: {val}')
     instr_assayrepeatsselected = int(val)
-    # instr_assayrepeatsleft = int(val)
+
 
 def applicationChoiceMade(val):
     cmd = f'<Configure parameter="Application">{val}</Configure>'
@@ -1455,12 +1438,6 @@ def savePhaseTimes():
     global instr_currentphases
     phasecount = len(instr_currentphases)
     msg = '<Configure parameter="Phase Times"><PhaseList>'
-    # len_1 = int(phasetime1_stringvar.get())
-    # len_2 = int(phasetime2_stringvar.get())
-    # len_3 = int(phasetime3_stringvar.get())
-    # num_1 = instr_currentphases[0][0]
-    # num_2 = instr_currentphases[1][0]
-    # num_3 = instr_currentphases[2][0]
     msg_end = '</PhaseList></Configure>'    
     if phasecount>=1:
         len_1 = int(phasetime1_stringvar.get())
@@ -1511,9 +1488,6 @@ def ctk_change_appearance_mode_event(new_appearance_mode: str):
     setPlotColours()
 
     
-    
-    #plt.rcParams.update({'text.color': CHARCOAL,'axes.labelcolor':plottextColour, 'axes.facecolor':plotbgColour, 'xtick.color':plottextColour, 'ytick.color':plottextColour, 'figure.facecolor':plotbgColour, 'figure.edgecolor':plottoolbarColour})
-
 def setPlotColours():
     global fig
     global spectra_ax
@@ -1535,9 +1509,9 @@ def onClosing():
     if messagebox.askokcancel("Quit", "Do you want to quit?"):
         closeAllThreads()
         if logFileArchivePath is not None:
+            shutil.copyfile(logFilePath,logFileArchivePath)
             printAndLog(f'Log File archived to: {logFileArchivePath}')
             printAndLog('S1Control software Closed.')
-            shutil.copyfile(logFilePath,logFileArchivePath)
         else:
             printAndLog('Desired Log file archive path was unable to be found. The Log file has not been archived.')
             printAndLog('S1Control software Closed.')
@@ -1829,7 +1803,6 @@ if __name__ == '__main__':
     extraticklabels = []
 
     total_spec_channels = 2048
-    #spec_channels = np.array(list(range(1, total_spec_channels+1)))
     spec_channels = np.array(list(range(0, total_spec_channels)))
 
     #plotphasecolours = ['blue', 'red', 'green', 'pink', 'yellow']
@@ -1874,7 +1847,6 @@ if __name__ == '__main__':
     bruker_command_login = '<Command>Login</Command>'
     bruker_command_assaystart = '<Command parameter="Assay">Start</Command>'
     bruker_command_assaystop = '<Command parameter="Assay">Stop</Command>'
-    #bruker_configure_setsystemtime = 
     bruker_configure_transmitstatusenable = '<Configure parameter="Transmit Statusmsg">Yes</Configure>'     #Enable transmission of trigger pull/release and assay start/stop status messages
     bruker_configure_transmitelementalresultsenable = '<Configure parameter="Transmit Results" grades="No" elements="Yes">Yes</Configure>'      #Enable transmission of elemental results, disables transmission of grade ID / passfail results
     bruker_configure_transmitspectraenable = '<Configure parameter="Transmit Spectra">Yes</Configure>'
@@ -2051,29 +2023,18 @@ if __name__ == '__main__':
                     'Error(1SD)': [0]})
 
     # Frames
-    # LHSframe = ctk.CTkFrame(gui, width=340, corner_radius=0)
-    # LHSframe.grid(row=0,column=0, rowspan=4, sticky = tk.NSEW)
     LHSframe = ctk.CTkFrame(gui, width=340, corner_radius=0)
     LHSframe.pack(side=tk.LEFT, anchor = tk.W, fill = 'y', expand = False, padx = 0, pady = 0, ipadx = 0)
 
-    # RHSframe = ctk.CTkFrame(gui, width=200, corner_radius=0, fg_color= 'transparent')
-    # RHSframe.grid(row=0,column=1, columnspan=3, rowspan=4, sticky = tk.NSEW)
     RHSframe = ctk.CTkFrame(gui, corner_radius=0, fg_color= 'transparent')
     RHSframe.pack(side=tk.RIGHT, anchor = tk.W, fill = 'both', expand = True, padx = 0, pady = 0, ipadx = 0)
 
-    # spectraframe = ctk.CTkFrame(RHSframe, width = 700, height = 50, corner_radius = 5)
-    # spectraframe.grid(row=0, column=0, pady = 10, padx = 10, ipadx = 10, ipady = 5, sticky= tk.NSEW)
     spectraframe = ctk.CTkFrame(RHSframe, width = 700, height = 50, corner_radius = 5, fg_color=plotCTKColour)
     spectraframe.pack(side=tk.TOP, fill = 'both', anchor = tk.N, expand = True, padx = 8, pady = [8,4], ipadx = 4, ipady = 4)
 
-    # resultsframe = ctk.CTkFrame(RHSframe, width = 700, height = 300)
-    # resultsframe.grid(row=1, column=0, pady = 10, padx = 10, ipadx = 10, ipady = 10, sticky= tk.NSEW)
     resultsframe = ctk.CTkFrame(RHSframe, width = 700, height = 300, fg_color=('#dbdbdb', '#333333'))
     resultsframe.pack(side=tk.BOTTOM, fill = 'x', anchor = tk.SW, expand = False, padx = 8, pady = [4,8], ipadx = 4, ipady = 4)
 
-
-    # tableframe = tk.Frame(resultsframe, width = 550, height = 300)
-    # tableframe.grid(row=0, column=0, padx=[10,0], pady=[10,0], ipadx = 0, ipady = 0, sticky= tk.NSEW)
     assaytableframe = tk.Frame(resultsframe, width = 450, height = 300)
     assaytableframe.pack(side=tk.LEFT, fill = 'both', anchor = tk.SW, expand = False, padx = [8,0], pady = 8, ipadx = 0, ipady = 0)
     assaytableframe.pack_propagate(0)
@@ -2098,7 +2059,6 @@ if __name__ == '__main__':
 
     # Tabview for controls LHS
     ctrltabview = ctk.CTkTabview(LHSframe, height = 300)
-    #ctrltabview.grid(row=1, column=1, padx=10, pady=[10, 5], sticky=tk.NSEW)
     ctrltabview.pack(side = tk.TOP, anchor = tk.N, fill = 'x', expand = False, padx=8, pady=[0, 4])
     ctrltabview.add('Assay Controls')
     ctrltabview.add('Instrument')
@@ -2116,8 +2076,13 @@ if __name__ == '__main__':
     phaseframe.grid(row=4, column=0, columnspan = 2, rowspan = 2, padx=4, pady=4, sticky=tk.NSEW)
 
     # About Section
-    about_blurb1 = ctk.CTkLabel(ctrltabview.tab('About'), text=f'S1Control {versionNum} ({versionDate})\nCreated by Zeb Hall for Portable Spectral Services\nContact: service@portaspecs.com', justify = tk.LEFT, font=ctk_consolas11, text_color=plottextColour)
+    about_blurb1 = ctk.CTkLabel(ctrltabview.tab('About'), text=f'S1Control {versionNum} ({versionDate})\nCreated by Zeb Hall for Portable Spectral Services\nContact: service@portaspecs.com\n', justify = tk.LEFT, font=ctk_consolas11, text_color=plottextColour)
     about_blurb1.grid(row=1, column=0, columnspan = 2, rowspan = 2, padx=4, pady=4, sticky=tk.NSEW)
+    # about_blurb_copyright_header = ctk.CTkLabel(ctrltabview.tab('About'), text=f'Acknowledgements:', justify = tk.LEFT, font=ctk_consolas10, text_color=plottextColour)
+    # about_blurb_copyright_header.grid(row=2, column=0, columnspan = 2, rowspan = 2, padx=4, pady=4, sticky=tk.NSEW)
+    # about_blurb_copyrights = ctk.CTkLabel(ctrltabview.tab('About'), text=f'MATPLOTLIB: Copyright (c) 2012-2023 Matplotlib Development Team; All Rights Reserved\n', justify = tk.LEFT, font=ctk_consolas08, text_color=plottextColour)
+    # about_blurb_copyrights.grid(row=3, column=0, columnspan = 2, rowspan = 2, padx=4, pady=4, sticky=tk.NSEW)
+    
     # Buttons
     button_assay_text = ctk.StringVar()
     button_assay_text.set('\u2BC8 Start Assay')
@@ -2257,19 +2222,8 @@ if __name__ == '__main__':
     assaysTable.column('t_time', minwidth = 100, width = 115, stretch = 0, anchor = tk.W)
     assaysTable.column('t_timeelapsed', minwidth = 80, width = 60, stretch = 0, anchor = tk.W)
 
-    # assaysTableScrollbarY = ttk.Scrollbar(resultsframe, command=assaysTable.yview)
-    # assaysTableScrollbarY.grid(column=1, row=0, padx=[0,2], pady=0, sticky = tk.NS)
-
-    # resultsTableScrollbarX = ttk.Scrollbar(resultsframe, orient = 'horizontal', command=assaysTable.xview)
-    # resultsTableScrollbarX.grid(column=0, row=1, padx=0, pady=[0,2], sticky = tk.EW)
-
-    # assaysTableScrollbarY = ctk.CTkScrollbar(resultsframe, command=assaysTable.yview)
-    # assaysTableScrollbarY.grid(column=1, row=0, padx=[0,2], pady=[8,0], sticky = tk.NS)
     assaysTableScrollbarY = ctk.CTkScrollbar(resultsframe, command=assaysTable.yview)
     assaysTableScrollbarY.pack(side = tk.LEFT, fill = 'y', expand = False, padx=[0,8], pady=8)
-
-    # resultsTableScrollbarX = ctk.CTkScrollbar(resultsframe, orientation= 'horizontal', command=assaysTable.xview)
-    # resultsTableScrollbarX.grid(column=0, row=1, padx=0, pady=[0,2], sticky = tk.EW)
 
     assaysTable.configure(yscrollcommand=assaysTableScrollbarY.set)
     # assaysTable.configure(xscrollcommand=resultsTableScrollbarX.set)
