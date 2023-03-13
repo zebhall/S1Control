@@ -1,6 +1,6 @@
 # S1Control by ZH for PSS
-versionNum = 'v0.4.3'
-versionDate = '2023/03/08'
+versionNum = 'v0.5.0'
+versionDate = '2023/03/13'
 
 import os
 import sys
@@ -130,7 +130,51 @@ def instrument_ConfigureTransmitSpectraEnable():
 
 def instrument_ConfigureTransmitSpectraDisable():
     sendCommand(xrf,bruker_configure_transmitspectradisable)
-    
+
+def instrument_ConfigureProximityEnable():
+    sendCommand(xrf,bruker_configure_proximityenable)
+
+def instrument_ConfigureProximityDisable():
+    sendCommand(xrf,bruker_configure_proximitydisable)
+
+def instrument_toggleProximity(prox_button_bool:bool):
+    if prox_button_bool == True:
+        instrument_ConfigureProximityEnable()
+    elif prox_button_bool == False:
+        instrument_ConfigureProximityDisable()
+    else:
+        printAndLog('Error toggling proximity. Toggle value invalid.')
+
+def instrument_ConfigureStoreResultsEnable():
+    sendCommand(xrf, bruker_configure_storeresultsenable)
+
+def instrument_ConfigureStoreResultsDisable():
+    sendCommand(xrf, bruker_configure_storeresultsdisable)
+
+def instrument_toggleStoreResultFiles(store_results_button_bool:bool):
+    if store_results_button_bool == True:
+        instrument_ConfigureStoreResultsEnable()
+    elif store_results_button_bool == False:
+        instrument_ConfigureStoreResultsDisable()
+    else:
+        printAndLog('Error toggling store-results. Toggle value invalid.')
+
+def instrument_ConfigureStoreSpectraEnable():
+    sendCommand(xrf, bruker_configure_storespectraenable)
+
+def instrument_ConfigureStoreSpectraDisable():
+    sendCommand(xrf, bruker_configure_storespectradisable)
+
+def instrument_toggleStoreSpectraFiles(store_spectra_button_bool:bool):
+    if store_spectra_button_bool == True:
+        instrument_ConfigureStoreSpectraEnable()
+    elif store_spectra_button_bool == False:
+        instrument_ConfigureStoreSpectraDisable()
+    else:
+        printAndLog('Error toggling store-spectra. Toggle value invalid.')
+
+def instrument_ResetInfoFields():
+    sendCommand(xrf, bruker_configure_resetinfofields)
 
 def instrument_SetImportantStartupConfigurables():
     sendCommand(xrf,bruker_configure_transmitstatusmessagesenable)      # enable transmission of trigger pull, assay complete messages, etc. necessary for basic function.
@@ -140,6 +184,8 @@ def instrument_SetImportantStartupConfigurables():
 
 def instrument_AcknowledgeError(TxMsgID):
     sendCommand(xrf, f'<Acknowledge RxMsgID="{TxMsgID}" UserAcked="Yes"></Acknowledge>')
+
+
 
 
 def printAndLog(data):
@@ -393,7 +439,13 @@ def initialiseLogFile():
 def instrument_GetStates():
     instrument_QueryLoginState()
     instrument_QueryArmedState()
+    gui.after(800,getOtherStates)
 
+
+def getOtherStates():
+    sendCommand(xrf,bruker_query_proximityrequired)
+    sendCommand(xrf,bruker_query_storeresults)
+    sendCommand(xrf,bruker_query_storespectra)
 
 
 
@@ -416,6 +468,7 @@ def xrfListenLoopThread_Check():
         gui.after(20, xrfListenLoopThread_Check)
     else:
         printAndLog('xrf listen loop broke')
+        raise SystemExit(0)
 
 # TESTING OUT LISTEN LOOP PROCESS instead of thread
 # def xrfListenLoopProcess_Start():
@@ -477,6 +530,10 @@ def xrfListenLoop():
     global assay_time_total_set_seconds
     global xraysonbar
     global assay_phase_spectrumpacketcounter
+    global proximitysensor_var
+    global storeresultsoninstrument_var
+    global storespectraoninstrument_var
+
 
     while True:
         try:
@@ -719,13 +776,13 @@ def xrfListenLoop():
 
             # Response detailing the current 'Edit Fields' aka edit info fields aka notes.
             elif ('Response' in data) and ('@parameter' in data['Response']) and 'edit fields' in data['Response']['@parameter']:
-                instr_editfielddata = data['Response']['EditFieldList']
+                try: instr_editfielddata = data['Response']['EditFieldList']
+                except KeyError: instr_editfielddata = None
                 if instr_editfielddata != None:
                     instr_editfielddata = instr_editfielddata["EditField"]
-                    printAndLog(f'Current Info-Field Data: {instr_editfielddata}')
+                    printAndLog(f'Info-Fields Data Retrieved: {instr_editfielddata}')
                     fillEditInfoFields(instr_editfielddata)
-                else:
-                    printAndLog('There is no current "Info Field" Data to show, or all fields are empty. There is no way for S1Control to get around this. Please use the instrument to add some text to the fields you would like to use.')
+                
 
             
             # INFO/WARNING - e.g. Sent when active app is changed or user adjusts settings in spectrometer mode setup screen. It displays the hardware configuration required by the active instrument setup.
@@ -817,10 +874,37 @@ def xrfListenLoop():
             # Transmit results configuration change response ({'Response': {'@parameter': 'transmit spectra', '@status': 'success', '#text': 'Transmit Spectra configuration updated'}})
             elif ('@parameter' in data['Response']) and ('@status' in data['Response']) and ('#text' in data['Response']) and ('transmit' in data['Response']['@parameter']):
                 printAndLog(f"{data['Response']['@status']}: {data['Response']['#text']}")
+            
+            # Respose to if query if result files are stored on instrument (csv, tsv, etc)
+            elif ('@parameter' in data['Response']) and ('@status' in data['Response']) and ('#text' in data['Response']) and ('store results' in data['Response']['@parameter']):
+                if data['Response']['#text'] in ['Yes','yes']:
+                    storeresultsoninstrument_var.set(True)
+                elif data['Response']['#text'] in ['No','no']:
+                    storeresultsoninstrument_var.set(False)
+                else:
+                    printAndLog(f"{data['Response']['@status']}: {data['Response']['#text']}")
+
+            # Respose to if query if spectra files are stored on instrument (pdz)
+            elif ('@parameter' in data['Response']) and ('@status' in data['Response']) and ('#text' in data['Response']) and ('store spectra' in data['Response']['@parameter']):
+                if data['Response']['#text'] in ['Yes','yes']:
+                    storespectraoninstrument_var.set(True)
+                elif data['Response']['#text'] in ['No','no']:
+                    storespectraoninstrument_var.set(False)
+                else:
+                    printAndLog(f"{data['Response']['@status']}: {data['Response']['#text']}")
+                        
+            # Response to proximity sensor query 
+            elif ('@parameter' in data['Response']) and ('@status' in data['Response']) and ('#text' in data['Response']) and ('proximity required' in data['Response']['@parameter']):
+                if data['Response']['#text'] in ['Yes','yes']:
+                    proximitysensor_var.set(True)
+                elif data['Response']['#text'] in ['No','no']:
+                    proximitysensor_var.set(False)
+                else:
+                    printAndLog(f"{data['Response']['@status']}: {data['Response']['#text']}")
 
             # Catchall for OTHER unimportant responses confirming configure changes (like time and date set, etc) 
             elif ('#text' in data['Response']) and ('Configure:' in data['Response']['#text']):
-                printAndLog(f"{data['Response']['@status']}: {data['Response']['#text']}")
+                printAndLog(f"{data['Response']['@status']}: {data['Response']['@parameter']}: {data['Response']['#text']}")
 
 
             else: 
@@ -991,7 +1075,7 @@ def completeAssay(assay_application:str, assay_method:str, assay_time_total_set:
     displayResults(newassay)
     printAndLog(assay_results)
     printAndLog(f'Assay # {newassay.index} processed sucessfully ({newassay.time_elapsed})')
-    if enableautoassayCSV.get() == 'on':
+    if enableautoassayCSV_var.get() == 'on':
         saveAssayToCSV(newassay)
 
 
@@ -1084,6 +1168,7 @@ def statusUpdateChecker():
         # print(f'instr is armed: {instr_isarmed}')
         # print(f'instr is logged in: {instr_isloggedin}')
         # print(f'assay is running: {instr_assayisrunning}')
+
 
         #time.sleep(0.2)
     
@@ -1346,11 +1431,11 @@ def ui_UpdateCurrentAppAndPhases():    #update application selected and phase ti
         p3_label = ctk.CTkLabel(phaseframe, width=5, textvariable=phasename3_stringvar, anchor='w')
         p3_label.grid(row = 3, column = 0, padx=[8,4], pady=4, sticky=tk.EW)
         p1_entry = ctk.CTkEntry(phaseframe, width=70, justify='right', textvariable=phasetime1_stringvar)
-        p1_entry.grid(row = 1, column = 1, padx=4, pady=4, sticky=tk.NSEW)
+        p1_entry.grid(row = 1, column = 1, padx=4, pady=4, sticky=tk.EW)
         p2_entry = ctk.CTkEntry(phaseframe, width=70, justify='right', textvariable=phasetime2_stringvar)
-        p2_entry.grid(row = 2, column = 1, padx=4, pady=4, sticky=tk.NSEW)
+        p2_entry.grid(row = 2, column = 1, padx=4, pady=4, sticky=tk.EW)
         p3_entry = ctk.CTkEntry(phaseframe, width=70, justify='right', textvariable=phasetime3_stringvar)
-        p3_entry.grid(row = 3, column = 1, padx=4, pady=4, sticky=tk.NSEW)
+        p3_entry.grid(row = 3, column = 1, padx=4, pady=4, sticky=tk.EW)
         p1_s = ctk.CTkLabel(phaseframe, width=1, text='s', anchor='w')
         p1_s.grid(row = 1, column = 2, padx=[0,8], pady=4, sticky=tk.EW)
         p2_s = ctk.CTkLabel(phaseframe, width=1, text='s', anchor='w')
@@ -1359,7 +1444,7 @@ def ui_UpdateCurrentAppAndPhases():    #update application selected and phase ti
         p3_s.grid(row = 3, column = 2, padx=[0,8], pady=4, sticky=tk.EW)
 
         applyphasetimes = ctk.CTkButton(phaseframe, width = 10, image=icon_apply, compound='top', anchor='top', text = 'Apply', command = savePhaseTimes) # font=ctk.CTkFont('arial', 20))
-        applyphasetimes.grid(row = 1, column = 3, rowspan = phasecount, padx=4, pady=4, ipadx=4, sticky=tk.NSEW)
+        applyphasetimes.grid(row = 1, column = 3, rowspan = phasecount, padx=4, pady=4, ipadx=4, ipady=4, sticky=tk.NSEW)
 
         ui_firsttime = 0
     
@@ -1415,7 +1500,7 @@ def ui_UpdateCurrentAppAndPhases():    #update application selected and phase ti
 
     applyphasetimes.grid_configure(rowspan = phasecount)
 
-    gui.update()
+    #gui.update()
 
 
 def unselectAllAssays():
@@ -1554,6 +1639,7 @@ def configureEmissionLinesClicked():
     if linecfg_firsttime:
         linecfg_firsttime = False
         linecfgwindow = ctk.CTkToplevel()
+        linecfgwindow.bind("<Configure>", window_on_configure)
         #linecfgwindow.geometry("700x380")
         linecfgwindow.title('Configure Emission Lines')
         linecfgwindow.iconbitmap(iconpath)
@@ -1582,7 +1668,6 @@ def clearEmissionLinesClicked():
     global emissionLinesElementslist
     for z in emissionLinesElementslist:
         toggleEmissionLine(z)
-
 
 
 def toggleEmissionLine(Z):
@@ -1631,8 +1716,12 @@ def lineCfgOnClosing():
 
 def editInfoOnClosing():
         # .withdraw() hides, .deiconify() brings back.
-    editinfowindows[0].withdraw()
+    editinfo_windows[0].withdraw()
 
+def window_on_configure(e): # This function is from https://stackoverflow.com/questions/71884285/tkinter-root-window-mouse-drag-motion-becomes-slower and supposedly will fix lag after move/resize? weird mouse issue.
+    if e.widget == gui:
+        #gui.update_idletasks()
+        time.sleep(0.008)
     
 def saveAssayToCSV(assay:Assay):
     assayFolderName = f'Assays_{datetimeString}_{instr_serialnumber}'
@@ -1696,52 +1785,56 @@ def fillEditInfoFields(infofields:list):
             case 1:
                 field1_name_strvar.set(field_name)
                 field1_val_strvar.set(field_val)
-                field1_iscounter_boolvar.set(False)
+                #field1_iscounter_boolvar.set(False)
             case 2:
                 field2_name_strvar.set(field_name)
                 field2_val_strvar.set(field_val)
-                field2_iscounter_boolvar.set(False)
+                #field2_iscounter_boolvar.set(False)
             case 3:
                 field3_name_strvar.set(field_name)
                 field3_val_strvar.set(field_val)
-                field3_iscounter_boolvar.set(False)
+                #field3_iscounter_boolvar.set(False)
             case 4:
                 field4_name_strvar.set(field_name)
                 field4_val_strvar.set(field_val)
-                field4_iscounter_boolvar.set(False)
+                #field4_iscounter_boolvar.set(False)
             case 5:
                 field5_name_strvar.set(field_name)
                 field5_val_strvar.set(field_val)
-                field5_iscounter_boolvar.set(False)
+                #field5_iscounter_boolvar.set(False)
             case 6:
                 field6_name_strvar.set(field_name)
                 field6_val_strvar.set(field_val)
-                field6_iscounter_boolvar.set(False)
+                #field6_iscounter_boolvar.set(False)
         i+=1
 
 
-def instrument_ConfigureInfoFields():
-    pass
-
 def editInfoFieldsClicked():
     global editinfo_firsttime
-    global editinfowindows
+    global editinfo_windows
+    global editinfo_fieldnames
+    global editinfo_fieldvalues
+    global editinfo_fieldcounters
     global iconpath
     if editinfo_firsttime:
         editinfo_firsttime = False
         editinfowindow = ctk.CTkToplevel()
+        editinfowindow.bind("<Configure>", window_on_configure)
         #linecfgwindow.geometry("700x380")
         editinfowindow.title('Configure Emission Lines')
         editinfowindow.iconbitmap(iconpath)
-        editinfowindows.append(editinfowindow)
+        editinfo_windows.append(editinfowindow)
 
         infobuttonframe = ctk.CTkFrame(editinfowindow, width=20, height = 20, corner_radius=5)
         infobuttonframe.pack(side=tk.BOTTOM, fill = 'x', expand = True, padx=4, pady=4, ipadx = 4, ipady = 4)
 
-        button_getinfofields = ctk.CTkButton(infobuttonframe, width = 13, image=icon_getinfofields, text = "Copy Info Fields From Instrument", command = instrument_QueryEditFields)
+        button_getinfofields = ctk.CTkButton(infobuttonframe, width = 13, image=icon_getinfofields, text = "Copy Info-Fields From Instrument", command = queryEditFields_clicked)
         button_getinfofields.pack(side=tk.LEFT, fill = 'x', expand = True, padx=(8,2), pady=4, ipadx = 0, ipady = 0)
 
-        button_applyinfofields = ctk.CTkButton(infobuttonframe, width = 13, image=icon_applysmall, text = "Apply Changes", command = instrument_ConfigureInfoFields)
+        button_resetinfofields = ctk.CTkButton(infobuttonframe, width = 13, image=icon_resetinfofields, text = "Reset Info-Fields", fg_color = '#D85820', hover_color = '#973d16', command = resetEditFields_clicked)
+        button_resetinfofields.pack(side=tk.LEFT, fill = 'x', expand = True, padx=(2,2), pady=4, ipadx = 0, ipady = 0)
+
+        button_applyinfofields = ctk.CTkButton(infobuttonframe, width = 13, image=icon_applysmall, text = "Apply Changes", command = instrument_ApplyInfoFields)
         button_applyinfofields.pack(side=tk.LEFT, fill = 'x', expand = True, padx=(2,8), pady=4, ipadx = 0, ipady = 0)
 
         editinfoframe = ctk.CTkFrame(editinfowindow, width=20, height = 20, corner_radius=5)
@@ -1752,7 +1845,7 @@ def editInfoFieldsClicked():
         field_name_column_label.grid(row=2,column=2, padx=2, pady=2, ipadx=0, ipady=0, sticky=tk.NSEW)
         field_value_column_label = ctk.CTkLabel(editinfoframe, text='Field Value', anchor=tk.W)
         field_value_column_label.grid(row=2,column=3, padx=2, pady=2, ipadx=0, ipady=0, sticky=tk.NSEW)
-        field_counter_column_label = ctk.CTkLabel(editinfoframe, text='Value is Counter', anchor=tk.W)
+        field_counter_column_label = ctk.CTkLabel(editinfoframe, text='Value is Counter?', anchor=tk.W)
         field_counter_column_label.grid(row=2,column=4, padx=2, pady=2, ipadx=0, ipady=0, sticky=tk.NSEW)
         field1_row_label = ctk.CTkLabel(editinfoframe, text='1', anchor=tk.W)
         field1_row_label.grid(row=3,column=1, padx=4, pady=2, ipadx=0, ipady=0, sticky=tk.NSEW)
@@ -1774,6 +1867,9 @@ def editInfoFieldsClicked():
         field1_value_entry.grid(row=3,column=3, padx=2, pady=2, ipadx=0, ipady=0, sticky=tk.NSEW)
         field1_counter_checkbox = ctk.CTkCheckBox(editinfoframe, text='Counter', variable=field1_iscounter_boolvar, onvalue=True, offvalue=False)
         field1_counter_checkbox.grid(row=3,column=4, padx=2, pady=2, ipadx=0, ipady=0, sticky=tk.NSEW)
+        editinfo_fieldnames.append(field1_name_strvar)
+        editinfo_fieldvalues.append(field1_val_strvar)
+        editinfo_fieldcounters.append(field1_iscounter_boolvar)
 
         #FIELD 2
         field2_name_entry = ctk.CTkEntry(editinfoframe, width=210, justify='left', textvariable=field2_name_strvar)
@@ -1782,6 +1878,9 @@ def editInfoFieldsClicked():
         field2_value_entry.grid(row=4,column=3, padx=2, pady=2, ipadx=0, ipady=0, sticky=tk.NSEW)
         field2_counter_checkbox = ctk.CTkCheckBox(editinfoframe, text='Counter', variable=field2_iscounter_boolvar, onvalue=True, offvalue=False)
         field2_counter_checkbox.grid(row=4,column=4, padx=2, pady=2, ipadx=0, ipady=0, sticky=tk.NSEW)
+        editinfo_fieldnames.append(field2_name_strvar)
+        editinfo_fieldvalues.append(field2_val_strvar)
+        editinfo_fieldcounters.append(field2_iscounter_boolvar)
 
         #FIELD 3
         field3_name_entry = ctk.CTkEntry(editinfoframe, width=210, justify='left', textvariable=field3_name_strvar)
@@ -1790,6 +1889,9 @@ def editInfoFieldsClicked():
         field3_value_entry.grid(row=5,column=3, padx=2, pady=2, ipadx=0, ipady=0, sticky=tk.NSEW)
         field3_counter_checkbox = ctk.CTkCheckBox(editinfoframe, text='Counter', variable=field3_iscounter_boolvar, onvalue=True, offvalue=False)
         field3_counter_checkbox.grid(row=5,column=4, padx=2, pady=2, ipadx=0, ipady=0, sticky=tk.NSEW)
+        editinfo_fieldnames.append(field3_name_strvar)
+        editinfo_fieldvalues.append(field3_val_strvar)
+        editinfo_fieldcounters.append(field3_iscounter_boolvar)
 
         #FIELD 4
         field4_name_entry = ctk.CTkEntry(editinfoframe, width=210, justify='left', textvariable=field4_name_strvar)
@@ -1798,6 +1900,9 @@ def editInfoFieldsClicked():
         field4_value_entry.grid(row=6,column=3, padx=2, pady=2, ipadx=0, ipady=0, sticky=tk.NSEW)
         field4_counter_checkbox = ctk.CTkCheckBox(editinfoframe, text='Counter', variable=field4_iscounter_boolvar, onvalue=True, offvalue=False)
         field4_counter_checkbox.grid(row=6,column=4, padx=2, pady=2, ipadx=0, ipady=0, sticky=tk.NSEW)
+        editinfo_fieldnames.append(field4_name_strvar)
+        editinfo_fieldvalues.append(field4_val_strvar)
+        editinfo_fieldcounters.append(field4_iscounter_boolvar)
 
         #FIELD 5
         field5_name_entry = ctk.CTkEntry(editinfoframe, width=210, justify='left', textvariable=field5_name_strvar)
@@ -1806,6 +1911,9 @@ def editInfoFieldsClicked():
         field5_value_entry.grid(row=7,column=3, padx=2, pady=2, ipadx=0, ipady=0, sticky=tk.NSEW)
         field5_counter_checkbox = ctk.CTkCheckBox(editinfoframe, text='Counter', variable=field5_iscounter_boolvar, onvalue=True, offvalue=False)
         field5_counter_checkbox.grid(row=7,column=4, padx=2, pady=2, ipadx=0, ipady=0, sticky=tk.NSEW)
+        editinfo_fieldnames.append(field5_name_strvar)
+        editinfo_fieldvalues.append(field5_val_strvar)
+        editinfo_fieldcounters.append(field5_iscounter_boolvar)
 
         #FIELD 6
         field6_name_entry = ctk.CTkEntry(editinfoframe, width=210, justify='left', textvariable=field6_name_strvar)
@@ -1814,7 +1922,9 @@ def editInfoFieldsClicked():
         field6_value_entry.grid(row=8,column=3, padx=2, pady=2, ipadx=0, ipady=0, sticky=tk.NSEW)
         field6_counter_checkbox = ctk.CTkCheckBox(editinfoframe, text='Counter', variable=field6_iscounter_boolvar, onvalue=True, offvalue=False)
         field6_counter_checkbox.grid(row=8,column=4, padx=2, pady=2, ipadx=0, ipady=0, sticky=tk.NSEW)
-
+        editinfo_fieldnames.append(field6_name_strvar)
+        editinfo_fieldvalues.append(field6_val_strvar)
+        editinfo_fieldcounters.append(field6_iscounter_boolvar)
 
 
         # editinfo_instruc = ctk.CTkLabel(editinfoframe, text = 'Select Element(s) to display Emission Lines:', font=ctk_consolas14B)
@@ -1823,7 +1933,43 @@ def editInfoFieldsClicked():
         editinfowindow.protocol("WM_DELETE_WINDOW", editInfoOnClosing)
     else:
         #Brings back window from being withdrawn instead of fully creating again.
-        editinfowindows[0].deiconify()
+        editinfo_windows[0].deiconify()
+
+
+def instrument_ApplyInfoFields():
+    proceedwithapplying = True
+    for i in range(6):
+        if editinfo_fieldcounters[i].get() == True:
+            if editinfo_fieldvalues[i].get().isdigit() == False:
+                proceedwithapplying = False
+                messagebox.showwarning('Invalid Value for Counter Field', f'Warning: The Value of info field {i+1} is incompatible with being a counter. Counter field values must be integers. Fields have not been applied.')
+                editinfo_windows[0].lift()
+
+    if proceedwithapplying:
+        infofieldsmsg = '<Configure parameter="Edit Fields"><FieldList>'
+        for i in range(6):
+            fieldmsgsegment = ''
+            fieldtype = 'Fixed'
+            if editinfo_fieldnames[i].get() != '':
+                if editinfo_fieldcounters[i].get() == True:
+                    fieldtype = 'Counter'
+                fieldmsgsegment = f'<Field type="{fieldtype}"><Name>{editinfo_fieldnames[i].get()}</Name><Value>{editinfo_fieldvalues[i].get()}</Value></Field>'
+                infofieldsmsg = infofieldsmsg + fieldmsgsegment
+        infofieldsmsg = infofieldsmsg + '</FieldList></Configure>'
+        sendCommand(xrf,infofieldsmsg)
+        printAndLog(f'Info-Fields Set: {infofieldsmsg}')
+
+def resetEditFields_clicked():
+    if messagebox.askyesno('Reset All Fields and Values on Instrument?', 'This will reset all field names and values on the instrument. It will not affect assays that have already been taken. \n\nWould you like to proceed?'):
+        instrument_ResetInfoFields()
+        printAndLog('Info-Fields Reset.')
+        instrument_QueryEditFields()    # Pull blank fields from instrument
+
+
+def queryEditFields_clicked():
+    if messagebox.askyesno('Retrieve Info-Fields from Instrument?',"PLEASE BE AWARE: \nDue to an oversight in Bruker's OEM Remote-Control-Protocol, retreiving the instrument's current info-fields will cause any 'Counter' fields to increment their value by 1 (this is only supposed to happen when an assay is started).\n\nAdditionally, the OEM Protocol does not provide a way to check if the fields are counters - only a way to set them as counters. \n\nFor these reasons, it is recommended to double check the field values and counter checkboxes are correct once retrieved. It is also reccommended to not regularly query the current field values if using counters as it will result in inconsistent incrementation. \n\nWould you like to proceed?"):
+        instrument_QueryEditFields()
+        editinfo_windows[0].lift()
 
 
 
@@ -1860,6 +2006,7 @@ if __name__ == '__main__':
 
 
     gui = ctk.CTk()
+    gui.bind("<Configure>", window_on_configure)
     gui.title("S1Control")
     gui.geometry('+5+5')
     #gui.geometry('1380x855')
@@ -1867,6 +2014,7 @@ if __name__ == '__main__':
 
     # APPEARANCE MODE DEFAULT AND STRVAR FOR TOGGLE - THESE TWO MUST MATCH ################################################################################
     ctk.set_appearance_mode("light")  # Modes: system (default), light, dark
+    #ctk.deactivate_automatic_dpi_awareness()
     enabledarkmode = tk.StringVar(value='light')  # The default state of this variable must be changed to match the default setting of ctk appearancemode.
 
     ctk.set_default_color_theme("blue")  # Themes: blue (default), dark-blue, green
@@ -1874,18 +2022,22 @@ if __name__ == '__main__':
     # Icons and Resources
     iconpath = resource_path("pss_lb.ico")
     energiescsvpath = resource_path("energies.csv")
-    icon_consecutive = ctk.CTkImage(light_image=Image.open(resource_path("icons/repeat-line.png")), size=(19, 19))
-    icon_startassay = ctk.CTkImage(light_image=Image.open(resource_path("icons/play-line.png")), size=(19, 19))
-    icon_identifypeak = ctk.CTkImage(light_image=Image.open(resource_path("icons/magic-fill.png")), size=(19, 19))
-    icon_configureemissionlines = ctk.CTkImage(light_image=Image.open(resource_path("icons/bar-chart-grouped-fill.png")), size=(19, 19))
-    icon_systemtime = ctk.CTkImage(light_image=Image.open(resource_path("icons/time-fill.png")), size=(19, 19))
-    icon_apply = ctk.CTkImage(light_image=Image.open(resource_path("icons/check-line.png")), size=(24, 24))
-    icon_applysmall = ctk.CTkImage(light_image=Image.open(resource_path("icons/check-line.png")), size=(19, 19))
-    icon_s1version = ctk.CTkImage(light_image=Image.open(resource_path("icons/cellphone-fill.png")), size=(19, 19))
-    icon_temperature = ctk.CTkImage(light_image=Image.open(resource_path("icons/temp-cold-line.png")), size=(19, 19))
-    icon_editinfo = ctk.CTkImage(light_image=Image.open(resource_path("icons/edit-box-fill.png")), size=(19, 19))
-    icon_getinfofields = ctk.CTkImage(light_image=Image.open(resource_path("icons/install-fill.png")), size=(19, 19))
-    #icon_sendinfofields = ctk.CTkImage(light_image=Image.open(resource_path("icons/install-fill.png")), size=(19, 19))
+    psslogo = ctk.CTkImage(light_image=Image.open(resource_path("pss-logo2-med.png")), size=(233, 96))
+    icon_consecutive = ctk.CTkImage(light_image=Image.open(resource_path("icons/repeat-line.png")), size=(18, 18))
+    icon_startassay = ctk.CTkImage(light_image=Image.open(resource_path("icons/play-line.png")), size=(18, 18))
+    icon_identifypeak = ctk.CTkImage(light_image=Image.open(resource_path("icons/magic-fill.png")), size=(18, 18))
+    icon_configureemissionlines = ctk.CTkImage(light_image=Image.open(resource_path("icons/bar-chart-grouped-fill.png")), size=(18, 18))
+    icon_systemtime = ctk.CTkImage(light_image=Image.open(resource_path("icons/time-fill.png")), size=(18, 18))
+    icon_apply = ctk.CTkImage(light_image=Image.open(resource_path("icons/check-line.png")), size=(18, 18))
+    icon_applysmall = ctk.CTkImage(light_image=Image.open(resource_path("icons/check-line.png")), size=(18, 18))
+    icon_s1version = ctk.CTkImage(light_image=Image.open(resource_path("icons/cellphone-fill.png")), size=(18, 18))
+    icon_temperature = ctk.CTkImage(light_image=Image.open(resource_path("icons/temp-cold-line.png")), size=(18, 18))
+    icon_editinfo = ctk.CTkImage(light_image=Image.open(resource_path("icons/edit-box-fill.png")), size=(18, 18))
+    icon_getinfofields = ctk.CTkImage(light_image=Image.open(resource_path("icons/refresh-line.png")), size=(18, 18))
+    icon_resetinfofields = ctk.CTkImage(light_image=Image.open(resource_path("icons/delete-bin-fill.png")), size=(18, 18))
+    icon_sensoron = ctk.CTkImage(light_image=Image.open(resource_path("icons/sensor-fill.png")), size=(18, 18))
+    icon_sensoroff = ctk.CTkImage(light_image=Image.open(resource_path("icons/sensor-line.png")), size=(18, 18))
+    #icon_sendinfofields = ctk.CTkImage(light_image=Image.open(resource_path("icons/install-fill.png")), size=(18, 18))
     gui.iconbitmap(default = iconpath)
 
     # Fonts
@@ -1959,7 +2111,10 @@ if __name__ == '__main__':
     linecfg_firsttime = True
     editinfo_firsttime = True
     linecfgwindows = []
-    editinfowindows = []
+    editinfo_windows = []
+    editinfo_fieldnames = []        # Stores entrybox strvar objects for editinfo window field names for ref elsewhere
+    editinfo_fieldvalues = []       # Stores entrybox strvar objects for editinfo window field vals for ref elsewhere
+    editinfo_fieldcounters = []     # Stores checkbox boolvar objects for editinfo window counter checkbox for ref elsewhere
     
     phasetimelabels = []
     phasetimeentries = []
@@ -2044,14 +2199,26 @@ if __name__ == '__main__':
     bruker_query_softwareversion = '<Query parameter="Version"/>'       # S1 version, eg 2.7.58.392
     bruker_query_nosetemp = '<Query parameter="Nose Temperature"/>'
     bruker_query_editfields = '<Query parameter="Edit Fields"/>'
-    bruker_command_login = '<Command>Login</Command>'
-    bruker_command_assaystart = '<Command parameter="Assay">Start</Command>'
-    bruker_command_assaystop = '<Command parameter="Assay">Stop</Command>'
+    bruker_query_proximityrequired = '<Query parameter="Proximity Required"/>'
+    bruker_query_storeresults = '<Query parameter="Store Results"/>'
+    bruker_query_storespectra = '<Query parameter="Store Spectra"/>'
+
     bruker_configure_transmitstatusenable = '<Configure parameter="Transmit Statusmsg">Yes</Configure>'     #Enable transmission of trigger pull/release and assay start/stop status messages
     bruker_configure_transmitelementalresultsenable = '<Configure parameter="Transmit Results" grades="No" elements="Yes">Yes</Configure>'      #Enable transmission of elemental results, disables transmission of grade ID / passfail results
     bruker_configure_transmitspectraenable = '<Configure parameter="Transmit Spectra">Yes</Configure>'
     bruker_configure_transmitspectradisable = '<Configure parameter="Transmit Spectra">No</Configure>'
     bruker_configure_transmitstatusmessagesenable = '<Configure parameter="Transmit Statusmsg">Yes</Configure>'
+    bruker_configure_proximityenable = '<Configure parameter="Proximity Required">Yes</Configure>'
+    bruker_configure_proximitydisable = '<Configure parameter="Proximity Required">No</Configure>'
+    bruker_configure_storeresultsenable = '<Configure parameter="Store Results">Yes</Configure>'
+    bruker_configure_storeresultsdisable = '<Configure parameter="Store Results">No</Configure>'
+    bruker_configure_storespectraenable = '<Configure parameter="Store Spectra">Yes</Configure>'
+    bruker_configure_storespectradisable = '<Configure parameter="Store Spectra">No</Configure>'
+    bruker_configure_resetinfofields = '<Configure parameter="Edit Fields">Reset</Configure>'
+
+    bruker_command_login = '<Command>Login</Command>'
+    bruker_command_assaystart = '<Command parameter="Assay">Start</Command>'
+    bruker_command_assaystop = '<Command parameter="Assay">Stop</Command>'
 
     instr_currentphase = 0
     assay_phase_spectrumpacketcounter = 0
@@ -2258,7 +2425,7 @@ if __name__ == '__main__':
 
 
     # Tabview for controls LHS
-    ctrltabview = ctk.CTkTabview(LHSframe, height = 300)
+    ctrltabview = ctk.CTkTabview(LHSframe, height = 317)
     ctrltabview.pack(side = tk.TOP, anchor = tk.N, fill = 'x', expand = False, padx=8, pady=[0, 4])
     ctrltabview.add('Assay Controls')
     ctrltabview.add('Instrument')
@@ -2276,8 +2443,15 @@ if __name__ == '__main__':
     phaseframe.grid(row=4, column=0, columnspan = 2, rowspan = 2, padx=4, pady=4, sticky=tk.NSEW)
 
     # About Section
-    about_blurb1 = ctk.CTkLabel(ctrltabview.tab('About'), text=f'S1Control {versionNum} ({versionDate})\nCreated by Zeb Hall for Portable Spectral Services\nContact: service@portaspecs.com\n', justify = tk.LEFT, font=ctk_consolas11, text_color=plottextColour)
-    about_blurb1.grid(row=1, column=0, columnspan = 2, rowspan = 2, padx=4, pady=4, sticky=tk.NSEW)
+    about_blurb1 = ctk.CTkLabel(ctrltabview.tab('About'), text=f'S1Control {versionNum} ({versionDate})\nCreated by Zeb Hall for Portable Spectral Services\nContact: service@portaspecs.com\n', justify = tk.LEFT, font=ctk_consolas11)
+    about_blurb1.grid(row=3, column=0, columnspan = 2, rowspan = 2, padx=4, pady=4, sticky=tk.NSEW)
+
+    about_imageframe = ctk.CTkFrame(ctrltabview.tab('About'), fg_color= ('#c5c5c5','#444444'))
+    about_imageframe.grid(row=0, column=0, columnspan = 2, rowspan = 2, padx=4, pady=4, sticky=tk.NSEW)
+
+    about_imagelabel = ctk.CTkLabel(about_imageframe, text= ' ', image=psslogo)
+    about_imagelabel.pack(side = tk.TOP, anchor = tk.N, fill = 'both', expand = True, padx=2, pady=2)
+
     # about_blurb_copyright_header = ctk.CTkLabel(ctrltabview.tab('About'), text=f'Acknowledgements:', justify = tk.LEFT, font=ctk_consolas10, text_color=plottextColour)
     # about_blurb_copyright_header.grid(row=2, column=0, columnspan = 2, rowspan = 2, padx=4, pady=4, sticky=tk.NSEW)
     # about_blurb_copyrights = ctk.CTkLabel(ctrltabview.tab('About'), text=f'MATPLOTLIB: Copyright (c) 2012-2023 Matplotlib Development Team; All Rights Reserved\n', justify = tk.LEFT, font=ctk_consolas08, text_color=plottextColour)
@@ -2297,7 +2471,7 @@ if __name__ == '__main__':
     dropdown_repeattests = ctk.CTkOptionMenu(ctrltabview.tab("Assay Controls"), variable=repeats_choice_var, values=repeats_choice_list, command=repeatsChoiceMade, dynamic_resizing=False)
     dropdown_repeattests.grid(row=1,column=1,padx=4, pady=4, sticky=tk.NSEW)
 
-    button_editinfofields = ctk.CTkButton(ctrltabview.tab('Assay Controls'), image=icon_editinfo, text = 'Edit Info Fields', command = editInfoFieldsClicked)
+    button_editinfofields = ctk.CTkButton(ctrltabview.tab('Assay Controls'), image=icon_editinfo, text = 'Edit Info-Fields', command = editInfoFieldsClicked)
     button_editinfofields.grid(row=6, column=0, columnspan=2, padx=4, pady=4, sticky=tk.NSEW)
 
     #button_startlistener = tk.Button(width = 15, text = "start listen", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = lambda:xrfListenLoop_Start(None)).pack(ipadx=8,ipady=2)
@@ -2311,18 +2485,35 @@ if __name__ == '__main__':
     # button_disablespectra.grid(row=2, column=0, padx=4, pady=4, sticky=tk.NSEW)
 
     button_gets1softwareversion = ctk.CTkButton(ctrltabview.tab("Instrument"), width = 13, image=icon_s1version, text = "Check Instrument Software Version", command = getS1verClicked)
-    button_gets1softwareversion.grid(row=1, column=0, padx=4, pady=4, sticky=tk.NSEW)
+    button_gets1softwareversion.grid(row=1, column=0, columnspan=1, padx=4, pady=4, sticky=tk.NSEW)
 
     button_getnosetemp = ctk.CTkButton(ctrltabview.tab("Instrument"), width = 13, image=icon_temperature ,text = "Check Current Nose Temperature", command = instrument_QueryNoseTemp)
-    button_getnosetemp.grid(row=2, column=0, padx=4, pady=4, sticky=tk.NSEW)
+    button_getnosetemp.grid(row=2, column=0, columnspan=1, padx=4, pady=4, sticky=tk.NSEW)
 
     button_setsystemtime = ctk.CTkButton(ctrltabview.tab("Instrument"), width = 13, image=icon_systemtime, text = "Sync Instrument Clock", command = instrument_ConfigureSystemTime)
-    button_setsystemtime.grid(row=3, column=0, padx=4, pady=4, sticky=tk.NSEW)
+    button_setsystemtime.grid(row=3, column=0, columnspan=1, padx=4, pady=4, sticky=tk.NSEW)
+
+    proximitysensor_var = ctk.BooleanVar(value=False)
+    checkbox_proximitysensor = ctk.CTkCheckBox(ctrltabview.tab('Instrument'), text= 'Safety: Enable Proximity Sensor', variable= proximitysensor_var, onvalue= True, offvalue= False, command=lambda:instrument_toggleProximity(proximitysensor_var.get()))
+    checkbox_proximitysensor.grid(row=4, column=0, padx=4, pady=4, sticky=tk.NSEW)
+
+    storeresultsoninstrument_var = ctk.BooleanVar(value=True)
+    checkbox_storeresultsoninstrument = ctk.CTkCheckBox(ctrltabview.tab('Instrument'), text= 'Output Result Files (.csv/.tsv)', variable= storeresultsoninstrument_var, onvalue= True, offvalue= False, command=lambda:instrument_toggleStoreResultFiles(storeresultsoninstrument_var.get()))
+    checkbox_storeresultsoninstrument.grid(row=5, column=0, padx=4, pady=4, sticky=tk.NSEW)
+
+    storespectraoninstrument_var = ctk.BooleanVar(value=True)
+    checkbox_storespectraoninstrument = ctk.CTkCheckBox(ctrltabview.tab('Instrument'), text= 'Output Spectra Files (.pdz)', variable= storespectraoninstrument_var, onvalue= True, offvalue= False, command=lambda:instrument_toggleStoreSpectraFiles(storespectraoninstrument_var.get()))
+    checkbox_storespectraoninstrument.grid(row=6, column=0, padx=4, pady=4, sticky=tk.NSEW)
+
+    # button_proximityenable = ctk.CTkButton(ctrltabview.tab("Instrument"), width = 13, image=icon_sensoron, text = "Enable Proximity", command = instrument_ConfigureProximityEnable)
+    # button_proximityenable.grid(row=4, column=0, padx=4, pady=4, sticky=tk.NSEW)
+
+    # button_proximitydisable = ctk.CTkButton(ctrltabview.tab("Instrument"), width = 13, image=icon_sensoroff, text = "Disable Proximity", command = instrument_ConfigureProximityDisable)
+    # button_proximitydisable.grid(row=4, column=1, padx=4, pady=4, sticky=tk.NSEW)
 
 
-    button_geteditfields = ctk.CTkButton(ctrltabview.tab("Instrument"), width = 13 ,text = "Get Current Info Fields", command = instrument_QueryEditFields)
-    button_geteditfields.grid(row=4, column=0, padx=4, pady=4, sticky=tk.NSEW)
-
+    # button_geteditfields = ctk.CTkButton(ctrltabview.tab("Instrument"), width = 13 ,text = "Get Current Info Fields", command = instrument_QueryEditFields)
+    # button_geteditfields.grid(row=4, column=0, padx=4, pady=4, sticky=tk.NSEW)
 
     #button_getapplicationprefs = tk.Button(configframe, width = 25, text = "get current app prefs", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = instrument_QueryCurrentApplicationPreferences)
     #button_getapplicationprefs.grid(row=7, column=1, padx=2, pady=2, ipadx=4, ipady=0, sticky=tk.NSEW)
@@ -2330,8 +2521,8 @@ if __name__ == '__main__':
     # button_getapplicationphasetimes = ctk.CTkButton(ctrltabview.tab("Instrument"), width = 13, text = "Get Phase Times", command = instrument_QueryCurrentApplicationPhaseTimes)
     # button_getapplicationphasetimes.grid(row=2, column=1, padx=4, pady=4, sticky=tk.NSEW)
 
-    enableautoassayCSV = tk.StringVar(value='on')
-    checkbox_enableautoassayCSV = ctk.CTkCheckBox(ctrltabview.tab('Options'), text= 'Automatically Save Assay CSV Files', variable= enableautoassayCSV, onvalue= 'on', offvalue= 'off')
+    enableautoassayCSV_var = ctk.StringVar(value='on')
+    checkbox_enableautoassayCSV = ctk.CTkCheckBox(ctrltabview.tab('Options'), text= 'Automatically Save Assay CSV Files', variable= enableautoassayCSV_var, onvalue= 'on', offvalue= 'off')
     checkbox_enableautoassayCSV.grid(row=1, column=1, padx=4, pady=4, sticky=tk.NSEW)
 
     checkbox_enabledarkmode = ctk.CTkCheckBox(ctrltabview.tab('Options'), text= 'Enable Dark Mode', variable= enabledarkmode, onvalue= 'dark', offvalue= 'light', command=lambda:ctk_change_appearance_mode_event(enabledarkmode.get()))

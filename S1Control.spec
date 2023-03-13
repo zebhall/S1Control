@@ -8,7 +8,7 @@ a = Analysis(
     ['S1Control.py'],
     pathex=[],
     binaries=[],
-    datas=[('C:/Users/user/AppData/Local/Programs/Python/Python310/Lib/site-packages/customtkinter', 'customtkinter/'),("pss_lb.ico",".")],
+    datas=[('C:/Users/user/AppData/Local/Programs/Python/Python310/Lib/site-packages/customtkinter', 'customtkinter/'),("pss_lb.ico","."),("pss-logo2-med.png","."),("icons","icons")],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
