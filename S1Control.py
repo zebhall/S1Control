@@ -1,6 +1,6 @@
 # S1Control by ZH for PSS
-versionNum = 'v0.5.0'
-versionDate = '2023/03/13'
+versionNum = 'v0.5.1'
+versionDate = '2023/03/14'
 
 import os
 import sys
@@ -388,7 +388,8 @@ def initialiseLogFile():
 
     if instr_serialnumber == 'UNKNOWN':
         messagebox.showwarning("SerialNumber Error", "Warning: The instrument's serial number was not retrieved in time to use it in the initialisation of the log file for this session. For this reason, the log file will likely display 'UNKNOWN' as the serial number in the filename.")
-    
+        #print("serial number lookup failed. using 'UNKNOWN'")
+
     # Check for slightly renamed folder for this instrument in drive e.g. '800N8573 Ruffo' to use preferably
     foundAlternateFolderName = False
     if driveArchiveLoc != None:
@@ -812,8 +813,7 @@ def xrfListenLoop():
 
 
             else:
-                printAndLog('non-idf xml packet.')
-                printAndLog(data)
+                printAndLog(f'Uncategorised XML Packet Recieved: {data}')
         
         # 5a - RESPONSE XML PACKET, 'logged in' response etc, usually.
         elif datatype == XML_SUCCESS_RESPONSE:      
@@ -962,7 +962,7 @@ def xrfListenLoop():
             printAndLog(data)
         
         #statusUpdateCheck()
-        time.sleep(0.05)
+        time.sleep(0.1)
 
 
 def setSpectrum(data):
@@ -1098,7 +1098,7 @@ def statusUpdateCheckerLoop_Start(event):
 
 def statusUpdateCheckerLoop_Check():
     if status_thread.is_alive():
-        gui.after(20, statusUpdateCheckerLoop_Check)
+        gui.after(100, statusUpdateCheckerLoop_Check)
     else:
         printAndLog('status checker loop machine broke')
 
@@ -1168,9 +1168,7 @@ def statusUpdateChecker():
         # print(f'instr is armed: {instr_isarmed}')
         # print(f'instr is logged in: {instr_isloggedin}')
         # print(f'assay is running: {instr_assayisrunning}')
-
-
-        #time.sleep(0.2)
+        time.sleep(0.2)
     
 
 
@@ -2177,7 +2175,7 @@ if __name__ == '__main__':
 
     # CONNECTION DETAILS FOR TCP/IP VIA USB (Recommended)
     XRF_IP_USB = '192.168.137.139'
-    XRF_PORT_USB = 55204
+    XRF_PORT_USB = 55204    #55204
 
     # CONNECTION DETAILS FOR WIFI  (Not Recommended - Also, DHCP will cause IP to change. Port may change as well?) Wifi is unreliable and prone to massive packet loss and delayed commands/info transmit.
     XRF_IP_WIFI = '192.168.153.167'   # '192.168.153.167:55101' found to work for ruffo when on phone hotspot network. both values may change depending on network settings?
