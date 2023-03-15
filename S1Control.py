@@ -1,6 +1,6 @@
 # S1Control by ZH for PSS
-versionNum = 'v0.5.1'
-versionDate = '2023/03/14'
+versionNum = 'v0.5.2'
+versionDate = '2023/03/15'
 
 import os
 import sys
@@ -186,8 +186,6 @@ def instrument_AcknowledgeError(TxMsgID):
     sendCommand(xrf, f'<Acknowledge RxMsgID="{TxMsgID}" UserAcked="Yes"></Acknowledge>')
 
 
-
-
 def printAndLog(data):
     if logFileName != "":
         print(data)
@@ -222,8 +220,6 @@ def printAndLog(data):
             logbox.configure(state = 'disabled')
 
 
-    
-
 def sendCommand(s, command):
     msg = '<?xml version="1.0" encoding="utf-8"?>'+ command
     msgData = b'\x03\x02\x00\x00\x17\x80'+len(msg).to_bytes(4,'little')+msg.encode('utf-8')+b'\x06\x2A\xFF\xFF'
@@ -253,6 +249,7 @@ def recvData(s):
     if (header[4:6] == b'\x17\x80'):          # 5 - XML PACKET (Usually results?)
         datatype = XML_PACKET
         data = data.decode("utf-8")#.replace('\n','').replace('\r','').replace('\t','')
+        #print(data)
         data = xmltodict.parse(data)
         if ('Response' in data) and ('@status' in data['Response']) and ('#text' in data['Response']):  # and ('ogged in ' in data['Response']['#text']):
             datatype = XML_SUCCESS_RESPONSE         # 5a - XML PACKET, 'success, assay start' 'success, Logged in' etc response
@@ -545,6 +542,8 @@ def xrfListenLoop():
         if thread_halt:
             break
 
+        #print(data)
+
         # 6 - STATUS CHANGE
         if datatype == STATUS_CHANGE:       
 
@@ -780,9 +779,12 @@ def xrfListenLoop():
                 try: instr_editfielddata = data['Response']['EditFieldList']
                 except KeyError: instr_editfielddata = None
                 if instr_editfielddata != None:
-                    instr_editfielddata = instr_editfielddata["EditField"]
-                    printAndLog(f'Info-Fields Data Retrieved: {instr_editfielddata}')
+                    if type(instr_editfielddata["EditField"]) is list:
+                        instr_editfielddata = instr_editfielddata["EditField"]
+                    elif type(instr_editfielddata["EditField"]) is dict:
+                        instr_editfielddata = [instr_editfielddata["EditField"]]
                     fillEditInfoFields(instr_editfielddata)
+                printAndLog(f'Info-Fields Data Retrieved: {instr_editfielddata}')
                 
 
             
@@ -1323,7 +1325,7 @@ def getNearbyEnergies(energy, qty):
     closest.rename(columns={'Energy':'Energy (keV)'}, inplace = True)   
     printAndLog(f'Peak Identification: {round(energy, 4)}keV')
     printAndLog(f'The {qty} closest possibilities are:')
-    printAndLog(closest.to_string(index = False))
+    printAndLog(closest)
 
 
 def clearResultsfromTable():     # Clears all data from results table
@@ -1774,8 +1776,24 @@ def saveAssayToCSV(assay:Assay):
     printAndLog(f'Assay # {assay.index} saved as CSV file.')
 
 
+def clearAllEditInfoFields():
+    field1_name_strvar.set('')
+    field1_val_strvar.set('')
+    field2_name_strvar.set('')
+    field2_val_strvar.set('')
+    field3_name_strvar.set('')
+    field3_val_strvar.set('')
+    field4_name_strvar.set('')
+    field4_val_strvar.set('')
+    field5_name_strvar.set('')
+    field5_val_strvar.set('')
+    field6_name_strvar.set('')
+    field6_val_strvar.set('')
+
+
 def fillEditInfoFields(infofields:list):
     i = 1
+    clearAllEditInfoFields()
     for field_dict in infofields:
         field_name = field_dict['@FieldName']
         field_val = field_dict['#text']
@@ -1829,7 +1847,7 @@ def editInfoFieldsClicked():
         button_getinfofields = ctk.CTkButton(infobuttonframe, width = 13, image=icon_getinfofields, text = "Copy Info-Fields From Instrument", command = queryEditFields_clicked)
         button_getinfofields.pack(side=tk.LEFT, fill = 'x', expand = True, padx=(8,2), pady=4, ipadx = 0, ipady = 0)
 
-        button_resetinfofields = ctk.CTkButton(infobuttonframe, width = 13, image=icon_resetinfofields, text = "Reset Info-Fields", fg_color = '#D85820', hover_color = '#973d16', command = resetEditFields_clicked)
+        button_resetinfofields = ctk.CTkButton(infobuttonframe, width = 13, image=icon_resetinfofields, text = "Reset All to Default", fg_color = '#D85820', hover_color = '#973d16', command = resetEditFields_clicked)
         button_resetinfofields.pack(side=tk.LEFT, fill = 'x', expand = True, padx=(2,2), pady=4, ipadx = 0, ipady = 0)
 
         button_applyinfofields = ctk.CTkButton(infobuttonframe, width = 13, image=icon_applysmall, text = "Apply Changes", command = instrument_ApplyInfoFields)
@@ -1947,27 +1965,51 @@ def instrument_ApplyInfoFields():
         infofieldsmsg = '<Configure parameter="Edit Fields"><FieldList>'
         for i in range(6):
             fieldmsgsegment = ''
+            namemsgsegment = f'<Name>{editinfo_fieldnames[i].get()}</Name>'
+            valuemsgsegment = f'<Value>{editinfo_fieldvalues[i].get()}</Value>'
             fieldtype = 'Fixed'
-            if editinfo_fieldnames[i].get() != '':
-                if editinfo_fieldcounters[i].get() == True:
-                    fieldtype = 'Counter'
-                fieldmsgsegment = f'<Field type="{fieldtype}"><Name>{editinfo_fieldnames[i].get()}</Name><Value>{editinfo_fieldvalues[i].get()}</Value></Field>'
+            if editinfo_fieldcounters[i].get() == True:
+                fieldtype = 'Counter'
+            if editinfo_fieldnames[i].get() == '':  # Use XML tag for null if value is null
+                namemsgsegment = '<Name/>'
+            if editinfo_fieldvalues[i].get() == '':    # Use XML tag for null if value is null
+                valuemsgsegment = '<Value/>'
+
+            fieldmsgsegment = f'<Field type="{fieldtype}">{namemsgsegment}{valuemsgsegment}</Field>'
+
+            if fieldmsgsegment != '<Field type="Fixed"><Name/><Value/></Field>':    # Empty field
                 infofieldsmsg = infofieldsmsg + fieldmsgsegment
+
         infofieldsmsg = infofieldsmsg + '</FieldList></Configure>'
         sendCommand(xrf,infofieldsmsg)
         printAndLog(f'Info-Fields Set: {infofieldsmsg}')
 
 def resetEditFields_clicked():
-    if messagebox.askyesno('Reset All Fields and Values on Instrument?', 'This will reset all field names and values on the instrument. It will not affect assays that have already been taken. \n\nWould you like to proceed?'):
-        instrument_ResetInfoFields()
-        printAndLog('Info-Fields Reset.')
-        instrument_QueryEditFields()    # Pull blank fields from instrument
+    if messagebox.askyesno('Reset All Fields and Values on Instrument?', 'This will reset all field names and values on the instrument to a default placeholder. It will not affect assays that have already been taken. \n\nWould you like to proceed?'):
+        #instrument_ResetInfoFields() # Bugged, does not behave as expected.
+        #instrument_QueryEditFields()    # Pull blank fields from instrument
+        for i in range(6):
+            if i == 0:
+                editinfo_fieldnames[i].set('Sample ID')
+                editinfo_fieldvalues[i].set('1')
+                editinfo_fieldcounters[i].set(False)
+            elif i == 1:
+                editinfo_fieldnames[i].set('Sample Name')
+                editinfo_fieldvalues[i].set('a')
+                editinfo_fieldcounters[i].set(False)
+            else:
+                editinfo_fieldnames[i].set('')
+                editinfo_fieldvalues[i].set('')
+                editinfo_fieldcounters[i].set(False)
+        instrument_ApplyInfoFields()
+        #printAndLog('Info-Fields Reset.')
+    editinfo_windows[0].lift()
 
 
 def queryEditFields_clicked():
-    if messagebox.askyesno('Retrieve Info-Fields from Instrument?',"PLEASE BE AWARE: \nDue to an oversight in Bruker's OEM Remote-Control-Protocol, retreiving the instrument's current info-fields will cause any 'Counter' fields to increment their value by 1 (this is only supposed to happen when an assay is started).\n\nAdditionally, the OEM Protocol does not provide a way to check if the fields are counters - only a way to set them as counters. \n\nFor these reasons, it is recommended to double check the field values and counter checkboxes are correct once retrieved. It is also reccommended to not regularly query the current field values if using counters as it will result in inconsistent incrementation. \n\nWould you like to proceed?"):
+    if messagebox.askyesno('Retrieve Info-Fields from Instrument?',"PLEASE BE AWARE: \nDue to an oversight in Bruker's OEM Protocol, retreiving the instrument's current info-fields will cause any 'Counter' fields to increment their value by 1 (this is only supposed to happen when an assay is started).\n\nAdditionally, the OEM Protocol does not provide a way to check if the fields are counters - only a way to set them as counters. \n\nFor these reasons, it is recommended to double check the field values and counter checkboxes are correct once retrieved. It is also reccommended to not regularly query the current field values if using counters as it will result in inconsistent incrementation. \n\nWould you like to proceed?"):
         instrument_QueryEditFields()
-        editinfo_windows[0].lift()
+    editinfo_windows[0].lift()
 
 
 
