@@ -1,5 +1,5 @@
 # S1Control by ZH for PSS
-versionNum = 'v0.5.2'
+versionNum = 'v0.5.3'
 versionDate = '2023/03/15'
 
 import os
@@ -202,7 +202,10 @@ def printAndLog(data):
             elif type(data) is pd.DataFrame:    # Because results are printed normally to resultsbox, this should now print results table to log but NOT console.
                 logFile.write(data.to_string(index = False).replace('\n','\n\t\t'))
                 #logbox.insert('end', data.to_string(index = False))
-                logbox.insert('end', 'Assay Results written to log file.')
+                if 'Energy (keV)' in data.columns:  # If df contains energy column (i.e. is from peak ID, not results), then print to logbox.
+                    logbox.insert('end', data.to_string(index = False))
+                else:       # Else, df is probably results, so don't print to logbox.
+                    logbox.insert('end', 'Assay Results written to log file.')
             elif type(data) is list:
                 listastext = ', '.join(str(e) for e in data)
                 logFile.write(f'[{listastext}]')
@@ -444,11 +447,6 @@ def getOtherStates():
     sendCommand(xrf,bruker_query_proximityrequired)
     sendCommand(xrf,bruker_query_storeresults)
     sendCommand(xrf,bruker_query_storespectra)
-
-
-
-# def delay_func(t, func:function):
-#     time.sleep(t)
 
 
 # XRF Listen Loop Functions
@@ -778,13 +776,15 @@ def xrfListenLoop():
             elif ('Response' in data) and ('@parameter' in data['Response']) and 'edit fields' in data['Response']['@parameter']:
                 try: instr_editfielddata = data['Response']['EditFieldList']
                 except KeyError: instr_editfielddata = None
-                if instr_editfielddata != None:
+                printAndLog(f'Info-Fields Data Retrieved: {instr_editfielddata}')
+                if instr_editfielddata == None:
+                    printAndLog('NOTE: The Bruker OEM Protocol does not allow info-fields with blank values to be communicated over the protocol. If you cannot retrieve your info-fields properly, try filling the fields with some text on the instrument, then try retrieving it again.')
+                else:
                     if type(instr_editfielddata["EditField"]) is list:
                         instr_editfielddata = instr_editfielddata["EditField"]
                     elif type(instr_editfielddata["EditField"]) is dict:
                         instr_editfielddata = [instr_editfielddata["EditField"]]
                     fillEditInfoFields(instr_editfielddata)
-                printAndLog(f'Info-Fields Data Retrieved: {instr_editfielddata}')
                 
 
             
@@ -1639,7 +1639,7 @@ def configureEmissionLinesClicked():
     if linecfg_firsttime:
         linecfg_firsttime = False
         linecfgwindow = ctk.CTkToplevel()
-        linecfgwindow.bind("<Configure>", window_on_configure)
+        #linecfgwindow.bind("<Configure>", window_on_configure)
         #linecfgwindow.geometry("700x380")
         linecfgwindow.title('Configure Emission Lines')
         linecfgwindow.iconbitmap(iconpath)
@@ -1835,7 +1835,7 @@ def editInfoFieldsClicked():
     if editinfo_firsttime:
         editinfo_firsttime = False
         editinfowindow = ctk.CTkToplevel()
-        editinfowindow.bind("<Configure>", window_on_configure)
+        #editinfowindow.bind("<Configure>", window_on_configure)
         #linecfgwindow.geometry("700x380")
         editinfowindow.title('Configure Emission Lines')
         editinfowindow.iconbitmap(iconpath)
@@ -1985,17 +1985,20 @@ def instrument_ApplyInfoFields():
         printAndLog(f'Info-Fields Set: {infofieldsmsg}')
 
 def resetEditFields_clicked():
+    # global editinfo_fieldnames
+    # global editinfo_fieldvalues
+    # global editinfo_fieldcounters
     if messagebox.askyesno('Reset All Fields and Values on Instrument?', 'This will reset all field names and values on the instrument to a default placeholder. It will not affect assays that have already been taken. \n\nWould you like to proceed?'):
         #instrument_ResetInfoFields() # Bugged, does not behave as expected.
         #instrument_QueryEditFields()    # Pull blank fields from instrument
         for i in range(6):
             if i == 0:
                 editinfo_fieldnames[i].set('Sample ID')
-                editinfo_fieldvalues[i].set('1')
+                editinfo_fieldvalues[i].set('123')
                 editinfo_fieldcounters[i].set(False)
             elif i == 1:
                 editinfo_fieldnames[i].set('Sample Name')
-                editinfo_fieldvalues[i].set('a')
+                editinfo_fieldvalues[i].set('ABC')
                 editinfo_fieldcounters[i].set(False)
             else:
                 editinfo_fieldnames[i].set('')
@@ -2010,7 +2013,6 @@ def queryEditFields_clicked():
     if messagebox.askyesno('Retrieve Info-Fields from Instrument?',"PLEASE BE AWARE: \nDue to an oversight in Bruker's OEM Protocol, retreiving the instrument's current info-fields will cause any 'Counter' fields to increment their value by 1 (this is only supposed to happen when an assay is started).\n\nAdditionally, the OEM Protocol does not provide a way to check if the fields are counters - only a way to set them as counters. \n\nFor these reasons, it is recommended to double check the field values and counter checkboxes are correct once retrieved. It is also reccommended to not regularly query the current field values if using counters as it will result in inconsistent incrementation. \n\nWould you like to proceed?"):
         instrument_QueryEditFields()
     editinfo_windows[0].lift()
-
 
 
 if __name__ == '__main__':
@@ -2046,9 +2048,10 @@ if __name__ == '__main__':
 
 
     gui = ctk.CTk()
-    gui.bind("<Configure>", window_on_configure)
+    #gui.bind("<Configure>", window_on_configure)
     gui.title("S1Control")
     gui.geometry('+5+5')
+    
     #gui.geometry('1380x855')
 
 
@@ -2080,6 +2083,7 @@ if __name__ == '__main__':
     #icon_sendinfofields = ctk.CTkImage(light_image=Image.open(resource_path("icons/install-fill.png")), size=(18, 18))
     gui.iconbitmap(default = iconpath)
 
+    
     # Fonts
     consolas24 = font.Font(family='Consolas', size=24)
     consolas20 = font.Font(family='Consolas', size=20)
