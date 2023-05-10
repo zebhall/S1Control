@@ -1,5 +1,5 @@
 # S1Control by ZH for PSS
-versionNum = 'v0.5.3'
+versionNum = 'v0.5.4'
 versionDate = '2023/03/15'
 
 import os
@@ -24,6 +24,7 @@ from matplotlib import style
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from PIL import Image
 import csv
+from decimal import Decimal
 
 
 
@@ -560,6 +561,13 @@ def xrfListenLoop():
                     assay_start_time = time.time()
                     instr_assayisrunning = True
                     assay_phase_spectrumpacketcounter = 0
+
+                    #set variables for assay
+                    instr_currentassayspectra = []
+                    instr_currentassayspecenergies = []
+                    instr_currentassaylegends = []
+                    instr_currentassayresults = defaultassayresults
+
                     xraysonbar.start()
                     
                     if plotLiveSpectra:
@@ -1038,6 +1046,26 @@ def setSpecEnergy(data):
 
 
 
+def normaliseSpectrum(spectrum_counts, time_in_milliseconds):
+    '''Normalises 1 Spectrum by time and area(total counts). spectrum_counts should be list of counts (usually spectrum['data']) and spectrum time in ms (usually spectrum['fTDur']). Returns a normalised counts list that should probably be stored in spectrum['normalised_data']'''
+
+    time_in_seconds = time_in_milliseconds/1000
+
+    # normalise first by time, by dividing all bins by number of seconds spectrum was taken over
+    counts_per_second_spectrum = [Decimal(b)/Decimal(time_in_seconds) for b in spectrum_counts]  
+
+    # then normalise by area, by dividing all bins by the sum of all bins
+    area_normalised_spectrum = [Decimal(b)/Decimal(sum(counts_per_second_spectrum)) for b in counts_per_second_spectrum]
+
+    # Return as floats (not decimals) and multiply by 100 to get effective percentage (sum of all counts roughly equals 100)
+    float_area_normalised_spectrum = [float(b)*100 for b in area_normalised_spectrum]    
+
+    return float_area_normalised_spectrum
+
+
+# FLAG TO CONTROL NORMALISATION OF SPECTRA VIA AREA-AND-TIME-NORMALISATION
+doNormaliseSpectra = True
+
 def completeAssay(assay_application:str, assay_method:str, assay_time_total_set:int, assay_results:pd.DataFrame, assay_spectra:list, assay_specenergies:list, assay_legends:list, assay_finaltemps:str, assay_note:str=''):
     global assay_catalogue
     global assay_catalogue_num
@@ -1045,6 +1073,10 @@ def completeAssay(assay_application:str, assay_method:str, assay_time_total_set:
     global assay_end_time
 
     t = time.localtime()
+
+    if doNormaliseSpectra:
+        for i in range(len(assay_spectra)):
+            assay_spectra[i]['normalised_data'] = normaliseSpectrum(assay_spectra[i]['data'], assay_spectra[i]['fTDur'])
 
     newassay = Assay(index = str(assay_catalogue_num).zfill(4),
                      date_completed = time.strftime("%Y/%m/%d", t),
@@ -1189,7 +1221,14 @@ def plotSpectrum(spectrum, specenergy, colour, spectrum_legend):
     global fig
     global plottedspectra
 
-    counts = spectrum['data']
+    if doNormaliseSpectra:
+        try:
+            counts = spectrum['normalised_data']
+        except:
+            print('normalised data not found, using raw data instead')
+            counts = spectrum['data']
+    else:
+        counts = spectrum['data']
 
     ev_channel_start = specenergy['fEVChanStart']           # starting ev of spectrum channel 1
     ev_per_channel = specenergy['fEVPerChannel']     
@@ -1837,7 +1876,7 @@ def editInfoFieldsClicked():
         editinfowindow = ctk.CTkToplevel()
         #editinfowindow.bind("<Configure>", window_on_configure)
         #linecfgwindow.geometry("700x380")
-        editinfowindow.title('Configure Emission Lines')
+        editinfowindow.title('Edit Info Fields')
         editinfowindow.iconbitmap(iconpath)
         editinfo_windows.append(editinfowindow)
 
