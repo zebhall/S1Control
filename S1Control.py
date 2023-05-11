@@ -1,5 +1,5 @@
 # S1Control by ZH for PSS
-versionNum = 'v0.5.4'
+versionNum = 'v0.5.5'
 versionDate = '2023/03/15'
 
 import os
@@ -1247,6 +1247,9 @@ def plotSpectrum(spectrum, specenergy, colour, spectrum_legend):
     plottedspectra.append(plottedspectrum)  # adds spectrum to list of currently plotted spectra, for ease of removal later
 
     spectratoolbar.update()
+    spectra_ax.autoscale(enable=True, axis='y', tight=False) ####
+    spectra_ax.relim(True)
+    spectra_ax.autoscale_view(tight=True)
     spectracanvas.draw()
 
 
@@ -1323,11 +1326,8 @@ def plotAssay(assay:Assay):
         plotSpectrum(s, e, plotphasecolours[colouridx],l)
         colouridx +=1
 
-
     clearCurrentEmissionLines()
     plotEmissionLines()
-
-    #printAndLog(f'Assay {assay[0]} plotted.')
 
 
 def onPlotClick(event):     # gets coordinates for click on plot
@@ -2660,6 +2660,7 @@ if __name__ == '__main__':
     spectra_ax.autoscale(enable=True,tight=False)
     spectra_ax.locator_params(axis='x', nbins=23)
     spectra_ax.locator_params(axis='y', nbins=10)
+    spectra_ax.margins(y=0.05, x=0.05)
     #spectra_ax.axhline(y=0, color='k')
     #spectra_ax.axvline(x=0, color='k')
     spectracanvas = FigureCanvasTkAgg(fig,master = spectraframe)
