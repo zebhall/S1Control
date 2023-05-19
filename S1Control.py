@@ -1,5 +1,5 @@
 # S1Control by ZH for PSS
-versionNum = 'v0.5.5'
+versionNum = 'v0.5.6'
 versionDate = '2023/03/15'
 
 import os
@@ -25,6 +25,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolb
 from PIL import Image
 import csv
 from decimal import Decimal
+from plyer import notification as plyer_notification
 
 
 
@@ -359,7 +360,31 @@ def resource_path(relative_path):
     base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
     return os.path.join(base_path, relative_path)
     
+def notifyAllAssaysComplete(number_completed:int):
+    '''Send a platform-suitable notification to the system/desktop to alert the user that all assays have completed. This is in case the user is not looking at the screen or does not have the S1Control window open.'''
+    if enableendofassaynotifications_var.get() == 'on':
+        try:
+            # Set notification verbage to suit multiple assays
+            n_title = 'All Assays Complete!'
+            n_message = f'All {number_completed} Assays have been completed. Instrument is now idle.'
+            n_ticker = 'All Assays Complete!'
 
+            if number_completed == 1:
+                # Set notification verbage to suit single assay
+                n_title = 'Assay Complete!'
+                n_message = 'Assay has been completed. Instrument is now idle.'
+                n_ticker = 'Assay Complete!'
+            
+            plyer_notification.notify(
+                title = n_title,
+                message = n_message,
+                ticker = n_ticker,
+                app_name = 'S1Control',
+                app_icon = iconpath,
+                timeout = 10,
+            )
+        except:
+            printAndLog('UI Error Occurred: notifyAllAssaysComplete was unable to execute.')
 
 def initialiseLogFile():
     global logFile
@@ -512,6 +537,7 @@ def xrfListenLoop():
     global instr_phasecount
     global instr_currentphaselength_s
     global instr_assayrepeatsleft
+    global instr_assayrepeatschosenforcurrentrun
     global instr_approxsingleassaytime
     global instr_applicationspresent
     global instr_currentassayspectra
@@ -607,6 +633,7 @@ def xrfListenLoop():
                     instr_assayrepeatsleft -= 1
                     if instr_assayrepeatsleft <= 0:
                         printAndLog('All Assays complete.')
+                        notifyAllAssaysComplete(instr_assayrepeatschosenforcurrentrun) 
                         assayprogressbar.set(1)
                         endOfAssaysReset()
                     elif instr_assayrepeatsleft > 0:
@@ -1064,7 +1091,7 @@ def normaliseSpectrum(spectrum_counts, time_in_milliseconds):
 
 
 # FLAG TO CONTROL NORMALISATION OF SPECTRA VIA AREA-AND-TIME-NORMALISATION
-doNormaliseSpectra = True
+doNormaliseSpectra = False
 
 def completeAssay(assay_application:str, assay_method:str, assay_time_total_set:int, assay_results:pd.DataFrame, assay_spectra:list, assay_specenergies:list, assay_legends:list, assay_finaltemps:str, assay_note:str=''):
     global assay_catalogue
@@ -1396,8 +1423,10 @@ def startAssayClicked():
     global instr_assayisrunning
     global instr_assayrepeatsselected
     global instr_assayrepeatsleft
+    global instr_assayrepeatschosenforcurrentrun
     global button_assay
     instr_assayrepeatsleft = instr_assayrepeatsselected
+    instr_assayrepeatschosenforcurrentrun = instr_assayrepeatsselected
     if instr_assayisrunning:
         instrument_StopAssay()
         instr_assayisrunning = False
@@ -2604,12 +2633,16 @@ if __name__ == '__main__':
     # button_getapplicationphasetimes = ctk.CTkButton(ctrltabview.tab("Instrument"), width = 13, text = "Get Phase Times", command = instrument_QueryCurrentApplicationPhaseTimes)
     # button_getapplicationphasetimes.grid(row=2, column=1, padx=4, pady=4, sticky=tk.NSEW)
 
-    enableautoassayCSV_var = ctk.StringVar(value='on')
+    enableautoassayCSV_var = ctk.StringVar(value='off')
     checkbox_enableautoassayCSV = ctk.CTkCheckBox(ctrltabview.tab('Options'), text= 'Automatically Save Assay CSV Files', variable= enableautoassayCSV_var, onvalue= 'on', offvalue= 'off')
     checkbox_enableautoassayCSV.grid(row=1, column=1, padx=4, pady=4, sticky=tk.NSEW)
 
-    checkbox_enabledarkmode = ctk.CTkCheckBox(ctrltabview.tab('Options'), text= 'Enable Dark Mode', variable= enabledarkmode, onvalue= 'dark', offvalue= 'light', command=lambda:ctk_change_appearance_mode_event(enabledarkmode.get()))
+    checkbox_enabledarkmode = ctk.CTkCheckBox(ctrltabview.tab('Options'), text= 'Dark Mode UI', variable= enabledarkmode, onvalue= 'dark', offvalue= 'light', command=lambda:ctk_change_appearance_mode_event(enabledarkmode.get()))
     checkbox_enabledarkmode.grid(row=2, column=1, padx=4, pady=4, sticky=tk.NSEW)
+
+    enableendofassaynotifications_var = ctk.StringVar(value='on')
+    checkbox_enableendofassaynotifications = ctk.CTkCheckBox(ctrltabview.tab('Options'), text= 'Desktop Notification on Assay Completion', variable= enableendofassaynotifications_var, onvalue= 'on', offvalue= 'off')
+    checkbox_enableendofassaynotifications.grid(row=3, column=1, padx=4, pady=4, sticky=tk.NSEW)
 
     # Current Instrument Info stuff
     # label_currentapplication_text = ctk.StringVar()
