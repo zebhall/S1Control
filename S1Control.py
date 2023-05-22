@@ -1,6 +1,6 @@
 # S1Control by ZH for PSS
 versionNum = 'v0.5.6'
-versionDate = '2023/03/15'
+versionDate = '2023/05/18'
 
 import os
 import sys

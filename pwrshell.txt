@@ -1,4 +1,4 @@
-pyinstaller --onefile --windowed --clean --icon=pss_lb.ico --add-data 'C:/Users/user/AppData/Local/Programs/Python/Python311/Lib/site-packages/customtkinter;customtkinter/' 'S1Control.py'
+pyinstaller --onefile --windowed --clean --icon=pss_lb.ico --add-data 'C:\Users\Zeb\AppData\Local\Programs\Python\Python311\Lib\site-packages\customtkinter;customtkinter/' 'S1Control.py'
 
 pyinstaller S1Control.spec
 
