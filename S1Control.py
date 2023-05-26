@@ -1,6 +1,6 @@
 # S1Control by ZH for PSS
-versionNum = 'v0.5.6'
-versionDate = '2023/05/18'
+versionNum = 'v0.5.7'
+versionDate = '2023/05/25'
 
 import os
 import sys
@@ -592,7 +592,7 @@ def xrfListenLoop():
                     instr_currentassayspectra = []
                     instr_currentassayspecenergies = []
                     instr_currentassaylegends = []
-                    instr_currentassayresults = defaultassayresults
+                    instr_currentassayresults = default_assay_results_df
 
                     xraysonbar.start()
                     
@@ -619,8 +619,8 @@ def xrfListenLoop():
                     #instrument_QueryNoseTemp()
 
                     # add full assay with all phases to table and catalogue. this 'assay complete' response is usually recieved at very end of assay, when all other values are in place.
-                    if instr_currentassayresults.equals(defaultassayresults):
-                        completeAssay(instr_currentapplication, instr_currentmethod, assay_time_total_set_seconds, defaultassayresults, instr_currentassayspectra, instr_currentassayspecenergies, instr_currentassaylegends, assay_finaltemps)
+                    if instr_currentassayresults.equals(default_assay_results_df):
+                        completeAssay(instr_currentapplication, instr_currentmethod, assay_time_total_set_seconds, default_assay_results_df, instr_currentassayspectra, instr_currentassayspecenergies, instr_currentassaylegends, assay_finaltemps)
                     else:
                         completeAssay(instr_currentapplication, instr_currentmethod, assay_time_total_set_seconds, instr_currentassayresults, instr_currentassayspectra, instr_currentassayspecenergies, instr_currentassaylegends, assay_finaltemps)
                     
@@ -628,7 +628,7 @@ def xrfListenLoop():
                     instr_currentassayspectra = []
                     instr_currentassayspecenergies = []
                     instr_currentassaylegends = []
-                    instr_currentassayresults = defaultassayresults
+                    instr_currentassayresults = default_assay_results_df
 
                     instr_assayrepeatsleft -= 1
                     if instr_assayrepeatsleft <= 0:
@@ -769,12 +769,31 @@ def xrfListenLoop():
             # Results packet?
             elif ('Data' in data) and ('ElementData' in data['Data']['Elements']):      
                 instr_currentassayresults_analysismode = data['Data']['AnalysisMode']
-                instr_currentassayresults_chemistry = list(map(lambda x: {
-                    'Z': int(x['AtomicNumber']['#text']),
-                    'Compound': x['Compound'],
-                    'Concentration(%)': np.around(float(x['Concentration']), 4),
-                    'Error(1SD)': np.around(float(x['Error']), 4)},
-                    data['Data']['Elements']['ElementData']))
+                # convert units if necessary (default units used by instrument is %)
+                if displayunits_var.get() == 'ppm':     # ppm conversion, multiply by 10000000 to convert from wt%
+                    instr_currentassayresults_chemistry = list(map(lambda x: {
+                        'Z': int(x['AtomicNumber']['#text']),
+                        'Compound': x['Compound'],
+                        'Concentration(%)': np.around(float(x['Concentration'])*10000, 0),
+                        'Error(1SD)': np.around(float(x['Error'])*10000, 0)},
+                        data['Data']['Elements']['ElementData']))
+                
+                elif displayunits_var.get() == 'ppb':   # ppb conversion, multiply by 10000000 to convert from wt%
+                    instr_currentassayresults_chemistry = list(map(lambda x: {
+                        'Z': int(x['AtomicNumber']['#text']),
+                        'Compound': x['Compound'],
+                        'Concentration(%)': np.around(float(x['Concentration'])*10000000, 0),
+                        'Error(1SD)': np.around(float(x['Error'])*10000000, 0)},
+                        data['Data']['Elements']['ElementData']))
+                
+                elif displayunits_var.get() == '%':   # units are in wt% by default on instr, BUT need to round to 4 decimal places for easy eyeballing ppm conv.
+                    instr_currentassayresults_chemistry = list(map(lambda x: {
+                        'Z': int(x['AtomicNumber']['#text']),
+                        'Compound': x['Compound'],
+                        'Concentration(%)': np.around(float(x['Concentration']), 4),
+                        'Error(1SD)': np.around(float(x['Error']), 4)},
+                        data['Data']['Elements']['ElementData']))
+                    
                 instr_currentassayresults = pd.DataFrame.from_dict(instr_currentassayresults_chemistry)
                 #printAndLog(instr_currentassayresults)
                 
@@ -1138,6 +1157,8 @@ def completeAssay(assay_application:str, assay_method:str, assay_time_total_set:
     printAndLog(f'Assay # {newassay.index} processed sucessfully ({newassay.time_elapsed})')
     if enableautoassayCSV_var.get() == 'on':
         saveAssayToCSV(newassay)
+    if enableresultsCSV_var.get() == 'on':
+        addAssayToResultsCSV(newassay)
 
 
     # increment catalogue index number for next assay
@@ -1404,7 +1425,12 @@ def displayResults(assay):
     clearResultsfromTable()
     data = assay.results
     for index, row in data.iterrows():
-        resultsTable.insert(parent = '',index='end', values = [f'{row[0]:03}',row[1],f'{row[2]:.4f}',f'{row[3]:.4f}'])
+        if displayunits_var.get() == '%':
+            resultsTable.insert(parent = '',index='end', values = [f'{row[0]:03}',row[1],f'{row[2]:.4f}',f'{row[3]:.4f}'])
+        else:
+            resultsTable.insert(parent = '',index='end', values = [f'{row[0]:03}',row[1],f'{row[2]:.0f}',f'{row[3]:.0f}'])
+    # TODO: add update method for concentrataion units based on assay selected
+
 
 
 def loginClicked():
@@ -1792,8 +1818,9 @@ def window_on_configure(e): # This function is from https://stackoverflow.com/qu
         time.sleep(0.008)
     
 def saveAssayToCSV(assay:Assay):
+    '''Saves a CSV file with all of the info from a single Assay.'''
     assayFolderName = f'Assays_{datetimeString}_{instr_serialnumber}'
-    assayFolderPath = f'{os.getcwd()}\Assays\{assayFolderName}'
+    assayFolderPath = f'{os.getcwd()}\Results\{assayFolderName}'
     assayFileName = f'{assay.index}_{assay.cal_application}_{datetimeString}.csv'
 
     if not os.path.exists(assayFolderPath):
@@ -1843,6 +1870,64 @@ def saveAssayToCSV(assay:Assay):
             #     writer.writerow(row)
     printAndLog(f'Assay # {assay.index} saved as CSV file.')
 
+
+def addAssayToResultsCSV(assay:Assay):
+    '''given an Assay object, add the results of that assay to the results CSV file. designed to mimic results CSV output of instrument.'''
+    global current_session_results_df
+
+    resultsFileName = f'Results_{datetimeString}_{instr_serialnumber}.csv'
+    resultsFolderPath = f'{os.getcwd()}\Results'
+    resultsFilePath = f'{resultsFolderPath}\{resultsFileName}'
+    # create /Results folder in local dir if not there already
+    if not os.path.exists(resultsFolderPath):
+        os.makedirs(resultsFolderPath)
+
+    new_assay_results_dict = {}
+    new_assay_results_dict['Assay #'] = [assay.index]
+    new_assay_results_dict['Serial #'] = [instr_serialnumber]
+    new_assay_results_dict['Date'] = [assay.date_completed]
+    new_assay_results_dict['Time'] = [assay.time_completed]
+    new_assay_results_dict['Application'] = [assay.cal_application]
+    new_assay_results_dict['Method'] = [assay.cal_method]
+    new_assay_results_dict['Duration (Actual)'] = [assay.time_elapsed]
+    # TODO: replace/add live times for each beam
+    # TODO: add notes fields?
+
+    compound_names = assay.results['Compound'].tolist()
+    conc_vals = assay.results['Concentration(%)'].tolist()
+    conc_err_vals = assay.results['Error(1SD)'].tolist()
+    for compound_name, conc_val, conc_err_val in zip(compound_names, conc_vals, conc_err_vals):
+        new_assay_results_dict[f'{compound_name}'] = [conc_val]                 
+        new_assay_results_dict[f'{compound_name} Err'] = [conc_err_val]  
+
+    # convert new assay results dict to df
+    new_assay_results_df = pd.DataFrame(data=new_assay_results_dict)
+
+    # update current session results df with new assay data. this will add new columns if needed (if element wasn't present before, etc)
+    current_session_results_df = pd.concat([current_session_results_df,new_assay_results_df], ignore_index=True)
+
+    # Actually write to the CSV file
+    results_csv_not_saved = True
+    while results_csv_not_saved:
+        try:
+            current_session_results_df.to_csv(f'{resultsFolderPath}\{resultsFileName}', index=False)
+            results_csv_not_saved = False
+        except PermissionError: # Most likely, user has opened results file between readings, and it is unable to be overwritten.
+            if messagebox.askyesno(title="Results File Overwrite Error", message=f"S1Control was unable to write to '{resultsFileName}' with new assay result data. This is likely due to the file being open in another program. If you would like to try to save the new result data again, close the file or program and then click 'Yes' to reattempt. Otherwise click 'No', and the program will try to save the results at the end of the next assay."):
+                results_csv_not_saved = True
+            else:
+                results_csv_not_saved = False
+
+
+
+    # with open((f'{resultsFolderPath}\{resultsFileName}'), 'x', newline='', encoding= 'utf-8') as resultsFile:
+    #     resultsWriter = csv.writer(resultsFile)
+    #     # write updated results dataframe to csv: 
+    #     resultsWriter.writerow(newResultsRow)
+    
+    printAndLog(f'Assay # {assay.index} results saved to {resultsFileName}.')
+
+        
 
 def clearAllEditInfoFields():
     field1_name_strvar.set('')
@@ -2495,11 +2580,13 @@ if __name__ == '__main__':
     # print(element_colour_dict)
 
     # Default DF to use in case no results provided.
-    defaultassayresults = pd.DataFrame.from_dict({
+    default_assay_results_df = pd.DataFrame.from_dict({
                     'Z': [0],
                     'Compound': ['No Results'],
                     'Concentration(%)': [0],
                     'Error(1SD)': [0]})
+    
+    current_session_results_df = pd.DataFrame()
 
     # Frames
     LHSframe = ctk.CTkFrame(gui, width=340, corner_radius=0)
@@ -2633,16 +2720,28 @@ if __name__ == '__main__':
     # button_getapplicationphasetimes = ctk.CTkButton(ctrltabview.tab("Instrument"), width = 13, text = "Get Phase Times", command = instrument_QueryCurrentApplicationPhaseTimes)
     # button_getapplicationphasetimes.grid(row=2, column=1, padx=4, pady=4, sticky=tk.NSEW)
 
+    displayunits_label = ctk.CTkLabel(ctrltabview.tab('Options'), text='Units:')
+    displayunits_label.grid(row=1,column=0,padx=[4,0], pady=4, sticky=tk.NSEW)
+    
+    displayunits_var = ctk.StringVar(value='ppm')
+    displayunits_list = ['%', 'ppm', 'ppb']
+    dropdown_displayunits = ctk.CTkOptionMenu(ctrltabview.tab('Options'), variable=displayunits_var, values=displayunits_list, command=None, dynamic_resizing=False)
+    dropdown_displayunits.grid(row=1,column=1,padx=4, pady=4, sticky=tk.NSEW)
+
     enableautoassayCSV_var = ctk.StringVar(value='off')
-    checkbox_enableautoassayCSV = ctk.CTkCheckBox(ctrltabview.tab('Options'), text= 'Automatically Save Assay CSV Files', variable= enableautoassayCSV_var, onvalue= 'on', offvalue= 'off')
-    checkbox_enableautoassayCSV.grid(row=1, column=1, padx=4, pady=4, sticky=tk.NSEW)
+    checkbox_enableautoassayCSV = ctk.CTkCheckBox(ctrltabview.tab('Options'), text= 'Auto Save Results to Individual CSVs', variable= enableautoassayCSV_var, onvalue= 'on', offvalue= 'off')
+    checkbox_enableautoassayCSV.grid(row=2, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW)
+
+    enableresultsCSV_var = ctk.StringVar(value='on')
+    checkbox_enableresultsCSV = ctk.CTkCheckBox(ctrltabview.tab('Options'), text= 'Auto Save Results to Combined CSV', variable= enableresultsCSV_var, onvalue= 'on', offvalue= 'off')
+    checkbox_enableresultsCSV.grid(row=3, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW)
 
     checkbox_enabledarkmode = ctk.CTkCheckBox(ctrltabview.tab('Options'), text= 'Dark Mode UI', variable= enabledarkmode, onvalue= 'dark', offvalue= 'light', command=lambda:ctk_change_appearance_mode_event(enabledarkmode.get()))
-    checkbox_enabledarkmode.grid(row=2, column=1, padx=4, pady=4, sticky=tk.NSEW)
+    checkbox_enabledarkmode.grid(row=4, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW)
 
     enableendofassaynotifications_var = ctk.StringVar(value='on')
     checkbox_enableendofassaynotifications = ctk.CTkCheckBox(ctrltabview.tab('Options'), text= 'Desktop Notification on Assay Completion', variable= enableendofassaynotifications_var, onvalue= 'on', offvalue= 'off')
-    checkbox_enableendofassaynotifications.grid(row=3, column=1, padx=4, pady=4, sticky=tk.NSEW)
+    checkbox_enableendofassaynotifications.grid(row=5, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW)
 
     # Current Instrument Info stuff
     # label_currentapplication_text = ctk.StringVar()
@@ -2761,7 +2860,7 @@ if __name__ == '__main__':
 
     resultsTable.heading('results_Z', text = 'Z', anchor = tk.W, command=lambda _col='results_Z': treeview_sort_column(resultsTable, _col, False))    
     resultsTable.heading('results_Compound', text = 'Compound', anchor = tk.W, command=lambda _col='results_Compound': treeview_sort_column(resultsTable, _col, False))    
-    resultsTable.heading('results_Concentration', text = 'Concentration %', anchor = tk.W, command=lambda _col='results_Concentration': treeview_sort_column(resultsTable, _col, False))    
+    resultsTable.heading('results_Concentration', text = f'Concentration', anchor = tk.W, command=lambda _col='results_Concentration': treeview_sort_column(resultsTable, _col, False))    
     resultsTable.heading('results_Error', text = 'Error (1\u03C3)', anchor = tk.W, command=lambda _col='results_Error': treeview_sort_column(resultsTable, _col, False))    
 
     resultsTable.column('results_Z', minwidth = 25, width = 30, stretch = 0, anchor = tk.W)
