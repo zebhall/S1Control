@@ -1,6 +1,6 @@
 # S1Control by ZH for PSS
-versionNum = 'v0.5.7'
-versionDate = '2023/05/25'
+versionNum = 'v0.5.8'
+versionDate = '2023/05/30'
 
 import os
 import sys
@@ -48,7 +48,6 @@ class Assay:
 
 def instrument_Connect():
     global xrf
-
     ping = os.system('ping -n 1 -w 40 '+XRF_IP_USB)
     #print(f'ping = {ping}')
     if ping != 0:
@@ -295,9 +294,6 @@ def recvData(s):
         datatype = UNKNOWN_DATA
         print(f'****debug: unknown datatype. header = {header}, data = {data}')
         return data, datatype
-
-    
-
 
 
 def elementZtoSymbol(Z):        # Returns 1-2 character Element symbol as a string
@@ -610,7 +606,7 @@ def xrfListenLoop():
                         #legend = f"Phase {instr_currentphase+1}: {txt['sngHVADC']}kV, {round(float(txt['sngCurADC']),2)}\u03bcA"
                         legend = f"Phase {instr_currentphase+1}({instr_currentphaselength_s}s): {txt['sngHVADC']}kV, {round(float(txt['sngCurADC']),2)}\u03bcA {txt['fltDescription']}"
                         instr_currentassaylegends.append(legend)
-                        plotSpectrum(spectra[-1], specenergies[-1], plotphasecolours[instr_currentphase],legend)
+                        # plotSpectrum(spectra[-1], specenergies[-1], plotphasecolours[instr_currentphase],legend)
                     except: printAndLog('Issue with Spectra experienced after completion of Assay.')
 
                     assay_finaltemps = f"Detector {instr_currentdettemp}°C, Ambient {instr_currentambtemp}°C"
@@ -647,6 +643,7 @@ def xrfListenLoop():
                     assay_phase_spectrumpacketcounter = 0
                     instr_currentphaselength_s = int(phasedurations[instr_currentphase])
                     #try:
+                    spectra[-1]['normalised_data'] = normaliseSpectrum(spectra[-1]['data'], spectra[-1]['fTDur'])
                     instr_currentassayspectra.append(spectra[-1])
                     instr_currentassayspecenergies.append(specenergies[-1])
                     legend = f"Phase {instr_currentphase+1}({instr_currentphaselength_s}s): {txt['sngHVADC']}kV, {round(float(txt['sngCurADC']),2)}\u03bcA {txt['fltDescription']}"
@@ -774,7 +771,7 @@ def xrfListenLoop():
                     instr_currentassayresults_chemistry = list(map(lambda x: {
                         'Z': int(x['AtomicNumber']['#text']),
                         'Compound': x['Compound'],
-                        'Concentration(%)': np.around(float(x['Concentration'])*10000, 0),
+                        'Concentration': np.around(float(x['Concentration'])*10000, 0),
                         'Error(1SD)': np.around(float(x['Error'])*10000, 0)},
                         data['Data']['Elements']['ElementData']))
                 
@@ -782,7 +779,7 @@ def xrfListenLoop():
                     instr_currentassayresults_chemistry = list(map(lambda x: {
                         'Z': int(x['AtomicNumber']['#text']),
                         'Compound': x['Compound'],
-                        'Concentration(%)': np.around(float(x['Concentration'])*10000000, 0),
+                        'Concentration': np.around(float(x['Concentration'])*10000000, 0),
                         'Error(1SD)': np.around(float(x['Error'])*10000000, 0)},
                         data['Data']['Elements']['ElementData']))
                 
@@ -790,7 +787,7 @@ def xrfListenLoop():
                     instr_currentassayresults_chemistry = list(map(lambda x: {
                         'Z': int(x['AtomicNumber']['#text']),
                         'Compound': x['Compound'],
-                        'Concentration(%)': np.around(float(x['Concentration']), 4),
+                        'Concentration': np.around(float(x['Concentration']), 4),
                         'Error(1SD)': np.around(float(x['Error']), 4)},
                         data['Data']['Elements']['ElementData']))
                     
@@ -1109,9 +1106,6 @@ def normaliseSpectrum(spectrum_counts, time_in_milliseconds):
     return float_area_normalised_spectrum
 
 
-# FLAG TO CONTROL NORMALISATION OF SPECTRA VIA AREA-AND-TIME-NORMALISATION
-doNormaliseSpectra = False
-
 def completeAssay(assay_application:str, assay_method:str, assay_time_total_set:int, assay_results:pd.DataFrame, assay_spectra:list, assay_specenergies:list, assay_legends:list, assay_finaltemps:str, assay_note:str=''):
     global assay_catalogue
     global assay_catalogue_num
@@ -1120,9 +1114,12 @@ def completeAssay(assay_application:str, assay_method:str, assay_time_total_set:
 
     t = time.localtime()
 
-    if doNormaliseSpectra:
+    if doNormaliseSpectra_var.get():
         for i in range(len(assay_spectra)):
-            assay_spectra[i]['normalised_data'] = normaliseSpectrum(assay_spectra[i]['data'], assay_spectra[i]['fTDur'])
+            if 'normalised_data' in assay_spectra[i]:   # Only calculate normalised spectra if it hasn't been done already
+                pass
+            else:
+                assay_spectra[i]['normalised_data'] = normaliseSpectrum(assay_spectra[i]['data'], assay_spectra[i]['fTDur'])
 
     newassay = Assay(index = str(assay_catalogue_num).zfill(4),
                      date_completed = time.strftime("%Y/%m/%d", t),
@@ -1269,14 +1266,17 @@ def plotSpectrum(spectrum, specenergy, colour, spectrum_legend):
     global fig
     global plottedspectra
 
-    if doNormaliseSpectra:
+    if doNormaliseSpectra_var.get():
         try:
             counts = spectrum['normalised_data']
+            spectra_ax.set_ylabel('Normalised Counts (%)')
         except:
             print('normalised data not found, using raw data instead')
             counts = spectrum['data']
+            spectra_ax.set_ylabel('Counts (Total)')
     else:
         counts = spectrum['data']
+        spectra_ax.set_ylabel('Counts (Total)')
 
     ev_channel_start = specenergy['fEVChanStart']           # starting ev of spectrum channel 1
     ev_per_channel = specenergy['fEVPerChannel']     
@@ -1609,15 +1609,36 @@ def unselectAllResultCompounds():
 
 
 def treeview_sort_column(treeview, col, reverse):
-    l = [(treeview.set(k, col), k) for k in treeview.get_children('')]
-    l.sort(reverse=reverse)
+    # l = [(treeview.set(k, col), k) for k in treeview.get_children('')]
+    # l.sort(reverse=reverse)
+    # # rearrange items in sorted positions
+    # for index, (val, k) in enumerate(l):
+    #     treeview.move(k, '', index)
+    # # reverse sort next time
+    # treeview.heading(col, command=lambda _col=col: treeview_sort_column(treeview, _col, not reverse))
+    """
+    to sort the table by column when clicking in column
+    """
+    try:
+        data_list = [
+            (float(treeview.set(k, col)), k) for k in treeview.get_children("")
+        ]
+    except Exception:
+        data_list = [(treeview.set(k, col), k) for k in treeview.get_children("")]
+
+    data_list.sort(reverse=reverse)
 
     # rearrange items in sorted positions
-    for index, (val, k) in enumerate(l):
-        treeview.move(k, '', index)
+    for index, (val, k) in enumerate(data_list):
+        treeview.move(k, "", index)
 
     # reverse sort next time
-    treeview.heading(col, command=lambda _col=col: treeview_sort_column(treeview, _col, not reverse))
+    treeview.heading(
+        column=col,
+        command=lambda _col=col: treeview_sort_column(
+            treeview, _col, not reverse
+        ),
+    )
 
 
 def repeatsChoiceMade(val):
@@ -1894,7 +1915,7 @@ def addAssayToResultsCSV(assay:Assay):
     # TODO: add notes fields?
 
     compound_names = assay.results['Compound'].tolist()
-    conc_vals = assay.results['Concentration(%)'].tolist()
+    conc_vals = assay.results['Concentration'].tolist()
     conc_err_vals = assay.results['Error(1SD)'].tolist()
     for compound_name, conc_val, conc_err_val in zip(compound_names, conc_vals, conc_err_vals):
         new_assay_results_dict[f'{compound_name}'] = [conc_val]                 
@@ -2583,7 +2604,7 @@ if __name__ == '__main__':
     default_assay_results_df = pd.DataFrame.from_dict({
                     'Z': [0],
                     'Compound': ['No Results'],
-                    'Concentration(%)': [0],
+                    'Concentration': [0],
                     'Error(1SD)': [0]})
     
     current_session_results_df = pd.DataFrame()
@@ -2728,16 +2749,22 @@ if __name__ == '__main__':
     dropdown_displayunits = ctk.CTkOptionMenu(ctrltabview.tab('Options'), variable=displayunits_var, values=displayunits_list, command=None, dynamic_resizing=False)
     dropdown_displayunits.grid(row=1,column=1,padx=4, pady=4, sticky=tk.NSEW)
 
+    # FLAG TO CONTROL NORMALISATION OF SPECTRA VIA AREA-AND-TIME-NORMALISATION
+    doNormaliseSpectra_var = ctk.BooleanVar(value=False)
+    checkbox_doNormaliseSpectra = ctk.CTkCheckBox(ctrltabview.tab('Options'), text= 'Normalise Spectra (Time & Total Counts)', variable=doNormaliseSpectra_var, onvalue= True, offvalue= False)
+    checkbox_doNormaliseSpectra.grid(row=2, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW)
+    checkbox_doNormaliseSpectra.deselect()
+
     enableautoassayCSV_var = ctk.StringVar(value='off')
     checkbox_enableautoassayCSV = ctk.CTkCheckBox(ctrltabview.tab('Options'), text= 'Auto Save Results to Individual CSVs', variable= enableautoassayCSV_var, onvalue= 'on', offvalue= 'off')
-    checkbox_enableautoassayCSV.grid(row=2, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW)
+    checkbox_enableautoassayCSV.grid(row=3, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW)
 
     enableresultsCSV_var = ctk.StringVar(value='on')
     checkbox_enableresultsCSV = ctk.CTkCheckBox(ctrltabview.tab('Options'), text= 'Auto Save Results to Combined CSV', variable= enableresultsCSV_var, onvalue= 'on', offvalue= 'off')
-    checkbox_enableresultsCSV.grid(row=3, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW)
+    checkbox_enableresultsCSV.grid(row=4, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW)
 
     checkbox_enabledarkmode = ctk.CTkCheckBox(ctrltabview.tab('Options'), text= 'Dark Mode UI', variable= enabledarkmode, onvalue= 'dark', offvalue= 'light', command=lambda:ctk_change_appearance_mode_event(enabledarkmode.get()))
-    checkbox_enabledarkmode.grid(row=4, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW)
+    checkbox_enabledarkmode.grid(row=5, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW)
 
     enableendofassaynotifications_var = ctk.StringVar(value='on')
     checkbox_enableendofassaynotifications = ctk.CTkCheckBox(ctrltabview.tab('Options'), text= 'Desktop Notification on Assay Completion', variable= enableendofassaynotifications_var, onvalue= 'on', offvalue= 'off')
@@ -2784,7 +2811,7 @@ if __name__ == '__main__':
     
     spectra_ax = fig.add_subplot(111)
     spectra_ax.set_xlabel('Energy (keV)')
-    spectra_ax.set_ylabel('Counts')
+    spectra_ax.set_ylabel('Counts (Total)')
 
     spectra_ax.set_xlim(xmin=0, xmax=40)
     spectra_ax.set_ylim(ymin=0, ymax=10000)
