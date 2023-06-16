@@ -14,8 +14,8 @@ Types if import:
 IMPORTANT: Do NOT post this list to the issue-tracker. Use it as a basis for
             tracking down the missing module yourself. Thanks!
 
-missing module named 'org.python' - imported by copy (optional), xml.sax (delayed, conditional)
-missing module named org - imported by pickle (optional)
+missing module named org - imported by copy (optional)
+missing module named 'org.python' - imported by pickle (optional), xml.sax (delayed, conditional)
 missing module named posix - imported by os (conditional, optional), posixpath (optional), shutil (conditional), importlib._bootstrap_external (conditional)
 missing module named resource - imported by posix (top-level)
 missing module named _frozen_importlib_external - imported by importlib._bootstrap (delayed), importlib (optional), importlib.abc (optional), zipimport (top-level)
@@ -75,7 +75,7 @@ missing module named trove_classifiers - imported by setuptools.config._validate
 missing module named 'setuptools.extern.packaging.specifiers' - imported by setuptools.config.setupcfg (top-level), setuptools.config._apply_pyprojecttoml (delayed)
 missing module named 'setuptools.extern.packaging.requirements' - imported by setuptools.config.setupcfg (top-level)
 missing module named importlib_metadata - imported by setuptools._importlib (delayed, optional)
-missing module named pyimod02_importers - imported by C:\Users\Zeb\AppData\Local\Programs\Python\Python311\Lib\site-packages\PyInstaller\hooks\rthooks\pyi_rth_pkgres.py (top-level), C:\Users\Zeb\AppData\Local\Programs\Python\Python311\Lib\site-packages\PyInstaller\hooks\rthooks\pyi_rth_pkgutil.py (top-level)
+missing module named pyimod02_importers - imported by C:\Users\Zeb\AppData\Roaming\Python\Python311\site-packages\PyInstaller\hooks\rthooks\pyi_rth_pkgres.py (top-level), C:\Users\Zeb\AppData\Roaming\Python\Python311\site-packages\PyInstaller\hooks\rthooks\pyi_rth_pkgutil.py (top-level)
 missing module named _scproxy - imported by urllib.request (conditional)
 missing module named olefile - imported by PIL.FpxImagePlugin (top-level), PIL.MicImagePlugin (top-level)
 missing module named cffi - imported by PIL.Image (optional), PIL.PyAccess (optional)
@@ -202,7 +202,7 @@ missing module named 'tornado.websocket' - imported by matplotlib.backends.backe
 missing module named 'tornado.ioloop' - imported by matplotlib.backends.backend_webagg (top-level)
 missing module named 'tornado.web' - imported by matplotlib.backends.backend_webagg (top-level)
 missing module named tornado - imported by matplotlib.backends.backend_webagg (optional), matplotlib.backends.backend_webagg_core (delayed)
-missing module named pytest - imported by matplotlib (delayed, optional), pandas._testing._io (delayed), pandas._testing (delayed)
+missing module named importlib_resources - imported by matplotlib.style.core (conditional)
 missing module named certifi - imported by matplotlib (delayed, optional)
 missing module named setuptools_scm - imported by matplotlib (delayed, conditional)
 missing module named PyObjCTools - imported by darkdetect._mac_detect (optional)
@@ -252,3 +252,4 @@ missing module named scipy - imported by pandas.core.nanops (delayed, conditiona
 missing module named 'scipy.sparse' - imported by pandas.core.arrays.sparse.array (conditional), pandas.core.arrays.sparse.scipy_sparse (delayed, conditional), pandas.core.arrays.sparse.accessor (delayed), pandas.core.dtypes.common (delayed, conditional, optional)
 missing module named 'lxml.html' - imported by pandas.io.html (delayed)
 missing module named bs4 - imported by pandas.io.html (delayed)
+missing module named pytest - imported by pandas._testing._io (delayed), pandas._testing (delayed)

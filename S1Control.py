@@ -1,6 +1,6 @@
 # S1Control by ZH for PSS
-versionNum = 'v0.5.8'
-versionDate = '2023/05/30'
+versionNum = 'v0.5.9'
+versionDate = '2023/06/16'
 
 import os
 import sys
@@ -700,47 +700,80 @@ def xrfListenLoop():
         elif datatype == XML_PACKET:       
             if ('Response' in data) and ('@parameter' in data['Response']) and (data['Response']['@parameter'] == 'instrument definition') and (data['Response']['@status'] == 'success'):               
                 #All IDF data:
-                vers_info = data['Response']['InstrumentDefinition']
+                idf = data['Response']['InstrumentDefinition']
 
                 #Broken Down:
-                instr_model = vers_info['Model']
-                instr_serialnumber = vers_info['SerialNumber']
-                instr_buildnumber = vers_info['BuildNumber']
-
-                instr_detectormodel = vers_info['Detector']['DetectorModel']
+                instr_model = idf.get('Model', 'N/A')
+                instr_serialnumber = idf.get('SerialNumber', 'N/A')
+                instr_buildnumber = idf.get('BuildNumber', 'N/A')
                 instr_detectortype = instr_buildnumber[0:3]
-                if instr_detectortype[1] in 'PMK':  # Older detectors with Beryllium windows. eg SPX, SMA, SK6, etc
-                    instr_detectorwindowtype = 'Beryllium'
-                    try:
-                        instr_detectorwindowthickness = vers_info['Detector']['BerylliumWindowThicknessInuM'] + '\u03bcM'
-                    except KeyError:
-                        instr_detectorwindowthickness = 'Unknown'
-                if instr_detectortype[1] in 'G':
-                    instr_detectorwindowtype = 'Graphene'
-                    try:
-                        instr_detectorwindowthickness = vers_info['Detector']['GrapheneWindowThicknessInuM'] + '\u03bcM'    # In case instrument def is wrong (eg. Martin has graphene det, but only beryllium thickness listed)
-                    except KeyError:
-                        instr_detectorwindowthickness = '?\u03bcM'
-                instr_detectorresolution = vers_info['Detector']['TypicalResolutionIneV'] + 'eV'
-                instr_detectormaxTemp = vers_info['Detector']['OperatingTempMaxInC'] + '°C'
-                instr_detectorminTemp = vers_info['Detector']['OperatingTempMinInC'] + '°C'
 
-                instr_sourcemanufacturer = vers_info['XrayTube']['Manufacturer']
-                instr_sourcetargetZ = vers_info['XrayTube']['TargetElementNumber']
-                instr_sourcetargetSymbol = elementZtoSymbol(int(instr_sourcetargetZ))
-                instr_sourcetargetName = elementZtoName(int(instr_sourcetargetZ))
-                instr_sourcemaxV = vers_info['XrayTube']['OperatingLimits']['MaxHighVoltage'] + 'kV'
-                instr_sourceminV = vers_info['XrayTube']['OperatingLimits']['MinHighVoltage'] + 'kV'
-                instr_sourcemaxI = vers_info['XrayTube']['OperatingLimits']['MaxAnodeCurrentInuA'] + '\u03bcA'
-                instr_sourceminI = vers_info['XrayTube']['OperatingLimits']['MinAnodeCurrentInuA'] + '\u03bcA'
-                instr_sourcemaxP = vers_info['XrayTube']['OperatingLimits']['MaxOutputPowerInmW'] + 'mW'
-                instr_sourcespotsize = vers_info['SpotSize']['Size'] + 'mm'
-                instr_sourcehaschangeablecollimator = vers_info['HasChangeableCollimator']
+                instr_detector = idf.get('Detector', 'N/A')
 
-                instr_firmwareSUPversion = vers_info['SUP']['FirmwareVersion']
-                instr_firmwareUUPversion = vers_info['UUP']['FirmwareVersion']
-                instr_firmwareXILINXversion = vers_info['DPP']['XilinxFirmwareVersion']
-                instr_firmwareOMAPkernelversion = vers_info['OMAP']['KernelVersion']
+                if instr_detector != 'N/A':
+                    instr_detectormodel = instr_detector.get('DetectorModel', 'N/A')
+                    if instr_detectortype[1] in 'PMK':  # Older detectors with Beryllium windows. eg SPX, SMA, SK6, etc
+                        instr_detectorwindowtype = 'Beryllium'
+                        instr_detectorwindowthickness = instr_detector.get('BerylliumWindowThicknessInuM', '?') + '\u03bcM'        
+                    elif instr_detectortype[1] in 'G':
+                        instr_detectorwindowtype = 'Graphene'
+                        instr_detectorwindowthickness = instr_detector.get('GrapheneWindowThicknessInuM', '?') + '\u03bcM'    # In case instrument def is wrong (eg. Martin has graphene det, but only beryllium thickness listed)
+                    instr_detectorresolution = instr_detector.get('TypicalResolutionIneV', '?') + 'eV'
+                    instr_detectormaxTemp = instr_detector.get('OperatingTempMaxInC', '?') + '°C'
+                    instr_detectorminTemp = instr_detector.get('OperatingTempMinInC', '?') + '°C'
+                else:
+                    instr_detectormodel = 'N/A'
+                    instr_detectorwindowtype = 'N/A'
+                    instr_detectorwindowthickness = 'N/A'
+                    instr_detectorresolution = 'N/A'
+                    instr_detectormaxTemp = 'N/A'
+                    instr_detectorminTemp = 'N/A'
+                
+                instr_source = idf.get('XrayTube', 'N/A')
+                if instr_source != 'N/A':
+                    instr_sourceoplimits = instr_source.get('OperatingLimits', 'N/A')
+                    instr_sourcemanufacturer = instr_source.get('Manufacturer', 'N/A')
+                    instr_sourcetargetZ = instr_source.get('TargetElementNumber', 0)
+                    instr_sourcetargetSymbol = elementZtoSymbol(int(instr_sourcetargetZ))
+                    instr_sourcetargetName = elementZtoName(int(instr_sourcetargetZ))
+                    if instr_sourceoplimits != 'N/A':
+                        instr_sourcemaxV = instr_sourceoplimits.get('MaxHighVoltage', '?') + 'kV'
+                        instr_sourceminV = instr_sourceoplimits.get('MinHighVoltage', '?') + 'kV'
+                        instr_sourcemaxI = instr_sourceoplimits.get('MaxAnodeCurrentInuA', '?') + '\u03bcA'
+                        instr_sourceminI = instr_sourceoplimits.get('MinAnodeCurrentInuA', '?') + '\u03bcA'
+                        instr_sourcemaxP = instr_sourceoplimits.get('MaxOutputPowerInmW', '?') + 'mW'
+                    else:
+                        printAndLog('IDF: NO OP LIMITS FOUND: Instrument Definition File does not report any xTube Operating Limits. This is normal for some older instruments.')
+                        instr_sourcemaxV = 'N/A'
+                        instr_sourceminV = 'N/A'
+                        instr_sourcemaxI = 'N/A'
+                        instr_sourceminI = 'N/A'
+                        instr_sourcemaxP = 'N/A'
+                else:
+                    instr_sourcemanufacturer = 'N/A'
+                    instr_sourcetargetZ = 'N/A'
+                    instr_sourcetargetSymbol = 'N/A'
+                    instr_sourcetargetName = 'N/A'
+                    instr_sourcemaxV = 'N/A'
+                    instr_sourceminV = 'N/A'
+                    instr_sourcemaxI = 'N/A'
+                    instr_sourceminI = 'N/A'
+                    instr_sourcemaxP = 'N/A'
+
+                try: instr_sourcespotsize = idf['SpotSize']['Size'] + 'mm'
+                except: instr_sourcespotsize = 'N/A'
+
+                instr_sourcehaschangeablecollimator = idf.get('HasChangeableCollimator', 'N/A')
+                
+                try: instr_firmwareSUPversion = idf['SUP']['FirmwareVersion']
+                except: instr_firmwareSUPversion = 'N/A'
+                try: instr_firmwareUUPversion = idf['UUP']['FirmwareVersion']
+                except: instr_firmwareUUPversion = 'N/A'
+                try: instr_firmwareXILINXversion = idf['DPP']['XilinxFirmwareVersion']
+                except: instr_firmwareXILINXversion = 'N/A'
+                try: instr_firmwareOMAPkernelversion = idf['OMAP']['KernelVersion']
+                except: instr_firmwareOMAPkernelversion = 'N/A'
+
                 # a = globals()
                 # for i in a:
                 #     printAndLog(i, ':', a[i])
@@ -750,7 +783,7 @@ def xrfListenLoop():
                 printAndLog(f'Serial Number: {instr_serialnumber}')
                 printAndLog(f'Build Number: {instr_buildnumber}')
                 try: printAndLog(f'Software: S1 Version {instr_softwareS1version}')
-                except: pass
+                except: pass    # This is in case the ver isn't retrieved or reported early enough. lazy, but oh well. It stops it failing or doublereporting
                 printAndLog(f'Firmware: SuP {instr_firmwareSUPversion}, UuP {instr_firmwareUUPversion}')
                 printAndLog(f'Detector: {instr_detectormodel}')
                 printAndLog(f'Detector Specs: {instr_detectortype} - {instr_detectorwindowthickness} {instr_detectorwindowtype} window, {instr_detectorresolution} resolution, operating temps {instr_detectormaxTemp} - {instr_detectorminTemp}')
@@ -1253,7 +1286,12 @@ def statusUpdateChecker():
 
 def assaySelected(event):
     selection = assaysTable.item(assaysTable.selection())
-    selected_assay_catalogue_num = selection['values'][0]
+    #print(f'sel values = {selection["values"]}')
+    try:
+        selected_assay_catalogue_num = selection['values'][0]
+    except IndexError:  # Treeview is buggy, and doesn't like when an assay is started when another assay is selected. - when this happens, selection['values'] will be '' instead of a dict
+        return
+    #print(f'selected_assay_catalogue_num={selected_assay_catalogue_num}')
     #selected_assay_application = selection['values'][2]
     assay = assay_catalogue[int(selected_assay_catalogue_num)-1]
     plotAssay(assay)
@@ -1306,10 +1344,16 @@ def clearCurrentSpectra():
     global plottedspectra
     #spectra_ax.cla()   #clears all plots from ax
     for plottedspectrum in plottedspectra:
-        plotref = plottedspectrum.pop(0)    # removes from list
-        spectra_ax.lines.remove(plotref)
+        #plotref = plottedspectrum.pop(0)    # removes from list
+        spectra_ax.lines[0].remove()
     try: spectra_ax.get_legend().remove()
     except: pass
+    # WAS THIS IN MATPLOTLIB 3.6.3
+    # for plottedspectrum in plottedspectra:        
+    #     plotref = plottedspectrum.pop(0)    # removes from list
+    #     spectra_ax.lines.remove(plotref)
+    # try: spectra_ax.get_legend().remove()
+    # except: pass
     plottedspectra = []     # clears this list which is now probably full of empty refs?
     spectratoolbar.update()
     spectracanvas.draw()
@@ -2763,13 +2807,14 @@ if __name__ == '__main__':
     checkbox_enableresultsCSV = ctk.CTkCheckBox(ctrltabview.tab('Options'), text= 'Auto Save Results to Combined CSV', variable= enableresultsCSV_var, onvalue= 'on', offvalue= 'off')
     checkbox_enableresultsCSV.grid(row=4, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW)
 
-    checkbox_enabledarkmode = ctk.CTkCheckBox(ctrltabview.tab('Options'), text= 'Dark Mode UI', variable= enabledarkmode, onvalue= 'dark', offvalue= 'light', command=lambda:ctk_change_appearance_mode_event(enabledarkmode.get()))
-    checkbox_enabledarkmode.grid(row=5, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW)
-
     enableendofassaynotifications_var = ctk.StringVar(value='on')
     checkbox_enableendofassaynotifications = ctk.CTkCheckBox(ctrltabview.tab('Options'), text= 'Desktop Notification on Assay Completion', variable= enableendofassaynotifications_var, onvalue= 'on', offvalue= 'off')
     checkbox_enableendofassaynotifications.grid(row=5, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW)
 
+    checkbox_enabledarkmode = ctk.CTkCheckBox(ctrltabview.tab('Options'), text= 'Dark Mode UI', variable= enabledarkmode, onvalue= 'dark', offvalue= 'light', command=lambda:ctk_change_appearance_mode_event(enabledarkmode.get()))
+    checkbox_enabledarkmode.grid(row=6, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW)
+    
+    
     # Current Instrument Info stuff
     # label_currentapplication_text = ctk.StringVar()
     applicationselected_stringvar = ctk.StringVar(value='Application')
