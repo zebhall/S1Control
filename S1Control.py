@@ -28,7 +28,6 @@ from decimal import Decimal
 from plyer import notification as plyer_notification
 
 
-
 @dataclass
 class Assay:
     index: str              # Index num used to track order assays were taken in software. DOES NOT NECESSARILY EQUAL PDZ FILE NUMBER !!!!
@@ -2359,7 +2358,7 @@ if __name__ == '__main__':
     ctk_consolas15B = ctk.CTkFont(family = 'Consolas', size = 15, weight = 'bold')
     ctk_consolas18B = ctk.CTkFont(family = 'Consolas', size = 18, weight = 'bold')
     ctk_consolas20B = ctk.CTkFont(family = 'Consolas', size = 20, weight = 'bold')
-    ctk_default_largeB = ctk.CTkFont(weight = 'bold')
+    ctk_default_largeB = ctk.CTkFont(weight = 'bold')    
 
     plotCTKColour = ('#dbdbdb','#4a4a4a')
 
@@ -2796,7 +2795,7 @@ if __name__ == '__main__':
     button_setsystemtime.grid(row=4, column=0, columnspan=1, padx=4, pady=4, sticky=tk.NSEW)
 
     proximitysensor_var = ctk.BooleanVar(value=False)
-    checkbox_proximitysensor = ctk.CTkCheckBox(ctrltabview.tab('Instrument'), border_width=2, text= 'Safety: Enable Proximity Sensor', variable= proximitysensor_var, onvalue= True, offvalue= False, command=lambda:instrument_toggleProximity(proximitysensor_var.get()))
+    checkbox_proximitysensor = ctk.CTkCheckBox(ctrltabview.tab('Instrument'), text= 'Safety: Enable Proximity Sensor', variable= proximitysensor_var, onvalue= True, offvalue= False, command=lambda:instrument_toggleProximity(proximitysensor_var.get()))
     checkbox_proximitysensor.grid(row=5, column=0, padx=4, pady=4, sticky=tk.NSEW)
 
     storeresultsoninstrument_var = ctk.BooleanVar(value=True)
