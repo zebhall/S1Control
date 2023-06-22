@@ -1,5 +1,5 @@
 # S1Control by ZH for PSS
-versionNum = 'v0.6.0'
+versionNum = 'v0.6.1'
 versionDate = '2023/06/22'
 
 import os
@@ -1452,7 +1452,7 @@ def onPlotClick(event):     # gets coordinates for click on plot
     global button_analysepeak
     ix, iy = event.xdata, event.ydata
     print(f'plot click: x={ix}, y={iy}')
-    button_analysepeak.configure(text = 'Identify Peak', fg_color = '#3B8ED0', hover_color = '#36719F')
+    button_analysepeak.configure(text = 'Identify Peak ', fg_color = '#3B8ED0', hover_color = '#36719F')
     getNearbyEnergies(ix, 10)
 
     fig.canvas.mpl_disconnect(cid)  # Disconnects the listener
@@ -1461,7 +1461,7 @@ def onPlotClick(event):     # gets coordinates for click on plot
 def startPlotClickListener():   # Starts the listener for click on plot so it isn't active at all times.
     global cid
     global button_analysepeak
-    button_analysepeak.configure(text = 'Click a Peak to Analyse...', fg_color = '#D85820', hover_color = '#973d16')
+    button_analysepeak.configure(text = 'Click a Peak to Analyse... ', fg_color = '#D85820', hover_color = '#973d16')
     cid = fig.canvas.mpl_connect('button_press_event', onPlotClick)
 
 
@@ -1828,7 +1828,11 @@ def configureEmissionLinesClicked():
         #linecfgwindow.geometry("700x380")
         linecfgwindow.title('Configure Emission Lines')
         linecfgwindow.iconbitmap(iconpath)
+        # after delay to fix toplevel icon bug in customtkinter.
+        linecfgwindow.after(220, lambda:linecfgwindow.iconbitmap(iconpath))
+        linecfgwindow.after(200,lambda:linecfgwindow.lift())
         linecfgwindows.append(linecfgwindow)
+
 
         periodictableframe = ctk.CTkFrame(linecfgwindow, width=20, height = 20, corner_radius=5)
         periodictableframe.pack(side=tk.TOP, fill = 'both', expand = True, padx=4, pady=4, ipadx = 4, ipady = 4)
@@ -2083,6 +2087,8 @@ def editInfoFieldsClicked():
         #linecfgwindow.geometry("700x380")
         editinfowindow.title('Edit Info Fields')
         editinfowindow.iconbitmap(iconpath)
+        editinfowindow.after(220, lambda:editinfowindow.iconbitmap(iconpath))
+        editinfowindow.after(200,lambda:editinfowindow.lift())
         editinfo_windows.append(editinfowindow)
 
         infobuttonframe = ctk.CTkFrame(editinfowindow, width=20, height = 20, corner_radius=5)
@@ -2926,7 +2932,7 @@ if __name__ == '__main__':
     # button_clearemissionlines = ctk.CTkButton(spectraframe, width = 13, text = "Clear Emission Lines", command = clearEmissionLinesClicked)
     # button_clearemissionlines.pack(side=tk.RIGHT, fill = 'x', padx = 0, pady = 4)
 
-    button_analysepeak = ctk.CTkButton(spectraframe, width = 13, image=icon_identifypeak, text = "Identify Peak", command = startPlotClickListener)
+    button_analysepeak = ctk.CTkButton(spectraframe, width = 13, image=icon_identifypeak, text = "Identify Peak ", command = startPlotClickListener)
     button_analysepeak.pack(side=tk.RIGHT, fill = 'x', padx = 0, pady = 4)
 
 
