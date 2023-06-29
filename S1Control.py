@@ -1,6 +1,6 @@
 # S1Control by ZH for PSS
-versionNum = 'v0.6.1'
-versionDate = '2023/06/22'
+versionNum = 'v0.6.2'
+versionDate = '2023/06/29'
 
 import os
 import sys
@@ -201,12 +201,17 @@ def printAndLog(data):
                 logbox.insert('end',json.dumps(data))
             elif type(data) is str:
                 logFile.write(data) 
-                logbox.insert('end', data)
+                if 'ERROR' in data:
+                    logbox.insert('end', data, 'ERROR')
+                elif 'WARNING' in data:
+                    logbox.insert('end', data, 'WARNING') 
+                else:
+                    logbox.insert('end', data)
             elif type(data) is pd.DataFrame:    # Because results are printed normally to resultsbox, this should now print results table to log but NOT console.
                 logFile.write(data.to_string(index = False).replace('\n','\n\t\t'))
                 #logbox.insert('end', data.to_string(index = False))
                 if 'Energy (keV)' in data.columns:  # If df contains energy column (i.e. is from peak ID, not results), then print to logbox.
-                    logbox.insert('end', data.to_string(index = False))
+                    logbox.insert('end', data.to_string(index = False), 'INFO')
                 else:       # Else, df is probably results, so don't print to logbox.
                     logbox.insert('end', 'Assay Results written to log file.')
             elif type(data) is list:
@@ -218,8 +223,8 @@ def printAndLog(data):
                     logFile.write(data)
                     logbox.insert('end', data)
                 except:
-                    logFile.write(f'Error: Data type {type(data)} unable to be written to log.')
-                    logbox.insert('end',(f'Error: Data type {type(data)} unable to be written to log.'))
+                    logFile.write(f'ERROR: Data type {type(data)} unable to be written to log.')
+                    logbox.insert('end',(f'ERROR: Data type {type(data)} unable to be written to log.'), 'ERROR')
             logFile.write("\n")
             logbox.insert('end','\n')
             logbox.see("end")
@@ -797,7 +802,7 @@ def xrfListenLoop():
                 printAndLog(f'Source Current Range: {instr_sourceminI} - {instr_sourcemaxI}')
             
             elif ('Data' in data) and (data['Data']['Elements'] == None):
-                printAndLog('ERROR: Calculation Error has occurred, no results provided by instrument. Try Rebooting.')
+                printAndLog('WARNING: Calculation Error has occurred, no results provided by instrument. If this is unexpected, try Rebooting.')
 
             # Results packet?
             elif ('Data' in data) and ('ElementData' in data['Data']['Elements']):      
@@ -886,7 +891,7 @@ def xrfListenLoop():
                     instrument_AcknowledgeError(TxMsgID)
                     printAndLog('Info/Warning Acknowledgment Sent. Attempting to resume...')
                 else:
-                    printAndLog('Warning Message Cannot be Acknowledged Remotely. Please evaluate warning on instrument screen.')
+                    printAndLog('ERROR: Info/Warning Message Cannot be Acknowledged Remotely. Please evaluate info/warning on instrument.')
 
             # ERROR HAS OCCURRED
             elif ('ErrorReport' in data):                   # Must respond to these. If an acknowledgement message is not received within 5 seconds ofthe initial transmission the message will be retransmitted. This process continues until an acknowledge is received or the message is transmitted 5 times.
@@ -898,11 +903,11 @@ def xrfListenLoop():
                     instrument_AcknowledgeError(TxMsgID)
                     printAndLog('Error Acknowledgment Sent. Attempting to resume...')
                 else:
-                    printAndLog('Error Message Cannot be Acknowledged Remotely. Please evaluate error on instrument screen.')
+                    printAndLog('ERROR: Error Message Cannot be Acknowledged Remotely. Please evaluate error on instrument.')
 
 
             else:
-                printAndLog(f'Uncategorised XML Packet Recieved: {data}')
+                printAndLog(f'WARNING: Uncategorised XML Packet Recieved: {data}')
         
         # 5a - RESPONSE XML PACKET, 'logged in' response etc, usually.
         elif datatype == XML_SUCCESS_RESPONSE:      
@@ -2875,7 +2880,9 @@ if __name__ == '__main__':
     #logbox_yscroll.grid(row = 1, column = 3, columnspan = 1, rowspan= 2, sticky = tk.NSEW)
     logbox = ctk.CTkTextbox(LHSframe, corner_radius=5, height = 250, width = 320, font = ctk_consolas11, text_color=WHITEISH, fg_color=CHARCOAL, wrap = tk.NONE)
     logbox.pack(side = tk.TOP, anchor = tk.N, fill = 'both', expand = True, padx=8, pady=[4, 4])
-    #logbox.pack(side = tk.TOP, fill = 'both', expand = True, anchor = tk.N)
+    logbox.tag_config('ERROR', foreground="#d62d43")
+    logbox.tag_config('WARNING', foreground="#e09c26")
+    logbox.tag_config('INFO', foreground="#2783d9")
     logbox.configure(state = 'disabled')
     #logbox_xscroll.config(command = logbox.xview)
     #logbox_yscroll.config(command = logbox.yview)
