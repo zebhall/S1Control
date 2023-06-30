@@ -1,6 +1,6 @@
 # S1Control by ZH for PSS
-versionNum = 'v0.6.2'
-versionDate = '2023/06/29'
+versionNum = 'v0.6.3'
+versionDate = '2023/06/30'
 
 import os
 import sys
@@ -77,13 +77,13 @@ def instrument_Connect():
 def instrument_Disconnect():
     global xrf
     xrf.close()
-    printAndLog('Instrument Connection Closed.')
+    printAndLog('Instrument Connection Closed.', 'WARNING')
 
 
 def instrument_StartAssay():
     global spectra
     global assay_catalogue_num
-    printAndLog(f'Starting Assay # {str(assay_catalogue_num).zfill(4)}')
+    printAndLog(f'Starting Assay # {str(assay_catalogue_num).zfill(4)}', 'INFO')
     unselectAllAssays()
     clearCurrentSpectra()
     clearResultsfromTable()
@@ -146,7 +146,7 @@ def instrument_toggleProximity(prox_button_bool:bool):
     elif prox_button_bool == False:
         instrument_ConfigureProximityDisable()
     else:
-        printAndLog('Error toggling proximity. Toggle value invalid.')
+        printAndLog('ERROR: Cannot toggle proximity. Toggle value invalid.')
 
 def instrument_ConfigureStoreResultsEnable():
     sendCommand(xrf, bruker_configure_storeresultsenable)
@@ -160,7 +160,7 @@ def instrument_toggleStoreResultFiles(store_results_button_bool:bool):
     elif store_results_button_bool == False:
         instrument_ConfigureStoreResultsDisable()
     else:
-        printAndLog('Error toggling store-results. Toggle value invalid.')
+        printAndLog('ERROR: Cannot toggle store-results. Toggle value invalid.')
 
 def instrument_ConfigureStoreSpectraEnable():
     sendCommand(xrf, bruker_configure_storespectraenable)
@@ -174,7 +174,7 @@ def instrument_toggleStoreSpectraFiles(store_spectra_button_bool:bool):
     elif store_spectra_button_bool == False:
         instrument_ConfigureStoreSpectraDisable()
     else:
-        printAndLog('Error toggling store-spectra. Toggle value invalid.')
+        printAndLog('ERROR: Cannot toggle store-spectra. Toggle value invalid.')
 
 def instrument_ResetInfoFields():
     sendCommand(xrf, bruker_configure_resetinfofields)
@@ -189,16 +189,25 @@ def instrument_AcknowledgeError(TxMsgID):
     sendCommand(xrf, f'<Acknowledge RxMsgID="{TxMsgID}" UserAcked="Yes"></Acknowledge>')
 
 
-def printAndLog(data):
+def printAndLog(data, logbox_colour_tag='BASIC'):
+    """prints data to terminal, UI logbox, and txt log file. logbox_colour_tag can be:
+    
+    'ERROR' (red), 'WARNING' (yellow/orange), 'INFO' (blue), or 'BASIC' (white).
+    
+    This colour selection may be overidden if the message contains 'ERROR' or 'WARNING'"""
+
     if logFileName != "":
         print(data)
+        # Check for validity of logbox colour tag value. if invalid, set to default.
+        if logbox_colour_tag not in ['ERROR','WARNING','INFO','BASIC']:
+            logbox_colour_tag = 'BASIC'
         with open(logFilePath, "a", encoding= 'utf-16') as logFile:
             logbox.configure(state = 'normal')
             logFile.write(time.strftime("%H:%M:%S", time.localtime()))
             logFile.write('\t')
             if type(data) is dict:
                 logFile.write(json.dumps(data))
-                logbox.insert('end',json.dumps(data))
+                logbox.insert('end',json.dumps(data), logbox_colour_tag)
             elif type(data) is str:
                 logFile.write(data) 
                 if 'ERROR' in data:
@@ -206,22 +215,22 @@ def printAndLog(data):
                 elif 'WARNING' in data:
                     logbox.insert('end', data, 'WARNING') 
                 else:
-                    logbox.insert('end', data)
+                    logbox.insert('end', data, logbox_colour_tag)
             elif type(data) is pd.DataFrame:    # Because results are printed normally to resultsbox, this should now print results table to log but NOT console.
                 logFile.write(data.to_string(index = False).replace('\n','\n\t\t'))
                 #logbox.insert('end', data.to_string(index = False))
                 if 'Energy (keV)' in data.columns:  # If df contains energy column (i.e. is from peak ID, not results), then print to logbox.
                     logbox.insert('end', data.to_string(index = False), 'INFO')
                 else:       # Else, df is probably results, so don't print to logbox.
-                    logbox.insert('end', 'Assay Results written to log file.')
+                    logbox.insert('end', 'Assay Results written to log file.', logbox_colour_tag)
             elif type(data) is list:
                 listastext = ', '.join(str(e) for e in data)
                 logFile.write(f'[{listastext}]')
-                logbox.insert('end', (f'[{listastext}]'))
+                logbox.insert('end', (f'[{listastext}]'), logbox_colour_tag)
             else:
                 try:
                     logFile.write(data)
-                    logbox.insert('end', data)
+                    logbox.insert('end', data, logbox_colour_tag)
                 except:
                     logFile.write(f'ERROR: Data type {type(data)} unable to be written to log.')
                     logbox.insert('end',(f'ERROR: Data type {type(data)} unable to be written to log.'), 'ERROR')
@@ -387,7 +396,7 @@ def notifyAllAssaysComplete(number_completed:int):
                 timeout = 10,
             )
         except:
-            printAndLog('UI Error Occurred: notifyAllAssaysComplete was unable to execute.')
+            printAndLog('Minor UI Error: Assays complete notification was unable to execute. This is likely due to plyer/windows jank.')
 
 def initialiseLogFile():
     global logFile
@@ -492,7 +501,7 @@ def xrfListenLoopThread_Check():
     if listen_thread.is_alive():
         gui.after(20, xrfListenLoopThread_Check)
     else:
-        printAndLog('xrf listen loop broke')
+        printAndLog('ERROR: XRF listen loop broke', 'ERROR')
         raise SystemExit(0)
 
 # TESTING OUT LISTEN LOOP PROCESS instead of thread
@@ -615,10 +624,21 @@ def xrfListenLoop():
                         legend = f"Phase {instr_currentphase+1}({instr_currentphaselength_s}s): {txt['sngHVADC']}kV, {round(float(txt['sngCurADC']),2)}\u03bcA {txt['fltDescription']}"
                         instr_currentassaylegends.append(legend)
                         # plotSpectrum(spectra[-1], specenergies[-1], plotphasecolours[instr_currentphase],legend)
-                    except: printAndLog('Issue with Spectra experienced after completion of Assay.')
+                    except: printAndLog('Issue with Spectra experienced after completion of Assay.', 'WARNING')
 
+                    # REPORT TEMPS EACH ASSAY COMPLETE
                     assay_finaltemps = f"Detector {instr_currentdettemp}°C, Ambient {instr_currentambtemp}°C"
-                    printAndLog(f'Temps: {assay_finaltemps}')
+                    # if detector temp or ambient temp are out of range, change colour of message.
+                    temp_msg_colour = 'BASIC' # set as default
+                    try:
+                        if float(instr_currentdettemp)>(-26) or float(instr_currentdettemp)<(-28) or float(instr_currentambtemp)>(55):
+                            temp_msg_colour = 'WARNING'
+                            printAndLog('WARNING: Instrument Temperatures appear to be outside of the normal range!', 'WARNING')
+                        if float(instr_currentdettemp)>(-25) or float(instr_currentdettemp)<(-29) or float(instr_currentambtemp)>(60):
+                            temp_msg_colour = 'ERROR'
+                    except: # likely no spectra packets sent
+                        pass
+                    printAndLog(f'Temps: {assay_finaltemps}', temp_msg_colour)
                     #printAndLog(f'Amb Temp F: {instr_currentambtemp_F}°F')
                     #instrument_QueryNoseTemp()
 
@@ -751,7 +771,7 @@ def xrfListenLoop():
                         instr_sourceminI = instr_sourceoplimits.get('MinAnodeCurrentInuA', '?') + '\u03bcA'
                         instr_sourcemaxP = instr_sourceoplimits.get('MaxOutputPowerInmW', '?') + 'mW'
                     else:
-                        printAndLog('IDF: NO OP LIMITS FOUND: Instrument Definition File does not report any xTube Operating Limits. This is normal for some older instruments.')
+                        printAndLog('IDF: NO OP LIMITS FOUND: Instrument Definition File does not report any xTube Operating Limits. This is normal for some older instruments.', 'WARNING')
                         instr_sourcemaxV = 'N/A'
                         instr_sourceminV = 'N/A'
                         instr_sourcemaxI = 'N/A'
@@ -802,7 +822,7 @@ def xrfListenLoop():
                 printAndLog(f'Source Current Range: {instr_sourceminI} - {instr_sourcemaxI}')
             
             elif ('Data' in data) and (data['Data']['Elements'] == None):
-                printAndLog('WARNING: Calculation Error has occurred, no results provided by instrument. If this is unexpected, try Rebooting.')
+                printAndLog('WARNING: Calculation Error has occurred, no results provided by instrument. If this is unexpected, try Rebooting.', 'WARNING')
 
             # Results packet?
             elif ('Data' in data) and ('ElementData' in data['Data']['Elements']):      
@@ -868,9 +888,9 @@ def xrfListenLoop():
             elif ('Response' in data) and ('@parameter' in data['Response']) and 'edit fields' in data['Response']['@parameter']:
                 try: instr_editfielddata = data['Response']['EditFieldList']
                 except KeyError: instr_editfielddata = None
-                printAndLog(f'Info-Fields Data Retrieved: {instr_editfielddata}')
+                printAndLog(f'Info-Fields Data Retrieved.')
                 if instr_editfielddata == None:
-                    printAndLog('NOTE: The Bruker OEM Protocol does not allow info-fields with blank values to be communicated over the protocol. If you cannot retrieve your info-fields properly, try filling the fields with some text on the instrument, then try retrieving it again.')
+                    printAndLog('NOTE: The Bruker OEM Protocol does not allow info-fields with blank values to be communicated over the protocol. If you cannot retrieve your info-fields properly, try filling the fields with some text on the instrument, then try retrieving it again.', 'INFO')
                 else:
                     if type(instr_editfielddata["EditField"]) is list:
                         instr_editfielddata = instr_editfielddata["EditField"]
@@ -1208,7 +1228,7 @@ def completeAssay(assay_application:str, assay_method:str, assay_time_total_set:
 
 def onInstrDisconnect():
     messagebox.showwarning('Instrument Disconnected','Error: Connection to the XRF instrument has been lost. The software will be closed, and a log file will be saved.')
-    printAndLog('Connection to the XRF instrument was unexpectedly lost. Software will shut down and log will be saved.')
+    printAndLog('Connection to the XRF instrument was unexpectedly lost. Software will shut down and log will be saved.', 'ERROR')
     onClosing()
 
 # Functions for Widgets 
@@ -1224,7 +1244,7 @@ def statusUpdateCheckerLoop_Check():
     if status_thread.is_alive():
         gui.after(100, statusUpdateCheckerLoop_Check)
     else:
-        printAndLog('status checker loop machine broke')
+        printAndLog('ERROR: Status Checker loop broke', 'ERROR')
 
 def statusUpdateChecker():
     global instr_assayisrunning
@@ -1483,9 +1503,9 @@ def getNearbyEnergies(energy, qty):
     closest['Line'] = closest['Line'].str.replace('a', '\u03B1')  # replace a with alpha
     closest['Line'] = closest['Line'].str.replace('b', '\u03B2')  # replace b with beta
     closest.rename(columns={'Energy':'Energy (keV)'}, inplace = True)   
-    printAndLog(f'Peak Identification: {round(energy, 4)}keV')
-    printAndLog(f'The {qty} closest possibilities are:')
-    printAndLog(closest)
+    printAndLog(f'Peak Identification: {round(energy, 4)}keV', 'INFO')
+    printAndLog(f'The {qty} closest possibilities are:', 'INFO')
+    printAndLog(closest, 'INFO')
 
 
 def clearResultsfromTable():     # Clears all data from results table
@@ -1809,7 +1829,7 @@ def onClosing():
             printAndLog(f'Log File archived to: {logFileArchivePath}')
             printAndLog('S1Control software Closed.')
         else:
-            printAndLog('Desired Log file archive path was unable to be found. The Log file has not been archived.')
+            printAndLog('ERROR: Desired Log file archive path was unable to be found. The Log file has not been archived.', 'ERROR')
             printAndLog('S1Control software Closed.')
         raise SystemExit(0)
         gui.destroy()
@@ -2238,7 +2258,7 @@ def instrument_ApplyInfoFields():
 
         infofieldsmsg = infofieldsmsg + '</FieldList></Configure>'
         sendCommand(xrf,infofieldsmsg)
-        printAndLog(f'Info-Fields Set: {infofieldsmsg}')
+        printAndLog(f'Info-Fields Set.')
 
 def resetEditFields_clicked():
     # global editinfo_fieldnames
@@ -2882,7 +2902,8 @@ if __name__ == '__main__':
     logbox.pack(side = tk.TOP, anchor = tk.N, fill = 'both', expand = True, padx=8, pady=[4, 4])
     logbox.tag_config('ERROR', foreground="#d62d43")
     logbox.tag_config('WARNING', foreground="#e09c26")
-    logbox.tag_config('INFO', foreground="#2783d9")
+    logbox.tag_config('INFO', foreground="#3B8ED0") #2783d9
+    logbox.tag_config('BASIC', foreground=WHITEISH)
     logbox.configure(state = 'disabled')
     #logbox_xscroll.config(command = logbox.xview)
     #logbox_yscroll.config(command = logbox.yview)
