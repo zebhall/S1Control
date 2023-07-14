@@ -1,6 +1,6 @@
 # S1Control by ZH for PSS
-versionNum = 'v0.6.3'
-versionDate = '2023/06/30'
+versionNum = 'v0.6.4'
+versionDate = '2023/07/14'
 
 import os
 import sys
@@ -2284,6 +2284,14 @@ def resetEditFields_clicked():
         #printAndLog('Info-Fields Reset.')
     editinfo_windows[0].lift()
 
+def toggleResultsFrameVisible(_):
+    if resultsframe.winfo_ismapped():
+        resultsframe.pack_forget()
+        printAndLog('Results Section Hidden. Ctrl+Shift+R to restore.', 'WARNING')
+    else:
+        resultsframe.pack(side=tk.BOTTOM, fill = 'x', anchor = tk.SW, expand = False, padx = 8, pady = [0,8], ipadx = 4, ipady = 4)
+
+
 
 def queryEditFields_clicked():
     if messagebox.askyesno('Retrieve Info-Fields from Instrument?',"PLEASE BE AWARE: \nDue to an oversight in Bruker's OEM Protocol, retreiving the instrument's current info-fields will cause any 'Counter' fields to increment their value by 1 (this is only supposed to happen when an assay is started).\n\nAdditionally, the OEM Protocol does not provide a way to check if the fields are counters - only a way to set them as counters. \n\nFor these reasons, it is recommended to double check the field values and counter checkboxes are correct once retrieved. It is also reccommended to not regularly query the current field values if using counters as it will result in inconsistent incrementation. \n\nWould you like to proceed?"):
@@ -2722,10 +2730,10 @@ if __name__ == '__main__':
     RHSframe.pack(side=tk.RIGHT, anchor = tk.W, fill = 'both', expand = True, padx = 0, pady = 0, ipadx = 0)
 
     spectraframe = ctk.CTkFrame(RHSframe, width = 700, height = 50, corner_radius = 5, fg_color=plotCTKColour)
-    spectraframe.pack(side=tk.TOP, fill = 'both', anchor = tk.N, expand = True, padx = 8, pady = [8,4], ipadx = 4, ipady = 4)
+    spectraframe.pack(side=tk.TOP, fill = 'both', anchor = tk.N, expand = True, padx = 8, pady = [8,8], ipadx = 4, ipady = 4)
 
     resultsframe = ctk.CTkFrame(RHSframe, width = 700, height = 300, fg_color=('#dbdbdb', '#333333'))
-    resultsframe.pack(side=tk.BOTTOM, fill = 'x', anchor = tk.SW, expand = False, padx = 8, pady = [4,8], ipadx = 4, ipady = 4)
+    resultsframe.pack(side=tk.BOTTOM, fill = 'x', anchor = tk.SW, expand = False, padx = 8, pady = [0,8], ipadx = 4, ipady = 4)
 
     assaytableframe = tk.Frame(resultsframe, width = 450, height = 300)
     assaytableframe.pack(side=tk.LEFT, fill = 'both', anchor = tk.SW, expand = False, padx = [8,0], pady = 8, ipadx = 0, ipady = 0)
@@ -2879,9 +2887,9 @@ if __name__ == '__main__':
     checkbox_enableendofassaynotifications = ctk.CTkCheckBox(ctrltabview.tab('Options'), text= 'Desktop Notification on Assay Completion', variable= enableendofassaynotifications_var, onvalue= 'on', offvalue= 'off')
     checkbox_enableendofassaynotifications.grid(row=5, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW)
 
-    checkbox_enabledarkmode = ctk.CTkCheckBox(ctrltabview.tab('Options'), text= 'Dark Mode UI', variable= enabledarkmode, onvalue= 'dark', offvalue= 'light', command=lambda:ctk_change_appearance_mode_event(enabledarkmode.get()))
+    checkbox_enabledarkmode = ctk.CTkCheckBox(ctrltabview.tab('Options'), text= 'Dark Mode UI (Ctrl+Shift+L)', variable= enabledarkmode, onvalue= 'dark', offvalue= 'light', command=lambda:ctk_change_appearance_mode_event(enabledarkmode.get()))
     checkbox_enabledarkmode.grid(row=6, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW)
-    
+
     
     # Current Instrument Info stuff
     # label_currentapplication_text = ctk.StringVar()
@@ -3021,6 +3029,11 @@ if __name__ == '__main__':
 
     logFileName = ""
 
+    # Misc Keybindings
+    gui.bind('<Control-Shift-L>',checkbox_enabledarkmode.toggle)
+    gui.bind('<Control-Shift-R>', toggleResultsFrameVisible)
+
+
     # Begin Instrument Connection
 
     instrument_Connect()
@@ -3047,6 +3060,7 @@ if __name__ == '__main__':
     instrument_QueryCurrentApplicationPhaseTimes()
 
     gui.protocol("WM_DELETE_WINDOW", onClosing)
+
     gui.mainloop()
 
     closeAllThreads()   # call after gui mainloop has ended
