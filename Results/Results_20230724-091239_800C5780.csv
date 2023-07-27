@@ -1,0 +1,17 @@
+Assay #,Serial #,Date,Time,Application,Method,Duration (Actual),No Results,No Results Err
+0001,800C5780,2023/07/24,09:27:24,Spectrometer Mode,,6.07s,0,0
+0002,800C5780,2023/07/24,09:27:32,Spectrometer Mode,,6.05s,0,0
+0003,800C5780,2023/07/24,09:27:39,Spectrometer Mode,,6.01s,0,0
+0004,800C5780,2023/07/24,09:27:46,Spectrometer Mode,,6.06s,0,0
+0005,800C5780,2023/07/24,09:27:53,Spectrometer Mode,,6.0s,0,0
+0006,800C5780,2023/07/24,09:28:00,Spectrometer Mode,,6.05s,0,0
+0007,800C5780,2023/07/24,09:28:08,Spectrometer Mode,,5.97s,0,0
+0008,800C5780,2023/07/24,09:28:15,Spectrometer Mode,,6.05s,0,0
+0009,800C5780,2023/07/24,09:28:22,Spectrometer Mode,,6.07s,0,0
+0010,800C5780,2023/07/24,09:28:24,Spectrometer Mode,,0.58s,0,0
+0011,800C5780,2023/07/24,09:28:25,Spectrometer Mode,,1.38s,0,0
+0012,800C5780,2023/07/24,09:28:42,Spectrometer Mode,,8.03s,0,0
+0013,800C5780,2023/07/24,09:28:56,Spectrometer Mode,,10.05s,0,0
+0014,800C5780,2023/07/24,09:29:14,Spectrometer Mode,,13.08s,0,0
+0015,800C5780,2023/07/24,09:29:36,Spectrometer Mode,,15.97s,0,0
+0016,800C5780,2023/07/24,09:30:01,Spectrometer Mode,,18.06s,0,0

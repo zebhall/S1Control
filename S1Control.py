@@ -1,6 +1,6 @@
 # S1Control by ZH for PSS
-versionNum = 'v0.6.4'
-versionDate = '2023/07/14'
+versionNum = 'v0.6.6'
+versionDate = '2023/07/27'
 
 import os
 import sys
@@ -308,7 +308,7 @@ def recvData(s):
 
     else:                                       # 0 - UNKNOWN DATA
         datatype = UNKNOWN_DATA
-        print(f'****debug: unknown datatype. header = {header}, data = {data}')
+        printAndLog(f'****debug: unknown datatype. header = {header}, data = {data}')
         return data, datatype
 
 
@@ -1332,19 +1332,30 @@ def getAssayPlurality(startorstop:str):
         
 
 
-
 def assaySelected(event):
-    selection = assaysTable.item(assaysTable.selection())
+    global colouridx
+    current_assaytable_selection = assaysTable.selection()
+    # print(len(current_assaytable_selection))
+    # print(current_assaytable_selection)
+    currently_selected_assays_items = [assaysTable.item(selected_item) for selected_item in current_assaytable_selection]
     #print(f'sel values = {selection["values"]}')
     try:
-        selected_assay_catalogue_num = selection['values'][0]
+        selected_assay_catalogue_nums = [assay_item['values'][0] for assay_item in currently_selected_assays_items]
     except IndexError:  # Treeview is buggy, and doesn't like when an assay is started when another assay is selected. - when this happens, selection['values'] will be '' instead of a dict
         return
     #print(f'selected_assay_catalogue_num={selected_assay_catalogue_num}')
     #selected_assay_application = selection['values'][2]
-    assay = assay_catalogue[int(selected_assay_catalogue_num)-1]
-    plotAssay(assay)
-    displayResults(assay)
+    assays_to_plot = [assay_catalogue[int(assay_num)-1] for assay_num in selected_assay_catalogue_nums]
+    
+    #clear current spectra before plotting
+    clearCurrentSpectra()
+    if len(current_assaytable_selection) == 1:
+        plotAssay(assays_to_plot[0])
+        displayResults(assays_to_plot[0])
+    elif len(current_assaytable_selection) > 1:
+        for assay in assays_to_plot:
+            plotAssay(assay, clean_plot=False)
+            displayResults(assay)
 
 
 def plotSpectrum(spectrum, specenergy, colour, spectrum_legend):
@@ -1358,7 +1369,7 @@ def plotSpectrum(spectrum, specenergy, colour, spectrum_legend):
             counts = spectrum['normalised_data']
             spectra_ax.set_ylabel('Normalised Counts (%)')
         except:
-            print('normalised data not found, using raw data instead')
+            print('Normalised data not found, using raw data instead')
             counts = spectrum['data']
             spectra_ax.set_ylabel('Counts (Total)')
     else:
@@ -1391,6 +1402,8 @@ def plotSpectrum(spectrum, specenergy, colour, spectrum_legend):
 def clearCurrentSpectra():
     global spectra_ax
     global plottedspectra
+    global colouridx
+    colouridx = 0
     #spectra_ax.cla()   #clears all plots from ax
     for plottedspectrum in plottedspectra:
         #plotref = plottedspectrum.pop(0)    # removes from list
@@ -1419,7 +1432,7 @@ def plotEmissionLines():
 
     #energies = [6.40, 7.06]
 
-    linemax = (max((spectra_ax.get_ylim()[1]+2000),10_000))    #max height of emission lines will be at max of data +2000, OR 10000, whichever is higher
+    #linemax = (max((spectra_ax.get_ylim()[1]+2000),10_000))    #max height of emission lines will be at max of data +2000, OR 10000, whichever is higher
 
     for linedata in emission_lines_to_plot:
         linelabel = linedata[1]
@@ -1460,14 +1473,18 @@ def clearCurrentEmissionLines():
     spectracanvas.draw()
         
 
-def plotAssay(assay:Assay):
-    clearCurrentSpectra()
-    colouridx = 0
-    for s, e, l, in zip(assay.spectra,assay.specenergies,assay.legends):
-        plotSpectrum(s, e, plotphasecolours[colouridx],l)
-        colouridx +=1
+def plotAssay(assay:Assay, clean_plot:bool=True):
+    global colouridx
+    if clean_plot: 
+        clearCurrentSpectra()
+        colouridx = 0
 
-    clearCurrentEmissionLines()
+    for s, e, l, in zip(assay.spectra,assay.specenergies,assay.legends):
+        plotSpectrum(s, e, plotphasecolours[colouridx],f'{assay.index}. {l}')
+        colouridx +=1
+        # print(f'colouridx={colouridx}')
+
+    clearCurrentEmissionLines()   
     plotEmissionLines()
 
 
@@ -1788,18 +1805,35 @@ def ctk_change_appearance_mode_event(new_appearance_mode: str):
             plotbgColour = '#414141'
             plottextColour = WHITEISH
             plotgridColour = '#666666'
+
+            guiStyle.configure("Treeview",background="#3d3d3d",foreground=WHITEISH,rowheight=20,fieldbackground="#3d3d3d",bordercolor="#3d3d3d",borderwidth=0)
+            guiStyle.map('Treeview', background=[('selected', '#144870')])
+            guiStyle.configure("Treeview.Heading",background="#333333",foreground="white",relief="flat")
+            guiStyle.map("Treeview.Heading",background=[('active', '#1f6aa5')])
+
         case 'light':
             plottoolbarColour = '#dbdbdb'
             treeviewColour_bg = '#FFFFFF'
             plotbgColour = '#F5F5F5'
             plottextColour = CHARCOAL
             plotgridColour = '#DCDCDC'
+
+            guiStyle.configure("Treeview",background="#ebebeb",foreground=CHARCOAL,rowheight=20,fieldbackground="#ebebeb",bordercolor="#ebebeb",borderwidth=0)
+            guiStyle.map('Treeview', background=[('selected', '#36719f')])
+            guiStyle.configure("Treeview.Heading",background="#dbdbdb",foreground='black',relief="flat")
+            guiStyle.map("Treeview.Heading",background=[('active', '#3b8ed0')])
+
         case _:
             plottoolbarColour = '#dbdbdb'
             treeviewColour_bg = '#FFFFFF'
             plotbgColour = '#F5F5F5'
             plottextColour = CHARCOAL
             plotgridColour = '#DCDCDC'
+
+            guiStyle.configure("Treeview",background="#ebebeb",foreground=CHARCOAL,rowheight=20,fieldbackground="#ebebeb",bordercolor="#ebebeb",borderwidth=0)
+            guiStyle.map('Treeview', background=[('selected', '#36719f')])
+            guiStyle.configure("Treeview.Heading",background="#dbdbdb",foreground='black',relief="flat")
+            guiStyle.map("Treeview.Heading",background=[('active', '#3b8ed0')])
     
     setPlotColours()
 
@@ -2340,7 +2374,7 @@ if __name__ == '__main__':
 
 
     # APPEARANCE MODE DEFAULT AND STRVAR FOR TOGGLE - THESE TWO MUST MATCH ################################################################################
-    ctk.set_appearance_mode("light")  # Modes: system (default), light, dark
+    ctk.set_appearance_mode("system")  # Modes: system (default), light, dark
     #ctk.deactivate_automatic_dpi_awareness()
     enabledarkmode = tk.StringVar(value='light')  # The default state of this variable must be changed to match the default setting of ctk appearancemode.
 
@@ -2399,6 +2433,13 @@ if __name__ == '__main__':
     ctk_consolas20B = ctk.CTkFont(family = 'Consolas', size = 20, weight = 'bold')
     ctk_default_largeB = ctk.CTkFont(weight = 'bold')    
 
+    # Styles
+    guiStyle = ttk.Style()
+    #guiStyle.theme_use('clam')
+    guiStyle.theme_use("default")
+    guiStyle.configure('Treeview', highlightthickness=0, bd=0, font=consolas10)#, background=treeviewColour_bg, fieldbackground=treeviewColour_bg, foreground = treeviewColour_bg)        # Modify the font of the body
+    guiStyle.configure('Treeview.Heading', font = consolas10B)                                    # Modify the font of the headings)
+
     plotCTKColour = ('#dbdbdb','#4a4a4a')
 
     match ctk.get_appearance_mode():
@@ -2408,12 +2449,23 @@ if __name__ == '__main__':
             plotbgColour = '#414141'
             plottextColour = WHITEISH
             plotgridColour = '#666666'
+
+            guiStyle.configure("Treeview",background="#3d3d3d",foreground=WHITEISH,rowheight=20,fieldbackground="#3d3d3d",bordercolor="#3d3d3d",borderwidth=0)
+            guiStyle.map('Treeview', background=[('selected', '#144870')])
+            guiStyle.configure("Treeview.Heading",background="#333333",foreground="white",relief="flat")
+            guiStyle.map("Treeview.Heading",background=[('active', '#1f6aa5')])
+
         case 'Light':
             plottoolbarColour = '#dbdbdb'
             treeviewColour_bg = '#FFFFFF'
             plotbgColour = '#F5F5F5'
             plottextColour = CHARCOAL
             plotgridColour = '#DCDCDC'
+
+            guiStyle.configure("Treeview",background="#ebebeb",foreground=CHARCOAL,rowheight=20,fieldbackground="#ebebeb",bordercolor="#ebebeb",borderwidth=0)
+            guiStyle.map('Treeview', background=[('selected', '#36719f')])
+            guiStyle.configure("Treeview.Heading",background="#dbdbdb",foreground='black',relief="flat")
+            guiStyle.map("Treeview.Heading",background=[('active', '#3b8ed0')])
         case _:
             plottoolbarColour = '#dbdbdb'
             treeviewColour_bg = '#FFFFFF'
@@ -2421,12 +2473,12 @@ if __name__ == '__main__':
             plottextColour = CHARCOAL
             plotgridColour = '#DCDCDC'
 
+            guiStyle.configure("Treeview",background="#ebebeb",foreground=CHARCOAL,rowheight=20,fieldbackground="#ebebeb",bordercolor="#ebebeb",borderwidth=0)
+            guiStyle.map('Treeview', background=[('selected', '#36719f')])
+            guiStyle.configure("Treeview.Heading",background="#dbdbdb",foreground='black',relief="flat")
+            guiStyle.map("Treeview.Heading",background=[('active', '#3b8ed0')])
+
     
-    # Styles
-    guiStyle = ttk.Style()
-    #guiStyle.theme_use('clam')
-    guiStyle.configure('Treeview', highlightthickness=0, bd=0, font=consolas10)#, background=treeviewColour_bg, fieldbackground=treeviewColour_bg, foreground = treeviewColour_bg)        # Modify the font of the body
-    guiStyle.configure('Treeview.Heading', font = consolas10B)                                    # Modify the font of the headings)
     
     
     instr_isarmed = False
@@ -2488,8 +2540,20 @@ if __name__ == '__main__':
     total_spec_channels = 2048
     spec_channels = np.array(list(range(0, total_spec_channels)))
 
-    #plotphasecolours = ['blue', 'red', 'green', 'pink', 'yellow']
-    plotphasecolours = ['#5BB5F1', '#53bf47', '#F15BB5', '#FEE440', '#9B5DE5']
+    #plotphasecolours = ['blue', 'green', 'pink', 'orange', 'purple', 'pink', 'yellow']
+    plotphasecolours = ['#5BB5F1', 
+                        '#53bf47',
+                        '#F15BB5', 
+                        '#f58700', 
+                        '#9B5DE5', 
+                        '#de1b2e',
+                        '#f5d000',  
+                        '#143fc7',
+                        '#1b401e',
+                        '#c10f5d',
+                        '#00bf7f',
+                        '#6295a6',
+                        '#964726']
     plottedspectra = []
     plottedemissionlineslist = []
     assay_catalogue = []
@@ -2974,7 +3038,7 @@ if __name__ == '__main__':
 
     # Assays Frame Stuff
     assaysColumns = ('t_num', 't_app', 't_time', 't_timeelapsed')
-    assaysTable = Treeview(assaytableframe, columns = assaysColumns, height = "14",  selectmode = "browse")
+    assaysTable = Treeview(assaytableframe, columns = assaysColumns, height = "14",  selectmode = "extended")
     assaysTable.pack(side="top", fill="both", expand=True)
 
     assaysTable.heading('t_num', text = "Assay", anchor = tk.W, command=lambda _col='t_num': treeview_sort_column(assaysTable, _col, False))                  

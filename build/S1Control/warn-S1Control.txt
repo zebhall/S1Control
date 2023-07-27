@@ -16,7 +16,7 @@ IMPORTANT: Do NOT post this list to the issue-tracker. Use it as a basis for
 
 missing module named 'org.python' - imported by copy (optional), xml.sax (delayed, conditional)
 missing module named org - imported by pickle (optional)
-missing module named posix - imported by posixpath (optional), shutil (conditional), importlib._bootstrap_external (conditional), os (conditional, optional)
+missing module named posix - imported by os (conditional, optional), posixpath (optional), shutil (conditional), importlib._bootstrap_external (conditional)
 missing module named resource - imported by posix (top-level)
 missing module named _frozen_importlib_external - imported by importlib._bootstrap (delayed), importlib (optional), importlib.abc (optional), zipimport (top-level)
 excluded module named _frozen_importlib - imported by importlib (optional), importlib.abc (optional), zipimport (top-level)
@@ -75,7 +75,7 @@ missing module named trove_classifiers - imported by setuptools.config._validate
 missing module named 'setuptools.extern.packaging.specifiers' - imported by setuptools.config.setupcfg (top-level), setuptools.config._apply_pyprojecttoml (delayed)
 missing module named 'setuptools.extern.packaging.requirements' - imported by setuptools.config.setupcfg (top-level)
 missing module named importlib_metadata - imported by setuptools._importlib (delayed, optional)
-missing module named pyimod02_importers - imported by C:\Users\Zeb\AppData\Roaming\Python\Python311\site-packages\PyInstaller\hooks\rthooks\pyi_rth_pkgres.py (delayed), C:\Users\Zeb\AppData\Roaming\Python\Python311\site-packages\PyInstaller\hooks\rthooks\pyi_rth_pkgutil.py (delayed)
+missing module named pyimod02_importers - imported by C:\Users\Zeb\Documents\GitHub\S1Control\Lib\site-packages\PyInstaller\hooks\rthooks\pyi_rth_pkgres.py (delayed), C:\Users\Zeb\Documents\GitHub\S1Control\Lib\site-packages\PyInstaller\hooks\rthooks\pyi_rth_pkgutil.py (delayed)
 missing module named _scproxy - imported by urllib.request (conditional)
 missing module named olefile - imported by PIL.FpxImagePlugin (top-level), PIL.MicImagePlugin (top-level)
 missing module named cffi - imported by PIL.Image (optional), PIL.PyAccess (optional)
