@@ -1,7 +1,7 @@
 
 # S1Control
-Remote-Control and Spectra analysis software for the Bruker pXRF Instruments - includeing the S1 TITAN, TRACER 5i/5g, CTX, and XMS.
-Built as a service tool first and foremost so YMMV.
+Remote-Control and Spectra analysis software for Bruker pXRF Instruments - works with the S1 TITAN, TRACER 5i/5g, CTX, and XMS.
+Built as a service and research tool, and a hobby project first and foremost - so YMMV.
 Prepackaged portable executable version can be found in /dist/
 
 
