@@ -1,0 +1,2 @@
+Assay #,Serial #,Date,Time,Application,Method,Duration (Actual),V,V Err,Cr,Cr Err,Mn,Mn Err,Fe,Fe Err,Co,Co Err,Ni,Ni Err,Cu,Cu Err,Zn,Zn Err,Ga,Ga Err,W,W Err
+0001,900G7741,2023/08/23,09:56:26,GeoExploration,Oxide3phase,11.38s,335.0,76.0,143640.0,721.0,8823.0,249.0,506648.0,1042.0,474.0,98.0,97818.0,618.0,7529.0,117.0,621.0,21.0,0.0,20.0,502.0,70.0

@@ -1,0 +1,3 @@
+Assay #,Serial #,Date,Time,Application,Method,Duration (Actual),Pb,Pb Err
+0001,900G7741,2023/08/23,11:25:43,Lead in Paint,Lead in Paint,3.15s,7.0,3.0
+0002,900G7741,2023/08/23,11:26:04,Lead in Paint,Lead in Paint,15.7s,119.0,4.0
