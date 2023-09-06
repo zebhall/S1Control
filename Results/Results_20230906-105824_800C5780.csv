@@ -1,0 +1,2 @@
+Assay #,Serial #,Date,Time,Application,Method,Duration (Actual),MgO,MgO Err,Al2O3,Al2O3 Err,SiO2,SiO2 Err,P,P Err,S,S Err,Cl,Cl Err,K2O,K2O Err,Ca,Ca Err,Ti,Ti Err
+0001,800C5780,2023/09/06,10:58:50,GeoExploration,Oxide3phase,8.21s,0.0,14676.0,79282.0,5377.0,284646.0,5761.0,1748.0,354.0,0.0,296.0,418.0,169.0,2342.0,146.0,16405.0,257.0,14878.0,157.0

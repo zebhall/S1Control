@@ -1,6 +1,6 @@
 # S1Control by ZH for PSS
-versionNum = 'v0.7.0'
-versionDate = '2023/08/23'
+versionNum = 'v0.7.1'
+versionDate = '2023/09/06'
 
 import os
 import sys
@@ -2892,7 +2892,7 @@ if __name__ == '__main__':
     
     #repeats_choice_var = ctk.StringVar(value='\u2B6F Consecutive')
     repeats_choice_var = ctk.StringVar(value='1')
-    repeats_choice_list = ['1','2','3','4','5','6','7','8','9','10','15','20','50','100']
+    repeats_choice_list = ['1','2','3','4','5','6','7','8','9','10','15','20','50','100','150','200','300','500','1000']
     dropdown_repeattests = ctk.CTkOptionMenu(ctrltabview.tab("Assay Controls"), width=70, variable=repeats_choice_var, values=repeats_choice_list, command=repeatsChoiceMade, dynamic_resizing=True)
     dropdown_repeattests.grid(row=1,column=2,padx=4, pady=4, sticky=tk.NSEW)
 
