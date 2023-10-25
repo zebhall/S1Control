@@ -1,6 +1,6 @@
 # S1Control by ZH for PSS
-versionNum = 'v0.7.1'
-versionDate = '2023/09/06'
+versionNum = 'v0.7.2'
+versionDate = '2023/10/25'
 
 import os
 import sys
@@ -47,32 +47,33 @@ class Assay:
 
 def instrument_Connect():
     global xrf
-    ping = os.system('ping -n 1 -w 40 '+XRF_IP_USB)
+    # ping = os.system('ping -n 1 -w 40 '+XRF_IP_USB)
     #print(f'ping = {ping}')
-    if ping != 0:
-        if messagebox.askyesno(f'Connection Problem - S1Control {versionNum}', f'S1Control has not recieved a response from the instrument at {XRF_IP_USB}, and is unable to connect. Would you like to continue trying to connect?'):
-            connection_attempt_count = 0
-            while ping != 0:       # ping will only equal 0 if there are no errors or timeouts
-                ping = os.system('ping -n 1 -w 40 '+XRF_IP_USB)
-                time.sleep(0.1)
-                print(f'ping = {ping}')
-                connection_attempt_count += 1
-                if connection_attempt_count >= 5:
-                    if messagebox.askyesno(f'Connection Problem - S1Control {versionNum}', f'S1Control has still not recieved a response from the instrument at {XRF_IP_USB}, and is still unable to connect. Would you like to continue trying to connect?'):
-                        connection_attempt_count = 0
-                    else:
-                        raise SystemExit(0)
-                        closeAllThreads()
-                        gui.destroy()
-        else:
-            raise SystemExit(0)
-            closeAllThreads()
-            gui.destroy()
+    xrf.connect((XRF_IP_USB, XRF_PORT_USB))
+    # if ping != 0:
+    #     if messagebox.askyesno(f'Connection Problem - S1Control {versionNum}', f'S1Control has not recieved a response from the instrument at {XRF_IP_USB}, and is unable to connect. Would you like to continue trying to connect?'):
+    #         connection_attempt_count = 0
+    #         while ping != 0:       # ping will only equal 0 if there are no errors or timeouts
+    #             ping = os.system('ping -n 1 -w 40 '+XRF_IP_USB)
+    #             time.sleep(0.1)
+    #             print(f'ping = {ping}')
+    #             connection_attempt_count += 1
+    #             if connection_attempt_count >= 5:
+    #                 if messagebox.askyesno(f'Connection Problem - S1Control {versionNum}', f'S1Control has still not recieved a response from the instrument at {XRF_IP_USB}, and is still unable to connect. Would you like to continue trying to connect?'):
+    #                     connection_attempt_count = 0
+    #                 else:
+    #                     raise SystemExit(0)
+    #                     closeAllThreads()
+    #                     gui.destroy()
+    #     else:
+    #         raise SystemExit(0)
+    #         closeAllThreads()
+    #         gui.destroy()
 
-    try:
-        xrf.connect((XRF_IP_USB, XRF_PORT_USB))
-    except:
-        print('Connection Error. Check instrument has booted to login screen and is properly connected before restarting the program.')
+    # try:
+    #     xrf.connect((XRF_IP_USB, XRF_PORT_USB))
+    # except:
+    #     print('Connection Error. Check instrument has booted to login screen and is properly connected before restarting the program.')
 
 def instrument_Disconnect():
     global xrf
@@ -2423,37 +2424,39 @@ if __name__ == '__main__':
     icon_sensoroff = ctk.CTkImage(light_image=Image.open(resource_path("icons/sensor-line.png")), size=(22, 22))
     icon_pressure = ctk.CTkImage(light_image=Image.open(resource_path("icons/temp-hot-line.png")), size=(22, 22))
     #icon_sendinfofields = ctk.CTkImage(light_image=Image.open(resource_path("icons/install-fill.png")), size=(18, 18))
-    gui.iconbitmap(default = iconpath)
+    # gui.iconbitmap(default = iconpath)
 
     
     # Fonts
-    consolas24 = font.Font(family='Consolas', size=24)
-    consolas20 = font.Font(family='Consolas', size=20)
-    consolas18 = font.Font(family='Consolas', size=18)
-    consolas18B = font.Font(family='Consolas', size=18, weight = 'bold')
-    consolas16 = font.Font(family='Consolas', size=16)
-    consolas13 = font.Font(family='Consolas', size=13)
-    consolas12 = font.Font(family='Consolas', size=12)
-    consolas10 = font.Font(family='Consolas', size=10)
-    consolas10B = font.Font(family='Consolas', size=10, weight = 'bold')
-    consolas09 = font.Font(family='Consolas', size=9)
-    consolas08 = font.Font(family='Consolas', size=8)
-    consolas07 = font.Font(family='Consolas', size=7)
+    consolas24 = font.Font(family='Courier New', size=24)
+    consolas20 = font.Font(family='Courier New', size=20)
+    consolas18 = font.Font(family='Courier New', size=18)
+    consolas18B = font.Font(family='Courier New', size=18, weight = 'bold')
+    consolas16 = font.Font(family='Courier New', size=16)
+    consolas13 = font.Font(family='Courier New', size=13)
+    consolas12 = font.Font(family='Courier New', size=12)
+    consolas10 = font.Font(family='Courier New', size=10)
+    consolas10B = font.Font(family='Courier New', size=10, weight = 'bold')
+    consolas09 = font.Font(family='Courier New', size=9)
+    consolas08 = font.Font(family='Courier New', size=8)
+    consolas07 = font.Font(family='Courier New', size=7)
     roboto09 = font.Font(family='Roboto', size=9)
-    plotfont = {'fontname':'Consolas'}
+    plotfont = {'fontname':'Courier New'}
     ctk_segoe14B = ctk.CTkFont(family = 'Segoe UI', size = 14, weight= 'bold')
     ctk_segoe12B = ctk.CTkFont(family = 'Segoe UI', size = 12, weight= 'bold')
-    ctk_consolas08 = ctk.CTkFont(family = 'Consolas', size = 8)
-    ctk_consolas10 = ctk.CTkFont(family = 'Consolas', size = 10)
-    ctk_consolas11 = ctk.CTkFont(family = 'Consolas', size = 11)
-    ctk_consolas12 = ctk.CTkFont(family = 'Consolas', size = 12)
-    ctk_consolas12B = ctk.CTkFont(family = 'Consolas', size = 12, weight = 'bold')
-    ctk_consolas13 = ctk.CTkFont(family = 'Consolas', size = 13)
-    ctk_consolas14B = ctk.CTkFont(family = 'Consolas', size = 14, weight = 'bold')
-    ctk_consolas15B = ctk.CTkFont(family = 'Consolas', size = 15, weight = 'bold')
-    ctk_consolas18B = ctk.CTkFont(family = 'Consolas', size = 18, weight = 'bold')
-    ctk_consolas20B = ctk.CTkFont(family = 'Consolas', size = 20, weight = 'bold')
+    ctk_consolas08 = ctk.CTkFont(family = 'Courier New', size = 8)
+    ctk_consolas10 = ctk.CTkFont(family = 'Courier New', size = 10)
+    ctk_consolas11 = ctk.CTkFont(family = 'Courier New', size = 11)
+    ctk_consolas12 = ctk.CTkFont(family = 'Courier New', size = 12)
+    ctk_consolas12B = ctk.CTkFont(family = 'Courier New', size = 12, weight = 'bold')
+    ctk_consolas13 = ctk.CTkFont(family = 'Courier New', size = 13)
+    ctk_consolas14B = ctk.CTkFont(family = 'Courier New', size = 14, weight = 'bold')
+    ctk_consolas15B = ctk.CTkFont(family = 'Courier New', size = 15, weight = 'bold')
+    ctk_consolas18B = ctk.CTkFont(family = 'Courier New', size = 18, weight = 'bold')
+    ctk_consolas20B = ctk.CTkFont(family = 'Courier New', size = 20, weight = 'bold')
     ctk_default_largeB = ctk.CTkFont(weight = 'bold')    
+
+    print('yay')
 
     # Styles
     guiStyle = ttk.Style()
@@ -2864,7 +2867,7 @@ if __name__ == '__main__':
     phaseframe.grid(row=4, column=0, columnspan = 3, rowspan = 2, padx=4, pady=4, sticky=tk.NSEW)
 
     # About Section
-    about_blurb1 = ctk.CTkLabel(ctrltabview.tab('About'), text=f'S1Control {versionNum} ({versionDate})\nCreated by Zeb Hall for Portable Spectral Services\nContact: service@portaspecs.com\n', justify = tk.LEFT, font=ctk_consolas11)
+    about_blurb1 = ctk.CTkLabel(ctrltabview.tab('About'), text=f'S1Control {versionNum} ({versionDate})\nCreated by Zeb Hall for PSS\nContact: service@portaspecs.com\n', justify = tk.LEFT, font=ctk_consolas11)
     about_blurb1.grid(row=3, column=0, columnspan = 2, rowspan = 2, padx=4, pady=4, sticky=tk.NSEW)
 
     about_imageframe = ctk.CTkFrame(ctrltabview.tab('About'), fg_color= ('#c5c5c5','#444444'))
@@ -3006,14 +3009,14 @@ if __name__ == '__main__':
 
     # Spectraframe Stuff
     plt.style.use("seaborn-v0_8-whitegrid")
-    plt.rcParams["font.family"] = "Consolas"
-    plt.rcParams["font.sans-serif"] = "Helvetica"
+    plt.rcParams["font.family"] = "monospace"
+    #plt.rcParams["font.monospace"] = 
     plt.rcParams["font.size"] = 9
     plt.rcParams['text.color'] = CHARCOAL
     plt.rcParams['axes.labelcolor'] = plottextColour
     plt.rcParams['xtick.color'] = plottextColour
     plt.rcParams['ytick.color'] = plottextColour
-    plt.rcParams['path.simplify'] = True
+    plt.rcParams['path.simplify'] = False
     plt.rcParams["path.simplify_threshold"] = 0.1   # 0.0 no simplification, 1.0 full simplification. 0.111111 is def. 0.0 supposed to be faster, but did not see significant performance improvement.
     # ylabel = plt.ylabel('Counts')
     # xlabel = plt.xlabel('Energy (keV)')
