@@ -3,6 +3,7 @@
 Remote-Control and Spectra analysis software for Bruker pXRF Instruments - works with the S1 TITAN, TRACER 5i/5g, CTX, and XMS.
 Built as a service tool primarily, and as a programming excercise, so UAYOR.
 Prepackaged portable executable version can be found in /dist/
+Install the JetBrainsMono-Regular.ttf font file found in the root directory to ensure UI text consistency.
 
 
 ## Screenshots - v0.6.6

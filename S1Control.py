@@ -1,6 +1,6 @@
 # S1Control by ZH for PSS
-versionNum = 'v0.7.2'
-versionDate = '2023/10/25'
+versionNum = 'v0.7.3'
+versionDate = '2023/10/26'
 
 import os
 import sys
@@ -26,6 +26,7 @@ from PIL import Image
 import csv
 from decimal import Decimal
 from plyer import notification as plyer_notification
+import subprocess
 
 
 @dataclass
@@ -47,39 +48,50 @@ class Assay:
 
 def instrument_Connect():
     global xrf
-    # ping = os.system('ping -n 1 -w 40 '+XRF_IP_USB)
+    ping_result = ping(XRF_IP_USB, 1)#os.system('ping -n 1 -w 40 '+XRF_IP_USB)
     #print(f'ping = {ping}')
-    xrf.connect((XRF_IP_USB, XRF_PORT_USB))
-    # if ping != 0:
-    #     if messagebox.askyesno(f'Connection Problem - S1Control {versionNum}', f'S1Control has not recieved a response from the instrument at {XRF_IP_USB}, and is unable to connect. Would you like to continue trying to connect?'):
-    #         connection_attempt_count = 0
-    #         while ping != 0:       # ping will only equal 0 if there are no errors or timeouts
-    #             ping = os.system('ping -n 1 -w 40 '+XRF_IP_USB)
-    #             time.sleep(0.1)
-    #             print(f'ping = {ping}')
-    #             connection_attempt_count += 1
-    #             if connection_attempt_count >= 5:
-    #                 if messagebox.askyesno(f'Connection Problem - S1Control {versionNum}', f'S1Control has still not recieved a response from the instrument at {XRF_IP_USB}, and is still unable to connect. Would you like to continue trying to connect?'):
-    #                     connection_attempt_count = 0
-    #                 else:
-    #                     raise SystemExit(0)
-    #                     closeAllThreads()
-    #                     gui.destroy()
-    #     else:
-    #         raise SystemExit(0)
-    #         closeAllThreads()
-    #         gui.destroy()
+    #xrf.connect((XRF_IP_USB, XRF_PORT_USB))
+    if ping_result == False:
+        if messagebox.askyesno(f'Connection Problem - S1Control {versionNum}', f'S1Control has not recieved a response from the instrument at {XRF_IP_USB}, and is unable to connect. Would you like to continue trying to connect?'):
+            connection_attempt_count = 0
+            while ping_result == False:       # ping will only equal 0 if there are no errors or timeouts
+                ping_result = ping(XRF_IP_USB, 1) # os.system('ping -n 1 -w 40 '+XRF_IP_USB)
+                time.sleep(0.1)
+                print(f'ping = {ping}')
+                connection_attempt_count += 1
+                if connection_attempt_count >= 5:
+                    if messagebox.askyesno(f'Connection Problem - S1Control {versionNum}', f'S1Control has still not recieved a response from the instrument at {XRF_IP_USB}, and is still unable to connect. Would you like to continue trying to connect?'):
+                        connection_attempt_count = 0
+                    else:
+                        raise SystemExit(0)
+                        closeAllThreads()
+                        gui.destroy()
+        else:
+            raise SystemExit(0)
+            closeAllThreads()
+            gui.destroy()
 
-    # try:
-    #     xrf.connect((XRF_IP_USB, XRF_PORT_USB))
-    # except:
-    #     print('Connection Error. Check instrument has booted to login screen and is properly connected before restarting the program.')
+    try:
+        xrf.connect((XRF_IP_USB, XRF_PORT_USB))
+    except:
+        print('Connection Error. Check instrument has booted to login screen and is properly connected before restarting the program.')
 
 def instrument_Disconnect():
     global xrf
     xrf.close()
     printAndLog('Instrument Connection Closed.', 'WARNING')
 
+def ping(host, num_tries):
+    """
+    Returns True if host (str) responds to a ping request.
+    Remember that a host may not respond to a ping (ICMP) request even if the host name is valid.
+    """
+    num_tries = str(num_tries)
+    # Option for the number of packets as a function of
+    param = '-n' if sys.platform.startswith('win') else '-c'
+    # Building the command. Ex: "ping -c 1 google.com"
+    command = ['ping', param, num_tries, host]
+    return subprocess.call(command) == 0
 
 def instrument_StartAssay():
     global spectra
@@ -1911,8 +1923,11 @@ def configureEmissionLinesClicked():
         linecfgwindow.title('Configure Emission Lines')
         linecfgwindow.iconbitmap(iconpath)
         # after delay to fix toplevel icon bug in customtkinter.
-        linecfgwindow.after(220, lambda:linecfgwindow.iconbitmap(iconpath))
-        linecfgwindow.after(200,lambda:linecfgwindow.lift())
+        try:
+            linecfgwindow.after(220, lambda:linecfgwindow.iconbitmap(iconpath))
+            linecfgwindow.after(200,lambda:linecfgwindow.lift())
+        except:
+            printAndLog('Unable to Correctly Set Line Config Window icon.',logbox_colour_tag='WARNING')
         linecfgwindows.append(linecfgwindow)
 
 
@@ -2405,6 +2420,7 @@ if __name__ == '__main__':
 
     # Icons and Resources
     iconpath = resource_path("pss_lb.ico")
+    iconpath_linux = resource_path("pss_lb.xbm")
     energiescsvpath = resource_path("energies.csv")
     psslogo = ctk.CTkImage(light_image=Image.open(resource_path("pss-logo2-med.png")), size=(233, 96))
     icon_consecutive = ctk.CTkImage(light_image=Image.open(resource_path("icons/repeat-2-b.png")), dark_image=Image.open(resource_path("icons/repeat-2-w.png")), size=(24, 24))
@@ -2424,46 +2440,50 @@ if __name__ == '__main__':
     icon_sensoroff = ctk.CTkImage(light_image=Image.open(resource_path("icons/sensor-line.png")), size=(22, 22))
     icon_pressure = ctk.CTkImage(light_image=Image.open(resource_path("icons/temp-hot-line.png")), size=(22, 22))
     #icon_sendinfofields = ctk.CTkImage(light_image=Image.open(resource_path("icons/install-fill.png")), size=(18, 18))
-    # gui.iconbitmap(default = iconpath)
+    # use correct method of setting window icon bitmap based on platform
+    if(sys.platform.startswith('win')):
+        gui.iconbitmap(default = iconpath)
+    else:
+        gui.call('wm', 'iconphoto', gui._w, iconpath_linux)
 
     
     # Fonts
-    consolas24 = font.Font(family='Courier New', size=24)
-    consolas20 = font.Font(family='Courier New', size=20)
-    consolas18 = font.Font(family='Courier New', size=18)
-    consolas18B = font.Font(family='Courier New', size=18, weight = 'bold')
-    consolas16 = font.Font(family='Courier New', size=16)
-    consolas13 = font.Font(family='Courier New', size=13)
-    consolas12 = font.Font(family='Courier New', size=12)
-    consolas10 = font.Font(family='Courier New', size=10)
-    consolas10B = font.Font(family='Courier New', size=10, weight = 'bold')
-    consolas09 = font.Font(family='Courier New', size=9)
-    consolas08 = font.Font(family='Courier New', size=8)
-    consolas07 = font.Font(family='Courier New', size=7)
+    consolas24 = font.Font(family='JetBrains Mono', size=24)
+    consolas20 = font.Font(family='JetBrains Mono', size=20)
+    consolas18 = font.Font(family='JetBrains Mono', size=18)
+    consolas18B = font.Font(family='JetBrains Mono', size=18, weight = 'bold')
+    consolas16 = font.Font(family='JetBrains Mono', size=16)
+    consolas13 = font.Font(family='JetBrains Mono', size=13)
+    consolas12 = font.Font(family='JetBrains Mono', size=12)
+    consolas10 = font.Font(family='JetBrains Mono', size=10)
+    consolas10B = font.Font(family='JetBrains Mono', size=10, weight = 'bold')
+    consolas09 = font.Font(family='JetBrains Mono', size=9)
+    consolas08 = font.Font(family='JetBrains Mono', size=8)
+    consolas08B = font.Font(family='JetBrains Mono', size=8, weight = 'bold')
+    consolas07 = font.Font(family='JetBrains Mono', size=7)
     roboto09 = font.Font(family='Roboto', size=9)
-    plotfont = {'fontname':'Courier New'}
+    plotfont = {'fontname':'JetBrains Mono'}
     ctk_segoe14B = ctk.CTkFont(family = 'Segoe UI', size = 14, weight= 'bold')
     ctk_segoe12B = ctk.CTkFont(family = 'Segoe UI', size = 12, weight= 'bold')
-    ctk_consolas08 = ctk.CTkFont(family = 'Courier New', size = 8)
-    ctk_consolas10 = ctk.CTkFont(family = 'Courier New', size = 10)
-    ctk_consolas11 = ctk.CTkFont(family = 'Courier New', size = 11)
-    ctk_consolas12 = ctk.CTkFont(family = 'Courier New', size = 12)
-    ctk_consolas12B = ctk.CTkFont(family = 'Courier New', size = 12, weight = 'bold')
-    ctk_consolas13 = ctk.CTkFont(family = 'Courier New', size = 13)
-    ctk_consolas14B = ctk.CTkFont(family = 'Courier New', size = 14, weight = 'bold')
-    ctk_consolas15B = ctk.CTkFont(family = 'Courier New', size = 15, weight = 'bold')
-    ctk_consolas18B = ctk.CTkFont(family = 'Courier New', size = 18, weight = 'bold')
-    ctk_consolas20B = ctk.CTkFont(family = 'Courier New', size = 20, weight = 'bold')
-    ctk_default_largeB = ctk.CTkFont(weight = 'bold')    
+    ctk_consolas08 = ctk.CTkFont(family = 'JetBrains Mono', size = 8)
+    ctk_consolas10 = ctk.CTkFont(family = 'JetBrains Mono', size = 10)
+    ctk_consolas11 = ctk.CTkFont(family = 'JetBrains Mono', size = 11)
+    ctk_consolas12 = ctk.CTkFont(family = 'JetBrains Mono', size = 12)
+    ctk_consolas12B = ctk.CTkFont(family = 'JetBrains Mono', size = 12, weight = 'bold')
+    ctk_consolas13 = ctk.CTkFont(family = 'JetBrains Mono', size = 13)
+    ctk_consolas14B = ctk.CTkFont(family = 'JetBrains Mono', size = 14, weight = 'bold')
+    ctk_consolas15B = ctk.CTkFont(family = 'JetBrains Mono', size = 15, weight = 'bold')
+    ctk_consolas18B = ctk.CTkFont(family = 'JetBrains Mono', size = 18, weight = 'bold')
+    ctk_consolas20B = ctk.CTkFont(family = 'JetBrains Mono', size = 20, weight = 'bold')
+    ctk_default_largeB = ctk.CTkFont(weight = 'bold')
 
-    print('yay')
 
     # Styles
     guiStyle = ttk.Style()
     #guiStyle.theme_use('clam')
     guiStyle.theme_use("default")
-    guiStyle.configure('Treeview', highlightthickness=0, bd=0, font=consolas10)#, background=treeviewColour_bg, fieldbackground=treeviewColour_bg, foreground = treeviewColour_bg)        # Modify the font of the body
-    guiStyle.configure('Treeview.Heading', font = consolas10B)                                    # Modify the font of the headings)
+    guiStyle.configure('Treeview', highlightthickness=0, bd=0, font=consolas08)#, background=treeviewColour_bg, fieldbackground=treeviewColour_bg, foreground = treeviewColour_bg)        # Modify the font of the body
+    guiStyle.configure('Treeview.Heading', font = consolas08B)                                    # Modify the font of the headings)
 
     plotCTKColour = ('#dbdbdb','#4a4a4a')
 
@@ -2867,7 +2887,7 @@ if __name__ == '__main__':
     phaseframe.grid(row=4, column=0, columnspan = 3, rowspan = 2, padx=4, pady=4, sticky=tk.NSEW)
 
     # About Section
-    about_blurb1 = ctk.CTkLabel(ctrltabview.tab('About'), text=f'S1Control {versionNum} ({versionDate})\nCreated by Zeb Hall for PSS\nContact: service@portaspecs.com\n', justify = tk.LEFT, font=ctk_consolas11)
+    about_blurb1 = ctk.CTkLabel(ctrltabview.tab('About'), text=f'S1Control {versionNum} ({versionDate})\nCreated by Zeb Hall for PSS\nContact: zhall@portaspecs.com\n', justify = tk.LEFT)
     about_blurb1.grid(row=3, column=0, columnspan = 2, rowspan = 2, padx=4, pady=4, sticky=tk.NSEW)
 
     about_imageframe = ctk.CTkFrame(ctrltabview.tab('About'), fg_color= ('#c5c5c5','#444444'))
