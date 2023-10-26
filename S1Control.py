@@ -1648,9 +1648,9 @@ def ui_UpdateCurrentAppAndPhases():    #update application selected and phase ti
     phasecount = len(instr_currentphases)
     
     if ui_firsttime == 1:
-        label_application = ctk.CTkLabel(appmethodframe, text = 'Application ', anchor='w')
+        label_application = ctk.CTkLabel(appmethodframe, text = 'Application ', anchor='w', font=ctk_jbm12)
         label_application.grid(row=2,column=0,padx=[8,4], pady=4, sticky=tk.NSEW)
-        dropdown_application = ctk.CTkOptionMenu(appmethodframe, variable=applicationselected_stringvar, values=instr_applicationspresent, command=applicationChoiceMade, dynamic_resizing=False)
+        dropdown_application = ctk.CTkOptionMenu(appmethodframe, variable=applicationselected_stringvar, values=instr_applicationspresent, command=applicationChoiceMade, dynamic_resizing=False, font=ctk_jbm12B, dropdown_font=ctk_jbm12)
         dropdown_application.grid(row=2,column=1,padx=4, pady=4, columnspan = 2, sticky=tk.NSEW)
         # label_currentapplication_text.set(f'Current Application: ')
         # label_currentapplication = ctk.CTkLabel(phaseframe, textvariable=label_currentapplication_text, anchor='w')
@@ -1658,31 +1658,31 @@ def ui_UpdateCurrentAppAndPhases():    #update application selected and phase ti
         phaseframe.columnconfigure(0, weight=1)
         appmethodframe.columnconfigure(1, weight=1)
 
-        label_method = ctk.CTkLabel(appmethodframe, text = 'Method ', anchor='w')
+        label_method = ctk.CTkLabel(appmethodframe, text = 'Method ', anchor='w', font=ctk_jbm12)
         label_method.grid(row=3,column=0,padx=[8,4], pady=4, sticky=tk.NSEW)
-        dropdown_method = ctk.CTkOptionMenu(appmethodframe, variable=methodselected_stringvar, values=instr_methodsforcurrentapplication, command=methodChoiceMade, dynamic_resizing=False)
+        dropdown_method = ctk.CTkOptionMenu(appmethodframe, variable=methodselected_stringvar, values=instr_methodsforcurrentapplication, command=methodChoiceMade, dynamic_resizing=False, font=ctk_jbm12B, dropdown_font=ctk_jbm12)
         dropdown_method.grid(row=3,column=1,padx=4, pady=4, columnspan = 4, sticky=tk.NSEW)
 
-        p1_label = ctk.CTkLabel(phaseframe, width=5, textvariable=phasename1_stringvar, anchor='w')
+        p1_label = ctk.CTkLabel(phaseframe, width=5, textvariable=phasename1_stringvar, anchor='w', font=ctk_jbm12)
         p1_label.grid(row = 1, column = 0, padx=[8,4], pady=4, sticky=tk.EW)
-        p2_label = ctk.CTkLabel(phaseframe, width=5, textvariable=phasename2_stringvar, anchor='w')
+        p2_label = ctk.CTkLabel(phaseframe, width=5, textvariable=phasename2_stringvar, anchor='w', font=ctk_jbm12)
         p2_label.grid(row = 2, column = 0, padx=[8,4], pady=4, sticky=tk.EW)
-        p3_label = ctk.CTkLabel(phaseframe, width=5, textvariable=phasename3_stringvar, anchor='w')
+        p3_label = ctk.CTkLabel(phaseframe, width=5, textvariable=phasename3_stringvar, anchor='w', font=ctk_jbm12)
         p3_label.grid(row = 3, column = 0, padx=[8,4], pady=4, sticky=tk.EW)
-        p1_entry = ctk.CTkEntry(phaseframe, width=70, justify='right', textvariable=phasetime1_stringvar, border_width=1)
+        p1_entry = ctk.CTkEntry(phaseframe, width=40, justify='right', textvariable=phasetime1_stringvar, border_width=1, font=ctk_jbm12)
         p1_entry.grid(row = 1, column = 1, padx=4, pady=4, sticky=tk.EW)
-        p2_entry = ctk.CTkEntry(phaseframe, width=70, justify='right', textvariable=phasetime2_stringvar, border_width=1)
+        p2_entry = ctk.CTkEntry(phaseframe, width=40, justify='right', textvariable=phasetime2_stringvar, border_width=1, font=ctk_jbm12)
         p2_entry.grid(row = 2, column = 1, padx=4, pady=4, sticky=tk.EW)
-        p3_entry = ctk.CTkEntry(phaseframe, width=70, justify='right', textvariable=phasetime3_stringvar, border_width=1)
+        p3_entry = ctk.CTkEntry(phaseframe, width=40, justify='right', textvariable=phasetime3_stringvar, border_width=1, font=ctk_jbm12)
         p3_entry.grid(row = 3, column = 1, padx=4, pady=4, sticky=tk.EW)
-        p1_s = ctk.CTkLabel(phaseframe, width=1, text='s', anchor='w')
+        p1_s = ctk.CTkLabel(phaseframe, width=1, text='s', anchor='w', font=ctk_jbm12)
         p1_s.grid(row = 1, column = 2, padx=[0,8], pady=4, sticky=tk.EW)
-        p2_s = ctk.CTkLabel(phaseframe, width=1, text='s', anchor='w')
+        p2_s = ctk.CTkLabel(phaseframe, width=1, text='s', anchor='w', font=ctk_jbm12)
         p2_s.grid(row = 2, column = 2, padx=[0,8], pady=4, sticky=tk.EW)
-        p3_s = ctk.CTkLabel(phaseframe, width=1, text='s', anchor='w')
+        p3_s = ctk.CTkLabel(phaseframe, width=1, text='s', anchor='w', font=ctk_jbm12)
         p3_s.grid(row = 3, column = 2, padx=[0,8], pady=4, sticky=tk.EW)
 
-        applyphasetimes = ctk.CTkButton(phaseframe, width = 10, image=icon_apply, compound='top', anchor='top', text = 'Apply', command = savePhaseTimes) # font=ctk.CTkFont('arial', 20))
+        applyphasetimes = ctk.CTkButton(phaseframe, width = 10, image=icon_apply, compound='top', anchor='top', text = 'Apply', command = savePhaseTimes, font=ctk_jbm12B) # font=ctk.CTkFont('arial', 20))
         applyphasetimes.grid(row = 1, column = 3, rowspan = phasecount, padx=4, pady=4, ipadx=4, ipady=4, sticky=tk.NSEW)
 
         ui_firsttime = 0
@@ -1938,11 +1938,11 @@ def configureEmissionLinesClicked():
         for col in range(1,19):
             periodictableframe.columnconfigure(col,weight=1,uniform='third')
 
-        instruc = ctk.CTkLabel(periodictableframe, text = 'Select Element(s) to display Emission Lines:', font=ctk_consolas14B)
+        instruc = ctk.CTkLabel(periodictableframe, text = 'Select Element(s) to display Emission Lines:', font=ctk_jbm14B)
         instruc.grid(row=0,column=0, columnspan = 10, padx=2, pady=2, ipadx=0, ipady=0, sticky=tk.NSEW)
 
         for e in element_info:
-            button = ctk.CTkButton(periodictableframe, text=(str(e[0])+'\n'+(e[1])), width=20, height=30, fg_color=e[5], text_color=WHITEISH, font=ctk_consolas14B, command=lambda Z=int(e[0]): toggleEmissionLine(Z), corner_radius=6)
+            button = ctk.CTkButton(periodictableframe, text=(str(e[0])+'\n'+(e[1])), width=20, height=30, fg_color=e[5], text_color=WHITEISH, font=ctk_jbm14B, command=lambda Z=int(e[0]): toggleEmissionLine(Z), corner_radius=6)
             button.grid(row=e[3], column=e[4], padx=2, pady=2, ipadx=0, ipady=0, sticky=tk.NSEW)
             emissionLineElementButtonIDs.append(button)
         linecfgwindow.protocol("WM_DELETE_WINDOW", lineCfgOnClosing)
@@ -2291,7 +2291,7 @@ def editInfoFieldsClicked():
         editinfo_fieldcounters.append(field6_iscounter_boolvar)
 
 
-        # editinfo_instruc = ctk.CTkLabel(editinfoframe, text = 'Select Element(s) to display Emission Lines:', font=ctk_consolas14B)
+        # editinfo_instruc = ctk.CTkLabel(editinfoframe, text = 'Select Element(s) to display Emission Lines:', font=ctk_jbm14B)
         # editinfo_instruc.grid(row=0,column=0, columnspan = 10, padx=2, pady=2, ipadx=0, ipady=0, sticky=tk.NSEW)
 
         editinfowindow.protocol("WM_DELETE_WINDOW", editInfoOnClosing)
@@ -2448,33 +2448,33 @@ if __name__ == '__main__':
 
     
     # Fonts
-    consolas24 = font.Font(family='JetBrains Mono', size=24)
-    consolas20 = font.Font(family='JetBrains Mono', size=20)
-    consolas18 = font.Font(family='JetBrains Mono', size=18)
-    consolas18B = font.Font(family='JetBrains Mono', size=18, weight = 'bold')
-    consolas16 = font.Font(family='JetBrains Mono', size=16)
-    consolas13 = font.Font(family='JetBrains Mono', size=13)
-    consolas12 = font.Font(family='JetBrains Mono', size=12)
-    consolas10 = font.Font(family='JetBrains Mono', size=10)
-    consolas10B = font.Font(family='JetBrains Mono', size=10, weight = 'bold')
-    consolas09 = font.Font(family='JetBrains Mono', size=9)
-    consolas08 = font.Font(family='JetBrains Mono', size=8)
-    consolas08B = font.Font(family='JetBrains Mono', size=8, weight = 'bold')
-    consolas07 = font.Font(family='JetBrains Mono', size=7)
+    jbm24 = font.Font(family='JetBrains Mono', size=24)
+    jbm20 = font.Font(family='JetBrains Mono', size=20)
+    jbm18 = font.Font(family='JetBrains Mono', size=18)
+    jbm18B = font.Font(family='JetBrains Mono', size=18, weight = 'bold')
+    jbm16 = font.Font(family='JetBrains Mono', size=16)
+    jbm13 = font.Font(family='JetBrains Mono', size=13)
+    jbm12 = font.Font(family='JetBrains Mono', size=12)
+    jbm10 = font.Font(family='JetBrains Mono', size=10)
+    jbm10B = font.Font(family='JetBrains Mono', size=10, weight = 'bold')
+    jbm09 = font.Font(family='JetBrains Mono', size=9)
+    jbm08 = font.Font(family='JetBrains Mono', size=8)
+    jbm08B = font.Font(family='JetBrains Mono', size=8, weight = 'bold')
+    jbm07 = font.Font(family='JetBrains Mono', size=7)
     roboto09 = font.Font(family='Roboto', size=9)
     plotfont = {'fontname':'JetBrains Mono'}
     ctk_segoe14B = ctk.CTkFont(family = 'Segoe UI', size = 14, weight= 'bold')
     ctk_segoe12B = ctk.CTkFont(family = 'Segoe UI', size = 12, weight= 'bold')
-    ctk_consolas08 = ctk.CTkFont(family = 'JetBrains Mono', size = 8)
-    ctk_consolas10 = ctk.CTkFont(family = 'JetBrains Mono', size = 10)
-    ctk_consolas11 = ctk.CTkFont(family = 'JetBrains Mono', size = 11)
-    ctk_consolas12 = ctk.CTkFont(family = 'JetBrains Mono', size = 12)
-    ctk_consolas12B = ctk.CTkFont(family = 'JetBrains Mono', size = 12, weight = 'bold')
-    ctk_consolas13 = ctk.CTkFont(family = 'JetBrains Mono', size = 13)
-    ctk_consolas14B = ctk.CTkFont(family = 'JetBrains Mono', size = 14, weight = 'bold')
-    ctk_consolas15B = ctk.CTkFont(family = 'JetBrains Mono', size = 15, weight = 'bold')
-    ctk_consolas18B = ctk.CTkFont(family = 'JetBrains Mono', size = 18, weight = 'bold')
-    ctk_consolas20B = ctk.CTkFont(family = 'JetBrains Mono', size = 20, weight = 'bold')
+    ctk_jbm08 = ctk.CTkFont(family = 'JetBrains Mono', size = 8)
+    ctk_jbm10 = ctk.CTkFont(family = 'JetBrains Mono', size = 10)
+    ctk_jbm11 = ctk.CTkFont(family = 'JetBrains Mono', size = 11)
+    ctk_jbm12 = ctk.CTkFont(family = 'JetBrains Mono', size = 12)
+    ctk_jbm12B = ctk.CTkFont(family = 'JetBrains Mono', size = 12, weight = 'bold')
+    ctk_jbm13 = ctk.CTkFont(family = 'JetBrains Mono', size = 13)
+    ctk_jbm14B = ctk.CTkFont(family = 'JetBrains Mono', size = 14, weight = 'bold')
+    ctk_jbm15B = ctk.CTkFont(family = 'JetBrains Mono', size = 15, weight = 'bold')
+    ctk_jbm18B = ctk.CTkFont(family = 'JetBrains Mono', size = 18, weight = 'bold')
+    ctk_jbm20B = ctk.CTkFont(family = 'JetBrains Mono', size = 20, weight = 'bold')
     ctk_default_largeB = ctk.CTkFont(weight = 'bold')
 
 
@@ -2482,8 +2482,8 @@ if __name__ == '__main__':
     guiStyle = ttk.Style()
     #guiStyle.theme_use('clam')
     guiStyle.theme_use("default")
-    guiStyle.configure('Treeview', highlightthickness=0, bd=0, font=consolas08)#, background=treeviewColour_bg, fieldbackground=treeviewColour_bg, foreground = treeviewColour_bg)        # Modify the font of the body
-    guiStyle.configure('Treeview.Heading', font = consolas08B)                                    # Modify the font of the headings)
+    guiStyle.configure('Treeview', highlightthickness=0, bd=0, font=jbm08)#, background=treeviewColour_bg, fieldbackground=treeviewColour_bg, foreground = treeviewColour_bg)        # Modify the font of the body
+    guiStyle.configure('Treeview.Heading', font = jbm08B)                                    # Modify the font of the headings)
 
     plotCTKColour = ('#dbdbdb','#4a4a4a')
 
@@ -2856,7 +2856,7 @@ if __name__ == '__main__':
     statusframe = ctk.CTkFrame(LHSframe, width=50, height = 30, corner_radius=5)
     statusframe.pack(side = tk.BOTTOM, anchor = tk.S, fill = 'x', expand = False, padx=8, pady=[4, 8])
     instr_DANGER_stringvar = tk.StringVar()
-    statuslabel = ctk.CTkLabel(statusframe, textvariable = instr_DANGER_stringvar, font= ctk_consolas18B)
+    statuslabel = ctk.CTkLabel(statusframe, textvariable = instr_DANGER_stringvar, font= ctk_jbm18B)
     statuslabel.pack(side = tk.TOP, fill = 'both', anchor = tk.N, expand = True, padx = 2, pady = 2)
 
     # loading bar stuff
@@ -2871,6 +2871,7 @@ if __name__ == '__main__':
     # Tabview for controls LHS
     ctrltabview = ctk.CTkTabview(LHSframe, height = 320)
     ctrltabview.pack(side = tk.TOP, anchor = tk.N, fill = 'x', expand = False, padx=8, pady=[0, 4])
+    ctrltabview._segmented_button.configure(font=ctk_jbm12)
     ctrltabview.add('Assay Controls')
     ctrltabview.add('Instrument')
     ctrltabview.add('Options')    
@@ -2887,7 +2888,7 @@ if __name__ == '__main__':
     phaseframe.grid(row=4, column=0, columnspan = 3, rowspan = 2, padx=4, pady=4, sticky=tk.NSEW)
 
     # About Section
-    about_blurb1 = ctk.CTkLabel(ctrltabview.tab('About'), text=f'S1Control {versionNum} ({versionDate})\nCreated by Zeb Hall for PSS\nContact: zhall@portaspecs.com\n', justify = tk.LEFT)
+    about_blurb1 = ctk.CTkLabel(ctrltabview.tab('About'), text=f'S1Control {versionNum} ({versionDate})\nCreated by Zeb Hall for PSS\nContact: zhall@portaspecs.com\n', justify = tk.LEFT,font=ctk_jbm12)
     about_blurb1.grid(row=3, column=0, columnspan = 2, rowspan = 2, padx=4, pady=4, sticky=tk.NSEW)
 
     about_imageframe = ctk.CTkFrame(ctrltabview.tab('About'), fg_color= ('#c5c5c5','#444444'))
@@ -2896,9 +2897,9 @@ if __name__ == '__main__':
     about_imagelabel = ctk.CTkLabel(about_imageframe, text= ' ', image=psslogo)
     about_imagelabel.pack(side = tk.TOP, anchor = tk.N, fill = 'both', expand = True, padx=2, pady=2)
 
-    # about_blurb_copyright_header = ctk.CTkLabel(ctrltabview.tab('About'), text=f'Acknowledgements:', justify = tk.LEFT, font=ctk_consolas10, text_color=plottextColour)
+    # about_blurb_copyright_header = ctk.CTkLabel(ctrltabview.tab('About'), text=f'Acknowledgements:', justify = tk.LEFT, font=ctk_jbm10, text_color=plottextColour)
     # about_blurb_copyright_header.grid(row=2, column=0, columnspan = 2, rowspan = 2, padx=4, pady=4, sticky=tk.NSEW)
-    # about_blurb_copyrights = ctk.CTkLabel(ctrltabview.tab('About'), text=f'MATPLOTLIB: Copyright (c) 2012-2023 Matplotlib Development Team; All Rights Reserved\n', justify = tk.LEFT, font=ctk_consolas08, text_color=plottextColour)
+    # about_blurb_copyrights = ctk.CTkLabel(ctrltabview.tab('About'), text=f'MATPLOTLIB: Copyright (c) 2012-2023 Matplotlib Development Team; All Rights Reserved\n', justify = tk.LEFT, font=ctk_jbm08, text_color=plottextColour)
     # about_blurb_copyrights.grid(row=3, column=0, columnspan = 2, rowspan = 2, padx=4, pady=4, sticky=tk.NSEW)
     
     # Buttons
@@ -2906,7 +2907,7 @@ if __name__ == '__main__':
     #button_assay_text.set('\u2BC8 Start Assay')
     #button_assay_text.set('\u2715 Stop Assay')
     #\u2BC0
-    button_assay = ctk.CTkButton(ctrltabview.tab('Assay Controls'), width = 110, command = startAssayClicked, text='Start Assay', fg_color = '#33AF56', hover_color = '#237A3C', image=icon_startassay)#, font = ctk_default_largeB,)
+    button_assay = ctk.CTkButton(ctrltabview.tab('Assay Controls'), width = 110, command = startAssayClicked, text='Start Assay', fg_color = '#33AF56', hover_color = '#237A3C', image=icon_startassay, font=ctk_jbm14B)#, font = ctk_default_largeB,)
     button_assay.grid(row=1, column=0, padx=4, pady=4, sticky=tk.NSEW)
 
     # Consecutive Tests Section
@@ -2916,15 +2917,15 @@ if __name__ == '__main__':
     #repeats_choice_var = ctk.StringVar(value='\u2B6F Consecutive')
     repeats_choice_var = ctk.StringVar(value='1')
     repeats_choice_list = ['1','2','3','4','5','6','7','8','9','10','15','20','50','100','150','200','300','500','1000']
-    dropdown_repeattests = ctk.CTkOptionMenu(ctrltabview.tab("Assay Controls"), width=70, variable=repeats_choice_var, values=repeats_choice_list, command=repeatsChoiceMade, dynamic_resizing=True)
+    dropdown_repeattests = ctk.CTkOptionMenu(ctrltabview.tab("Assay Controls"), width=70, variable=repeats_choice_var, values=repeats_choice_list, command=repeatsChoiceMade, dynamic_resizing=True, font=ctk_jbm12B, dropdown_font=ctk_jbm12)
     dropdown_repeattests.grid(row=1,column=2,padx=4, pady=4, sticky=tk.NSEW)
 
-    button_editinfofields = ctk.CTkButton(ctrltabview.tab('Assay Controls'), image=icon_editinfo, text = 'Edit Info-Fields', command = editInfoFieldsClicked)
+    button_editinfofields = ctk.CTkButton(ctrltabview.tab('Assay Controls'), image=icon_editinfo, text = 'Edit Info-Fields', command = editInfoFieldsClicked, font=ctk_jbm12B)
     button_editinfofields.grid(row=6, column=0, columnspan=3, padx=4, pady=4, sticky=tk.NSEW)
 
-    #button_startlistener = tk.Button(width = 15, text = "start listen", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = lambda:xrfListenLoop_Start(None)).pack(ipadx=8,ipady=2)
+    #button_startlistener = tk.Button(width = 15, text = "start listen", font = jbm10, fg = buttonfg3, bg = buttonbg3, command = lambda:xrfListenLoop_Start(None)).pack(ipadx=8,ipady=2)
 
-    #button_getinstdef = tk.Button(width = 15, text = "get instdef", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = getInfoClicked).pack(ipadx=8,ipady=2)
+    #button_getinstdef = tk.Button(width = 15, text = "get instdef", font = jbm10, fg = buttonfg3, bg = buttonbg3, command = getInfoClicked).pack(ipadx=8,ipady=2)
 
     # button_enablespectra = ctk.CTkButton(ctrltabview.tab("Instrument"), width = 13, text = "Enable Spectra Transmit", command = instrument_ConfigureTransmitSpectraEnable)
     # button_enablespectra.grid(row=1, column=0, padx=4, pady=4, sticky=tk.NSEW)
@@ -2932,28 +2933,28 @@ if __name__ == '__main__':
     # button_disablespectra = ctk.CTkButton(ctrltabview.tab("Instrument"), width = 13, text = "Disable Spectra Transmit", command = instrument_ConfigureTransmitSpectraDisable)
     # button_disablespectra.grid(row=2, column=0, padx=4, pady=4, sticky=tk.NSEW)
 
-    button_gets1softwareversion = ctk.CTkButton(ctrltabview.tab("Instrument"), width = 13, image=icon_s1version, text = "Check Instrument Software Version", command = getS1verClicked)
+    button_gets1softwareversion = ctk.CTkButton(ctrltabview.tab("Instrument"), width = 13, image=icon_s1version, text = "Check Instrument Software Version", command = getS1verClicked, font=ctk_jbm12B)
     button_gets1softwareversion.grid(row=1, column=0, columnspan=1, padx=4, pady=4, sticky=tk.NSEW)
 
-    button_getnosetemp = ctk.CTkButton(ctrltabview.tab("Instrument"), width = 13, image=icon_temperature ,text = "Check Nose Temperature", command = instrument_QueryNoseTemp)
+    button_getnosetemp = ctk.CTkButton(ctrltabview.tab("Instrument"), width = 13, image=icon_temperature ,text = "Check Nose Temperature", command = instrument_QueryNoseTemp, font=ctk_jbm12B)
     button_getnosetemp.grid(row=2, column=0, columnspan=1, padx=4, pady=4, sticky=tk.NSEW)
 
-    button_getnosepressure = ctk.CTkButton(ctrltabview.tab("Instrument"), width = 13, image=icon_pressure ,text = "Check Nose Pressure", command = instrument_QueryNosePressure)
+    button_getnosepressure = ctk.CTkButton(ctrltabview.tab("Instrument"), width = 13, image=icon_pressure ,text = "Check Nose Pressure", command = instrument_QueryNosePressure, font=ctk_jbm12B)
     button_getnosepressure.grid(row=3, column=0, columnspan=1, padx=4, pady=4, sticky=tk.NSEW)
 
-    button_setsystemtime = ctk.CTkButton(ctrltabview.tab("Instrument"), width = 13, image=icon_systemtime, text = "Sync Instrument Clock", command = instrument_ConfigureSystemTime)
+    button_setsystemtime = ctk.CTkButton(ctrltabview.tab("Instrument"), width = 13, image=icon_systemtime, text = "Sync Instrument Clock", command = instrument_ConfigureSystemTime, font=ctk_jbm12B)
     button_setsystemtime.grid(row=4, column=0, columnspan=1, padx=4, pady=4, sticky=tk.NSEW)
 
     proximitysensor_var = ctk.BooleanVar(value=False)
-    checkbox_proximitysensor = ctk.CTkCheckBox(ctrltabview.tab('Instrument'), text= 'Safety: Enable Proximity Sensor', variable= proximitysensor_var, onvalue= True, offvalue= False, command=lambda:instrument_toggleProximity(proximitysensor_var.get()))
+    checkbox_proximitysensor = ctk.CTkCheckBox(ctrltabview.tab('Instrument'), text= 'Safety: Enable Proximity Sensor', variable= proximitysensor_var, onvalue= True, offvalue= False, command=lambda:instrument_toggleProximity(proximitysensor_var.get()), font=ctk_jbm12)
     checkbox_proximitysensor.grid(row=5, column=0, padx=4, pady=4, sticky=tk.NSEW)
 
     storeresultsoninstrument_var = ctk.BooleanVar(value=True)
-    checkbox_storeresultsoninstrument = ctk.CTkCheckBox(ctrltabview.tab('Instrument'), text= 'Output Result Files (.csv/.tsv)', variable= storeresultsoninstrument_var, onvalue= True, offvalue= False, command=lambda:instrument_toggleStoreResultFiles(storeresultsoninstrument_var.get()))
+    checkbox_storeresultsoninstrument = ctk.CTkCheckBox(ctrltabview.tab('Instrument'), text= 'Output Result Files (.csv/.tsv)', variable= storeresultsoninstrument_var, onvalue= True, offvalue= False, command=lambda:instrument_toggleStoreResultFiles(storeresultsoninstrument_var.get()), font=ctk_jbm12)
     checkbox_storeresultsoninstrument.grid(row=6, column=0, padx=4, pady=4, sticky=tk.NSEW)
 
     storespectraoninstrument_var = ctk.BooleanVar(value=True)
-    checkbox_storespectraoninstrument = ctk.CTkCheckBox(ctrltabview.tab('Instrument'), text= 'Output Spectra Files (.pdz)', variable= storespectraoninstrument_var, onvalue= True, offvalue= False, command=lambda:instrument_toggleStoreSpectraFiles(storespectraoninstrument_var.get()))
+    checkbox_storespectraoninstrument = ctk.CTkCheckBox(ctrltabview.tab('Instrument'), text= 'Output Spectra Files (.pdz)', variable= storespectraoninstrument_var, onvalue= True, offvalue= False, command=lambda:instrument_toggleStoreSpectraFiles(storespectraoninstrument_var.get()), font=ctk_jbm12)
     checkbox_storespectraoninstrument.grid(row=7, column=0, padx=4, pady=4, sticky=tk.NSEW)
 
     # button_proximityenable = ctk.CTkButton(ctrltabview.tab("Instrument"), width = 13, image=icon_sensoron, text = "Enable Proximity", command = instrument_ConfigureProximityEnable)
@@ -2966,39 +2967,39 @@ if __name__ == '__main__':
     # button_geteditfields = ctk.CTkButton(ctrltabview.tab("Instrument"), width = 13 ,text = "Get Current Info Fields", command = instrument_QueryEditFields)
     # button_geteditfields.grid(row=4, column=0, padx=4, pady=4, sticky=tk.NSEW)
 
-    #button_getapplicationprefs = tk.Button(configframe, width = 25, text = "get current app prefs", font = consolas10, fg = buttonfg3, bg = buttonbg3, command = instrument_QueryCurrentApplicationPreferences)
+    #button_getapplicationprefs = tk.Button(configframe, width = 25, text = "get current app prefs", font = jbm10, fg = buttonfg3, bg = buttonbg3, command = instrument_QueryCurrentApplicationPreferences)
     #button_getapplicationprefs.grid(row=7, column=1, padx=2, pady=2, ipadx=4, ipady=0, sticky=tk.NSEW)
 
     # button_getapplicationphasetimes = ctk.CTkButton(ctrltabview.tab("Instrument"), width = 13, text = "Get Phase Times", command = instrument_QueryCurrentApplicationPhaseTimes)
     # button_getapplicationphasetimes.grid(row=2, column=1, padx=4, pady=4, sticky=tk.NSEW)
 
-    displayunits_label = ctk.CTkLabel(ctrltabview.tab('Options'), text='Units:')
+    displayunits_label = ctk.CTkLabel(ctrltabview.tab('Options'), text='Units:', font=ctk_jbm12)
     displayunits_label.grid(row=1,column=0,padx=[4,0], pady=4, sticky=tk.NSEW)
     
     displayunits_var = ctk.StringVar(value='ppm')
     displayunits_list = ['%', 'ppm', 'ppb']
-    dropdown_displayunits = ctk.CTkOptionMenu(ctrltabview.tab('Options'), variable=displayunits_var, values=displayunits_list, command=None, dynamic_resizing=False)
+    dropdown_displayunits = ctk.CTkOptionMenu(ctrltabview.tab('Options'), variable=displayunits_var, values=displayunits_list, command=None, dynamic_resizing=False, font=ctk_jbm12B, dropdown_font=ctk_jbm12)
     dropdown_displayunits.grid(row=1,column=1,padx=4, pady=4, sticky=tk.NSEW)
 
     # FLAG TO CONTROL NORMALISATION OF SPECTRA VIA AREA-AND-TIME-NORMALISATION
     doNormaliseSpectra_var = ctk.BooleanVar(value=False)
-    checkbox_doNormaliseSpectra = ctk.CTkCheckBox(ctrltabview.tab('Options'), text= 'Normalise Spectra (Time & Total Counts)', variable=doNormaliseSpectra_var, onvalue= True, offvalue= False)
+    checkbox_doNormaliseSpectra = ctk.CTkCheckBox(ctrltabview.tab('Options'), text= 'Normalise Spectra, Time & Total Counts', variable=doNormaliseSpectra_var, onvalue= True, offvalue= False, font=ctk_jbm12)
     checkbox_doNormaliseSpectra.grid(row=2, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW)
     checkbox_doNormaliseSpectra.deselect()
 
     enableautoassayCSV_var = ctk.StringVar(value='off')
-    checkbox_enableautoassayCSV = ctk.CTkCheckBox(ctrltabview.tab('Options'), text= 'Auto Save Results to Individual CSVs', variable= enableautoassayCSV_var, onvalue= 'on', offvalue= 'off')
+    checkbox_enableautoassayCSV = ctk.CTkCheckBox(ctrltabview.tab('Options'), text= 'Auto Save Results to Individual CSVs', variable= enableautoassayCSV_var, onvalue= 'on', offvalue= 'off', font=ctk_jbm12)
     checkbox_enableautoassayCSV.grid(row=3, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW)
 
     enableresultsCSV_var = ctk.StringVar(value='on')
-    checkbox_enableresultsCSV = ctk.CTkCheckBox(ctrltabview.tab('Options'), text= 'Auto Save Results to Combined CSV', variable= enableresultsCSV_var, onvalue= 'on', offvalue= 'off')
+    checkbox_enableresultsCSV = ctk.CTkCheckBox(ctrltabview.tab('Options'), text= 'Auto Save Results to Combined CSV', variable= enableresultsCSV_var, onvalue= 'on', offvalue= 'off', font=ctk_jbm12)
     checkbox_enableresultsCSV.grid(row=4, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW)
 
     enableendofassaynotifications_var = ctk.StringVar(value='on')
-    checkbox_enableendofassaynotifications = ctk.CTkCheckBox(ctrltabview.tab('Options'), text= 'Desktop Notification on Assay Completion', variable= enableendofassaynotifications_var, onvalue= 'on', offvalue= 'off')
+    checkbox_enableendofassaynotifications = ctk.CTkCheckBox(ctrltabview.tab('Options'), text= 'Desktop Notification on Assay Complete', variable= enableendofassaynotifications_var, onvalue= 'on', offvalue= 'off', font=ctk_jbm12)
     checkbox_enableendofassaynotifications.grid(row=5, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW)
 
-    checkbox_enabledarkmode = ctk.CTkCheckBox(ctrltabview.tab('Options'), text= 'Dark Mode UI (Ctrl+Shift+L)', variable= enabledarkmode, onvalue= 'dark', offvalue= 'light', command=lambda:ctk_change_appearance_mode_event(enabledarkmode.get()))
+    checkbox_enabledarkmode = ctk.CTkCheckBox(ctrltabview.tab('Options'), text= 'Dark Mode UI (Ctrl+Shift+L)', variable= enabledarkmode, onvalue= 'dark', offvalue= 'light', command=lambda:ctk_change_appearance_mode_event(enabledarkmode.get()), font=ctk_jbm12)
     checkbox_enabledarkmode.grid(row=6, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW)
 
     
@@ -3017,7 +3018,7 @@ if __name__ == '__main__':
     #logbox_xscroll.grid(row = 3, column = 1, columnspan = 2, sticky = tk.NSEW)
     #logbox_yscroll = tk.Scrollbar(infoframe, orient = 'vertical')
     #logbox_yscroll.grid(row = 1, column = 3, columnspan = 1, rowspan= 2, sticky = tk.NSEW)
-    logbox = ctk.CTkTextbox(LHSframe, corner_radius=5, height = 250, width = 320, font = ctk_consolas11, text_color=WHITEISH, fg_color=CHARCOAL, wrap = tk.NONE)
+    logbox = ctk.CTkTextbox(LHSframe, corner_radius=5, height = 250, width = 320, font = ctk_jbm11, text_color=WHITEISH, fg_color=CHARCOAL, wrap = tk.NONE)
     logbox.pack(side = tk.TOP, anchor = tk.N, fill = 'both', expand = True, padx=8, pady=[4, 4])
     logbox.tag_config('ERROR', foreground="#d62d43")
     logbox.tag_config('WARNING', foreground="#e09c26")
@@ -3030,7 +3031,7 @@ if __name__ == '__main__':
     # Spectraframe Stuff
     plt.style.use("seaborn-v0_8-whitegrid")
     plt.rcParams["font.family"] = "monospace"
-    #plt.rcParams["font.monospace"] = 
+    plt.rcParams["font.monospace"] = 'JetBrains Mono'
     plt.rcParams["font.size"] = 9
     plt.rcParams['text.color'] = CHARCOAL
     plt.rcParams['axes.labelcolor'] = plottextColour
@@ -3073,13 +3074,13 @@ if __name__ == '__main__':
 
 
     # Other Toolbar widgets
-    button_configureemissionlines = ctk.CTkButton(spectraframe, width = 13, image=icon_configureemissionlines, text = "Configure Emission Lines", command = configureEmissionLinesClicked)
+    button_configureemissionlines = ctk.CTkButton(spectraframe, width = 13, image=icon_configureemissionlines, text = "Configure Emission Lines", command = configureEmissionLinesClicked, font=ctk_jbm12B)
     button_configureemissionlines.pack(side=tk.RIGHT, fill = 'x', padx = 8, pady = 4)
 
     # button_clearemissionlines = ctk.CTkButton(spectraframe, width = 13, text = "Clear Emission Lines", command = clearEmissionLinesClicked)
     # button_clearemissionlines.pack(side=tk.RIGHT, fill = 'x', padx = 0, pady = 4)
 
-    button_analysepeak = ctk.CTkButton(spectraframe, width = 13, image=icon_identifypeak, text = "Identify Peak ", command = startPlotClickListener)
+    button_analysepeak = ctk.CTkButton(spectraframe, width = 13, image=icon_identifypeak, text = "Identify Peak ", command = startPlotClickListener, font=ctk_jbm12B)
     button_analysepeak.pack(side=tk.RIGHT, fill = 'x', padx = 0, pady = 4)
 
 
@@ -3112,7 +3113,7 @@ if __name__ == '__main__':
 
     # Resultsbox stuff
 
-    # resultsbox = ctk.CTkTextbox(resultsframe, corner_radius=5, height = 250, width = 150, font = ctk_consolas11, wrap = tk.NONE)
+    # resultsbox = ctk.CTkTextbox(resultsframe, corner_radius=5, height = 250, width = 150, font = ctk_jbm11, wrap = tk.NONE)
     # resultsbox.pack(side = tk.RIGHT, fill = 'both', expand = True, padx=8, pady=8)
     # resultsbox.configure(state = 'disabled')
 
