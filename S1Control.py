@@ -48,16 +48,16 @@ class Assay:
 
 def instrument_Connect():
     global xrf
-    ping_result = ping(XRF_IP_USB, 1)#os.system('ping -n 1 -w 40 '+XRF_IP_USB)
+    ping_result = universalPing(XRF_IP_USB, 1)#os.system('ping -n 1 -w 40 '+XRF_IP_USB)
     #print(f'ping = {ping}')
     #xrf.connect((XRF_IP_USB, XRF_PORT_USB))
     if ping_result == False:
         if messagebox.askyesno(f'Connection Problem - S1Control {versionNum}', f'S1Control has not recieved a response from the instrument at {XRF_IP_USB}, and is unable to connect. Would you like to continue trying to connect?'):
             connection_attempt_count = 0
             while ping_result == False:       # ping will only equal 0 if there are no errors or timeouts
-                ping_result = ping(XRF_IP_USB, 1) # os.system('ping -n 1 -w 40 '+XRF_IP_USB)
+                ping_result = universalPing(XRF_IP_USB, 1) # os.system('ping -n 1 -w 40 '+XRF_IP_USB)
                 time.sleep(0.1)
-                print(f'ping = {ping}')
+                #print(f'ping = {universalPing}')
                 connection_attempt_count += 1
                 if connection_attempt_count >= 5:
                     if messagebox.askyesno(f'Connection Problem - S1Control {versionNum}', f'S1Control has still not recieved a response from the instrument at {XRF_IP_USB}, and is still unable to connect. Would you like to continue trying to connect?'):
@@ -81,7 +81,7 @@ def instrument_Disconnect():
     xrf.close()
     printAndLog('Instrument Connection Closed.', 'WARNING')
 
-def ping(host, num_tries):
+def universalPing(host, num_tries):
     """
     Returns True if host (str) responds to a ping request.
     Remember that a host may not respond to a ping (ICMP) request even if the host name is valid.
@@ -1914,14 +1914,20 @@ def configureEmissionLinesClicked():
     global linecfg_firsttime
     global linecfgwindows
     global emissionLineElementButtonIDs
-    global iconpath
     if linecfg_firsttime:
         linecfg_firsttime = False
         linecfgwindow = ctk.CTkToplevel()
         #linecfgwindow.bind("<Configure>", window_on_configure)
         #linecfgwindow.geometry("700x380")
         linecfgwindow.title('Configure Emission Lines')
-        linecfgwindow.iconbitmap(iconpath)
+
+        # use correct method of setting window icon bitmap based on platform
+        if(sys.platform.startswith('win')):
+            gui.iconbitmap(default = iconpath)
+        else:
+            gui.iconbitmap(iconpath_linux)
+        #linecfgwindow.iconbitmap(iconpath)
+
         # after delay to fix toplevel icon bug in customtkinter.
         try:
             linecfgwindow.after(220, lambda:linecfgwindow.iconbitmap(iconpath))
@@ -2420,7 +2426,7 @@ if __name__ == '__main__':
 
     # Icons and Resources
     iconpath = resource_path("pss_lb.ico")
-    iconpath_linux = resource_path("pss_lb.xbm")
+    iconpath_linux = f'@{resource_path("pss_lb.xbm")}'
     energiescsvpath = resource_path("energies.csv")
     psslogo = ctk.CTkImage(light_image=Image.open(resource_path("pss-logo2-med.png")), size=(233, 96))
     icon_consecutive = ctk.CTkImage(light_image=Image.open(resource_path("icons/repeat-2-b.png")), dark_image=Image.open(resource_path("icons/repeat-2-w.png")), size=(24, 24))
@@ -2444,7 +2450,8 @@ if __name__ == '__main__':
     if(sys.platform.startswith('win')):
         gui.iconbitmap(default = iconpath)
     else:
-        gui.call('wm', 'iconphoto', gui._w, iconpath_linux)
+        gui.iconbitmap(iconpath_linux)
+        #gui.call('wm', 'iconphoto', gui._w, iconpath_linux)
 
     
     # Fonts
