@@ -8,7 +8,7 @@ a = Analysis(
     ['S1Control.py'],
     pathex=[],
     binaries=[],
-    datas=[('C:/Users/Zeb/AppData/Roaming/Python/Python311/site-packages/customtkinter', 'customtkinter/'),("energies.csv","."),("pss_lb.ico","."),("pss-logo2-med.png","."),("icons","icons")],
+    datas=[('C:\\Users\\Zeb\\AppData\\Roaming\\Python\\Python311\\site-packages\\customtkinter', 'customtkinter/')],
     hiddenimports=['plyer.platforms.win.notification'],
     hookspath=[],
     hooksconfig={},
