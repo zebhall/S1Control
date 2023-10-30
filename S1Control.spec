@@ -1,31 +1,24 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 
-block_cipher = None
-
-
 a = Analysis(
     ['S1Control.py'],
     pathex=[],
     binaries=[],
-    datas=[('C:\\Users\\Zeb\\AppData\\Roaming\\Python\\Python311\\site-packages\\customtkinter', 'customtkinter/')],
+    datas=[('C:\\Users\\Zeb\\AppData\\Roaming\\Python\\Python311\\site-packages\\customtkinter', 'customtkinter/'),("energies.csv","."),("pss_lb.ico","."),("pss-logo2-med.png","."),("icons","icons")],
     hiddenimports=['plyer.platforms.win.notification'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[],
-    win_no_prefer_redirects=False,
-    win_private_assemblies=False,
-    cipher=block_cipher,
     noarchive=False,
 )
-pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+pyz = PYZ(a.pure)
 
 exe = EXE(
     pyz,
     a.scripts,
     a.binaries,
-    a.zipfiles,
     a.datas,
     [],
     name='S1Control',
