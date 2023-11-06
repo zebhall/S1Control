@@ -1116,11 +1116,10 @@ def initialiseLogFile():
     logFileArchivePath = None
 
     # Check for GDrive Paths to save backup of Log file
-    if os.path.exists(R"C:\PXRFS\13. Service\Automatic Instrument Logs"):
-        driveArchiveLoc = R"C:\PXRFS\13. Service\Automatic Instrument Logs"
-    elif os.path.exists(
+    if os.path.exists(
         R"G:\.shortcut-targets-by-id\1w2nUsja1tidZ-QYTuemO6DzCaclAmIlm\PXRFS\13. Service\Automatic Instrument Logs"
     ):
+        # use gdrive path if available
         driveArchiveLoc = R"G:\.shortcut-targets-by-id\1w2nUsja1tidZ-QYTuemO6DzCaclAmIlm\PXRFS\13. Service\Automatic Instrument Logs"
 
     if instr_serialnumber == "UNKNOWN":
@@ -1173,10 +1172,6 @@ def initialiseLogFile():
             "--------------------------------------------------------------------------------------------------------------------------------------------\n"
         )
 
-    time.sleep(0.2)
-    # Get info to add to Log file
-    instrument_GetInfo()
-
     #     # CLosing **** around idf, app, method info
     # with open(logFilePath, "a", encoding= 'utf-16') as logFile:
     #     logFile.write('--------------------------------------------------------------------------------------------------------------------------------------------\n')
@@ -1222,6 +1217,8 @@ def xrfListenLoopThread_Check():
 
 
 def xrfListenLoop():
+    # I know this many globals is disgusting but it just devolved into this
+    # and I haven't had time to fix it yet I'M SORRY FUTURE ZEB
     global instr_currentapplication
     global instr_currentmethod
     global instr_methodsforcurrentapplication
@@ -2295,9 +2292,8 @@ def statusUpdateChecker():
 
         if instr_isloggedin == False:
             instr_DANGER_stringvar.set("Not Logged In!")
-            statuslabel.configure(
-                text_color=WHITEISH, fg_color=("#939BA2", "#454D50")
-            )  # Def background colour: '#3A3A3A'
+            statuslabel.configure(text_color=WHITEISH, fg_color=("#939BA2", "#454D50"))
+            # Def background colour: '#3A3A3A'
             statusframe.configure(fg_color=("#939BA2", "#454D50"))
             xraysonbar.configure(progress_color=("#939BA2", "#454D50"))
             if button_assay.cget("state") == "normal":
@@ -2391,9 +2387,8 @@ def assaySelected(event):
         selected_assay_catalogue_nums = [
             assay_item["values"][0] for assay_item in currently_selected_assays_items
         ]
-    except (
-        IndexError
-    ):  # Treeview is buggy, and doesn't like when an assay is started when another assay is selected. - when this happens, selection['values'] will be '' instead of a dict
+    except IndexError:
+        # Treeview is buggy, and doesn't like when an assay is started when another assay is selected. - when this happens, selection['values'] will be '' instead of a dict
         return
     # print(f'selected_assay_catalogue_num={selected_assay_catalogue_num}')
     # selected_assay_application = selection['values'][2]
@@ -5436,11 +5431,16 @@ if __name__ == "__main__":
     instrument_GetInfo()  # Get info from IDF for log file NAMING purposes
     time.sleep(0.5)
     initialiseLogFile()  # Must be called after instrument and listen loop are connected and started, and getinfo has been called once, and time has been allowed for loop to read all info into vars
+    time.sleep(0.2)
+    # Get info to add to Log file
+    instrument_GetInfo()
+
     statusUpdateCheckerLoop_Start(None)
 
     try:
         gui.title(f"S1Control - {driveFolderStr}")
     except:
+        print("Unable To Set Window Title Using driveFolderStr")
         pass
 
     if instr_isloggedin == False:
