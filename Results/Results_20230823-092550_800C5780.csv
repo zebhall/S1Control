@@ -1,5 +1,0 @@
-Assay #,Serial #,Date,Time,Application,Method,Duration (Actual),No Results,No Results Err,Ti,Ti Err,Cr,Cr Err,Mn,Mn Err,Fe,Fe Err,Co,Co Err,Ni,Ni Err,Cu,Cu Err,Zn,Zn Err,Zr,Zr Err,Mo,Mo Err,Ru,Ru Err,Rh,Rh Err,Pd,Pd Err,Ag,Ag Err,Cd,Cd Err,In,In Err,Sn,Sn Err,Sb,Sb Err,W,W Err,Re,Re Err,Ir,Ir Err,Pt,Pt Err,Au,Au Err,Hg,Hg Err,Pb,Pb Err
-0001,800C5780,2023/08/23,09:26:28,GeoExploration,Oxide3phase,32.46s,0.0,0.0,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
-0002,800C5780,2023/08/23,09:27:14,GeoExploration,Oxide3phase,32.41s,0.0,0.0,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
-0003,800C5780,2023/08/23,09:27:59,GeoExploration,Oxide3phase,32.42s,0.0,0.0,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
-0004,800C5780,2023/08/23,09:28:38,Precious Metals 2,Auto,16.91s,,,42139.0,809.0,0.0,1000000.0,0.0,1000000.0,955783.0,2188.0,0.0,524.0,0.0,1000000.0,0.0,1000000.0,0.0,1000000.0,0.0,1000000.0,0.0,1000000.0,0.0,132.0,0.0,1000000.0,0.0,407.0,0.0,308.0,709.0,353.0,0.0,1000000.0,0.0,1000000.0,0.0,788.0,0.0,101.0,0.0,140.0,0.0,103.0,0.0,92.0,0.0,231.0,0.0,167.0,1369.0,312.0

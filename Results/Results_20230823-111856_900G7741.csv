@@ -1,3 +1,0 @@
-Assay #,Serial #,Date,Time,Application,Method,Duration (Actual),V,V Err,Cr,Cr Err,Mn,Mn Err,Fe,Fe Err,Co,Co Err,Ni,Ni Err,Cu,Cu Err,Zn,Zn Err,Ga,Ga Err,W,W Err,Pb,Pb Err
-0001,900G7741,2023/08/23,11:19:08,GeoExploration,Oxide3phase,8.4s,367.0,95.0,143058.0,908.0,9525.0,316.0,506375.0,1317.0,531.0,123.0,101760.0,808.0,7600.0,148.0,620.0,29.0,32.0,23.0,632.0,88.0,,
-0002,900G7741,2023/08/23,11:19:28,Lead in Paint,Lead in Paint,10.65s,,,,,,,,,,,,,,,,,,,,,125.0,6.0
