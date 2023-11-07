@@ -1455,21 +1455,8 @@ def xrfListenLoop():
             # printAndLog(f'New cooked Spectrum: {spectra}')
 
             if doDisplayCPSandDT_var.get():
-                # testing live counts per second readout
-                instantaneous_iRaw_Cnts = int(spectra[-1]["iRaw_Cnts"])
-                instantaneous_iValid_Cnts = int(spectra[-1]["iValid_Cnts"])
-                instantaneous_iADur = int(spectra[-1]["iADur"])
-                # instantaneous_iTDur = int(spectra[-1]["iTDur"])
-                # instantaneous_iALive = int(spectra[-1]["iALive"])
-                # instantaneous_iAReset = int(spectra[-1]["iAReset"])
-
-                # input counts per second seems to be (iRaw_Cnts / iADur) * 1000
-                # output counts per second seems to be (iValid_Cnts / iADur) * 1000
-                # dead % seems to be ((iRaw_Cnts - iValid_Cnts) / iRaw_Cnts) * 100
-
-                printAndLog(
-                    f"Counts/Sec: {int((instantaneous_iRaw_Cnts / instantaneous_iADur) * 1000)}, Deadtime:{(((instantaneous_iRaw_Cnts - instantaneous_iValid_Cnts) / instantaneous_iRaw_Cnts) * 100):6.2f}%"
-                )
+                # if option box is checked for 'Display Count Rate and Dead Time %', and if so, update relevant display widget
+                updateCurrentCountRateAndDeadTimeDisplay(spectra)
 
         elif datatype == PDZ_FILENAME:  # PDZ FILENAME // Deprecated, no longer works :(
             printAndLog(f"New PDZ: {data}")
@@ -2180,6 +2167,31 @@ def normaliseSpectrum(spectrum_counts, time_in_milliseconds):
     float_area_normalised_spectrum = [float(b) * 100 for b in area_normalised_spectrum]
 
     return float_area_normalised_spectrum
+
+
+def updateCurrentCountRateAndDeadTimeDisplay(spectra, override=None):
+    """given a spectra list dump from phase in progress (usually 1/second is sent), update the relevant display widget with the latest values"""
+    if not override:
+        # testing live counts per second readout
+        instantaneous_iRaw_Cnts = int(spectra[-1]["iRaw_Cnts"])
+        instantaneous_iValid_Cnts = int(spectra[-1]["iValid_Cnts"])
+        instantaneous_iADur = int(spectra[-1]["iADur"])
+        # instantaneous_iTDur = int(spectra[-1]["iTDur"])
+        # instantaneous_iALive = int(spectra[-1]["iALive"])
+        # instantaneous_iAReset = int(spectra[-1]["iAReset"])
+
+        # as per BIT decomp:
+        # input counts per second seems to be (iRaw_Cnts / iADur) * 1000
+        # output counts per second seems to be (iValid_Cnts / iADur) * 1000
+        # dead % seems to be ((iRaw_Cnts - iValid_Cnts) / iRaw_Cnts) * 100
+
+        # print values each time this func is called. only temporary!
+        printAndLog(
+            f"Counts/Sec: {int((instantaneous_iRaw_Cnts / instantaneous_iADur) * 1000)}, Deadtime:{(((instantaneous_iRaw_Cnts - instantaneous_iValid_Cnts) / instantaneous_iRaw_Cnts) * 100):6.2f}%"
+        )
+    else:
+        pass
+        # update current values if tube is off to 0/0
 
 
 def completeAssay(
