@@ -1,6 +1,6 @@
 # S1Control by ZH for PSS
-versionNum = "v0.7.3"
-versionDate = "2023/10/26"
+versionNum = "v0.7.4"
+versionDate = "2023/11/07"
 
 import os
 import sys
@@ -1453,6 +1453,23 @@ def xrfListenLoop():
             assay_phase_spectrumpacketcounter += 1
             # printAndLog(f'New cooked Spectrum Info: {txt}')
             # printAndLog(f'New cooked Spectrum: {spectra}')
+
+            if doDisplayCPSandDT_var.get():
+                # testing live counts per second readout
+                instantaneous_iRaw_Cnts = int(spectra[-1]["iRaw_Cnts"])
+                instantaneous_iValid_Cnts = int(spectra[-1]["iValid_Cnts"])
+                instantaneous_iADur = int(spectra[-1]["iADur"])
+                # instantaneous_iTDur = int(spectra[-1]["iTDur"])
+                # instantaneous_iALive = int(spectra[-1]["iALive"])
+                # instantaneous_iAReset = int(spectra[-1]["iAReset"])
+
+                # input counts per second seems to be (iRaw_Cnts / iADur) * 1000
+                # output counts per second seems to be (iValid_Cnts / iADur) * 1000
+                # dead % seems to be ((iRaw_Cnts - iValid_Cnts) / iRaw_Cnts) * 100
+
+                printAndLog(
+                    f"Counts/Sec: {int((instantaneous_iRaw_Cnts / instantaneous_iADur) * 1000)}, Deadtime:{(((instantaneous_iRaw_Cnts - instantaneous_iValid_Cnts) / instantaneous_iRaw_Cnts) * 100):6.2f}%"
+                )
 
         elif datatype == PDZ_FILENAME:  # PDZ FILENAME // Deprecated, no longer works :(
             printAndLog(f"New PDZ: {data}")
@@ -5134,6 +5151,21 @@ if __name__ == "__main__":
     )
     checkbox_doNormaliseSpectra.deselect()
 
+    # FLAG TO CONTROL DISPLAY OF COUNTS PER SEC AND DEAD TIME %
+    doDisplayCPSandDT_var = ctk.BooleanVar(value=False)
+    checkbox_doDisplayCPSandDT = ctk.CTkCheckBox(
+        ctrltabview.tab("Options"),
+        text="Display Counts/Second and Dead Time %",
+        variable=doDisplayCPSandDT_var,
+        onvalue=True,
+        offvalue=False,
+        font=ctk_jbm12,
+    )
+    checkbox_doDisplayCPSandDT.grid(
+        row=3, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW
+    )
+    checkbox_doDisplayCPSandDT.deselect()
+
     enableautoassayCSV_var = ctk.StringVar(value="off")
     checkbox_enableautoassayCSV = ctk.CTkCheckBox(
         ctrltabview.tab("Options"),
@@ -5144,7 +5176,7 @@ if __name__ == "__main__":
         font=ctk_jbm12,
     )
     checkbox_enableautoassayCSV.grid(
-        row=3, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW
+        row=4, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW
     )
 
     enableresultsCSV_var = ctk.StringVar(value="on")
@@ -5157,7 +5189,7 @@ if __name__ == "__main__":
         font=ctk_jbm12,
     )
     checkbox_enableresultsCSV.grid(
-        row=4, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW
+        row=5, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW
     )
 
     enableendofassaynotifications_var = ctk.StringVar(value="on")
@@ -5170,7 +5202,7 @@ if __name__ == "__main__":
         font=ctk_jbm12,
     )
     checkbox_enableendofassaynotifications.grid(
-        row=5, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW
+        row=6, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW
     )
 
     checkbox_enabledarkmode = ctk.CTkCheckBox(
@@ -5183,7 +5215,7 @@ if __name__ == "__main__":
         font=ctk_jbm12,
     )
     checkbox_enabledarkmode.grid(
-        row=6, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW
+        row=7, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW
     )
 
     # Current Instrument Info stuff
