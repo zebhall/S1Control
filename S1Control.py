@@ -1,6 +1,6 @@
 # S1Control by ZH for PSS
-versionNum = "v0.7.4"
-versionDate = "2023/11/07"
+versionNum = "v0.8.0"
+versionDate = "2023/11/09"
 
 import os
 import sys
@@ -48,7 +48,9 @@ class Assay:
 
 def instrument_Connect():
     global xrf
-    # os.system('ping -n 1 -w 40 '+XRF_IP_USB)
+    # try:
+    #     ping_result = os.system("ping -n 1 -w 40 " + XRF_IP_USB)
+    #     print('normal ping failed')
     ping_result = universalPing(XRF_IP_USB, 1)
     # print(f'ping = {ping}')
     # xrf.connect((XRF_IP_USB, XRF_PORT_USB))
@@ -1280,6 +1282,7 @@ def xrfListenLoop():
         try:
             data, datatype = recvData(xrf)
         except:
+            printAndLog("XRF LISTEN LOOP HAS DIED", logbox_colour_tag="ERROR")
             onInstrDisconnect()
 
         if thread_halt:
@@ -1452,11 +1455,11 @@ def xrfListenLoop():
             txt, spectra = setSpectrum(data)
             assay_phase_spectrumpacketcounter += 1
             # printAndLog(f'New cooked Spectrum Info: {txt}')
-            # printAndLog(f'New cooked Spectrum: {spectra}')
+            # printAndLog(f"New cooked Spectrum")
 
-            if doDisplayCPSandDT_var.get():
+            if doDisplayVitals_var.get():
                 # if option box is checked for 'Display Count Rate and Dead Time %', and if so, update relevant display widget
-                updateCurrentCountRateAndDeadTimeDisplay(spectra)
+                updateCurrentVitalsDisplay(spectra)
 
         elif datatype == PDZ_FILENAME:  # PDZ FILENAME // Deprecated, no longer works :(
             printAndLog(f"New PDZ: {data}")
@@ -2169,7 +2172,7 @@ def normaliseSpectrum(spectrum_counts, time_in_milliseconds):
     return float_area_normalised_spectrum
 
 
-def updateCurrentCountRateAndDeadTimeDisplay(spectra, override=None):
+def updateCurrentVitalsDisplay(spectra=None, override=None):
     """given a spectra list dump from phase in progress (usually 1/second is sent), update the relevant display widget with the latest values"""
     if not override:
         # testing live counts per second readout
@@ -2179,6 +2182,8 @@ def updateCurrentCountRateAndDeadTimeDisplay(spectra, override=None):
         # instantaneous_iTDur = int(spectra[-1]["iTDur"])
         # instantaneous_iALive = int(spectra[-1]["iALive"])
         # instantaneous_iAReset = int(spectra[-1]["iAReset"])
+        instantaneous_sngHVADC = round(float(spectra[-1]["sngHVADC"]))
+        instantaneous_sngCurADC = round(float(spectra[-1]["sngCurADC"]), 2)
 
         # as per BIT decomp:
         # input counts per second seems to be (iRaw_Cnts / iADur) * 1000
@@ -2186,11 +2191,22 @@ def updateCurrentCountRateAndDeadTimeDisplay(spectra, override=None):
         # dead % seems to be ((iRaw_Cnts - iValid_Cnts) / iRaw_Cnts) * 100
 
         # print values each time this func is called. only temporary!
-        printAndLog(
-            f"Counts/Sec: {int((instantaneous_iRaw_Cnts / instantaneous_iADur) * 1000)}, Deadtime:{(((instantaneous_iRaw_Cnts - instantaneous_iValid_Cnts) / instantaneous_iRaw_Cnts) * 100):6.2f}%"
+        # printAndLog(f"Counts/Sec: {int((instantaneous_iRaw_Cnts / instantaneous_iADur) * 1000)}, Deadtime:{(((instantaneous_iRaw_Cnts - instantaneous_iValid_Cnts) / instantaneous_iRaw_Cnts) * 100):6.2f}%")
+        # printAndLog(f'{txt["sngHVADC"]}kV, {round(float(txt["sngCurADC"]),2)}\u03bcA')
+
+        instr_countrate_stringvar.set(
+            f"{int((instantaneous_iRaw_Cnts / instantaneous_iADur) * 1000)}cps"
+        )
+        instr_deadtime_stringvar.set(
+            f"{(((instantaneous_iRaw_Cnts - instantaneous_iValid_Cnts) / instantaneous_iRaw_Cnts) * 100):6.2f}%dead"
+        )
+        instr_tubevoltagecurrent_stringvar.set(
+            f"{instantaneous_sngHVADC}kV / {instantaneous_sngCurADC}\u03bcA"
         )
     else:
-        pass
+        instr_countrate_stringvar.set("0cps")
+        instr_deadtime_stringvar.set("0%dead")
+        instr_tubevoltagecurrent_stringvar.set(f"0kV / 0\u03bcA")
         # update current values if tube is off to 0/0
 
 
@@ -2310,7 +2326,7 @@ def statusUpdateChecker():
     global instr_isarmed
     global instr_isloggedin
     global instr_DANGER_stringvar
-    global statuslabel
+    global status_label
     global xraysonbar
     global assayprogressbar
     global button_assay
@@ -2321,24 +2337,28 @@ def statusUpdateChecker():
 
         if instr_isloggedin == False:
             instr_DANGER_stringvar.set("Not Logged In!")
-            statuslabel.configure(text_color=WHITEISH, fg_color=("#939BA2", "#454D50"))
+            status_label.configure(text_color=WHITEISH, fg_color=("#939BA2", "#454D50"))
             # Def background colour: '#3A3A3A'
             statusframe.configure(fg_color=("#939BA2", "#454D50"))
             xraysonbar.configure(progress_color=("#939BA2", "#454D50"))
             if button_assay.cget("state") == "normal":
                 button_assay.configure(state="disabled")
 
+            updateCurrentVitalsDisplay(override=True)
+
         elif instr_isarmed == False:
             instr_DANGER_stringvar.set("Not Armed!")
-            statuslabel.configure(text_color=WHITEISH, fg_color=("#939BA2", "#454D50"))
+            status_label.configure(text_color=WHITEISH, fg_color=("#939BA2", "#454D50"))
             statusframe.configure(fg_color=("#939BA2", "#454D50"))
             xraysonbar.configure(progress_color=("#939BA2", "#454D50"))
             if button_assay.cget("state") == "normal":
                 button_assay.configure(state="disabled")
 
+            updateCurrentVitalsDisplay(override=True)
+
         elif instr_assayisrunning == True:
             instr_DANGER_stringvar.set("WARNING: X-RAYS")
-            statuslabel.configure(text_color=WHITEISH, fg_color="#D42525")
+            status_label.configure(text_color=WHITEISH, fg_color="#D42525")
             # X-RAY WARNING YELLOW = '#FFCC00', NICE RED = '#D42525'
             statusframe.configure(fg_color="#D42525")
             xraysonbar.configure(progress_color="#D42525")
@@ -2370,13 +2390,14 @@ def statusUpdateChecker():
 
         else:
             instr_DANGER_stringvar.set("Ready")
-            statuslabel.configure(text_color=WHITEISH, fg_color=("#3A3A3A", "#454D50"))
+            status_label.configure(text_color=WHITEISH, fg_color=("#3A3A3A", "#454D50"))
             statusframe.configure(
                 fg_color=("#3A3A3A", "#454D50")
             )  # default ctk blue '#3B8ED0' - complim green '#33AF56'
             xraysonbar.configure(progress_color=("#939BA2", "#454D50"))
             if button_assay.cget("state") == "disabled":
                 button_assay.configure(state="normal")
+            updateCurrentVitalsDisplay(override=True)
 
         # print(f'assay is running: {instr_assayisrunning}')
         # print(f'instr is armed: {instr_isarmed}')
@@ -3900,6 +3921,15 @@ def toggleResultsFrameVisible(_):
         )
 
 
+def toggleVitalsDisplayVisibility():
+    if doDisplayVitals_var.get():
+        vitalsframe.pack(
+            side=tk.BOTTOM, anchor=tk.S, fill="x", expand=False, padx=8, pady=[4, 4]
+        )
+    else:
+        vitalsframe.pack_forget()
+
+
 def queryEditFields_clicked():
     if messagebox.askyesno(
         "Retrieve Info-Fields from Instrument?",
@@ -4869,11 +4899,43 @@ if __name__ == "__main__":
     statusframe.pack(
         side=tk.BOTTOM, anchor=tk.S, fill="x", expand=False, padx=8, pady=[4, 8]
     )
+    # Status text display warningxrays/ready/not armed etc
     instr_DANGER_stringvar = tk.StringVar()
-    statuslabel = ctk.CTkLabel(
+    status_label = ctk.CTkLabel(
         statusframe, textvariable=instr_DANGER_stringvar, font=ctk_jbm18B
     )
-    statuslabel.pack(side=tk.TOP, fill="both", anchor=tk.N, expand=True, padx=2, pady=2)
+    status_label.pack(
+        side=tk.TOP, fill="both", anchor=tk.N, expand=True, padx=2, pady=2
+    )
+
+    # vitals - Count rate and dead time widget stuff
+
+    vitalsframe = ctk.CTkFrame(LHSframe, width=50, height=30, corner_radius=5)
+    vitalsframe.pack(
+        side=tk.BOTTOM, anchor=tk.S, fill="x", expand=False, padx=8, pady=[4, 4]
+    )
+
+    instr_countrate_stringvar = tk.StringVar(value="0cps")
+    instr_deadtime_stringvar = tk.StringVar(value="0%dead")
+    instr_tubevoltagecurrent_stringvar = tk.StringVar(value="0kV / 0\u03bcA")
+    countrate_label = ctk.CTkLabel(
+        vitalsframe, textvariable=instr_countrate_stringvar, font=ctk_jbm12B
+    )
+    countrate_label.pack(
+        side=tk.RIGHT, fill="both", anchor=tk.N, expand=True, padx=2, pady=2
+    )
+    deadtime_label = ctk.CTkLabel(
+        vitalsframe, textvariable=instr_deadtime_stringvar, font=ctk_jbm12B
+    )
+    deadtime_label.pack(
+        side=tk.RIGHT, fill="both", anchor=tk.N, expand=True, padx=2, pady=2
+    )
+    voltagecurrent_label = ctk.CTkLabel(
+        vitalsframe, textvariable=instr_tubevoltagecurrent_stringvar, font=ctk_jbm12B
+    )
+    voltagecurrent_label.pack(
+        side=tk.LEFT, fill="both", anchor=tk.N, expand=True, padx=2, pady=2
+    )
 
     # loading bar stuff
     xraysonbar = ctk.CTkProgressBar(LHSframe, width=50, mode="indeterminate")
@@ -5164,19 +5226,20 @@ if __name__ == "__main__":
     checkbox_doNormaliseSpectra.deselect()
 
     # FLAG TO CONTROL DISPLAY OF COUNTS PER SEC AND DEAD TIME %
-    doDisplayCPSandDT_var = ctk.BooleanVar(value=False)
-    checkbox_doDisplayCPSandDT = ctk.CTkCheckBox(
+    doDisplayVitals_var = ctk.BooleanVar(value=True)
+    checkbox_doDisplayVitals = ctk.CTkCheckBox(
         ctrltabview.tab("Options"),
         text="Display Counts/Second and Dead Time %",
-        variable=doDisplayCPSandDT_var,
+        variable=doDisplayVitals_var,
         onvalue=True,
         offvalue=False,
+        command=toggleVitalsDisplayVisibility,
         font=ctk_jbm12,
     )
-    checkbox_doDisplayCPSandDT.grid(
+    checkbox_doDisplayVitals.grid(
         row=3, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW
     )
-    checkbox_doDisplayCPSandDT.deselect()
+    # checkbox_doDisplayVitals.deselect()
 
     enableautoassayCSV_var = ctk.StringVar(value="off")
     checkbox_enableautoassayCSV = ctk.CTkCheckBox(
