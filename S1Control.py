@@ -2867,7 +2867,7 @@ def ui_UpdateCurrentAppAndPhases():  # update application selected and phase tim
             text="Apply",
             command=savePhaseTimes,
             font=ctk_jbm12B,
-        )  # font=ctk.CTkFont('arial', 20))
+        )  
         applyphasetimes.grid(
             row=1,
             column=3,
@@ -4066,8 +4066,6 @@ if __name__ == "__main__":
     jbm07 = font.Font(family="JetBrains Mono", size=7)
     roboto09 = font.Font(family="Roboto", size=9)
     plotfont = {"fontname": "JetBrains Mono"}
-    ctk_segoe14B = ctk.CTkFont(family="Segoe UI", size=14, weight="bold")
-    ctk_segoe12B = ctk.CTkFont(family="Segoe UI", size=12, weight="bold")
     ctk_jbm08 = ctk.CTkFont(family="JetBrains Mono", size=8)
     ctk_jbm10 = ctk.CTkFont(family="JetBrains Mono", size=10)
     ctk_jbm11 = ctk.CTkFont(family="JetBrains Mono", size=11)
