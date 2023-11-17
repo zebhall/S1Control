@@ -1,6 +1,6 @@
 # S1Control by ZH for PSS
-versionNum = "v0.8.0"
-versionDate = "2023/11/09"
+versionNum = "v0.8.1"
+versionDate = "2023/11/17"
 
 import os
 import sys
@@ -109,16 +109,43 @@ def universalPing(host, num_tries):
     return subprocess.call(command) == 0
 
 
-def instrument_StartAssay():
+def instrument_StartAssay(
+    customassay: bool = False,
+    customassay_filter: str = None,
+    customassay_voltage: int = None,
+    customassay_current: float = None,
+    customassay_duration: int = None,
+):
     global spectra
     global assay_catalogue_num
+    global assay_time_total_set_seconds
     printAndLog(f"Starting Assay # {str(assay_catalogue_num).zfill(4)}", "INFO")
     unselectAllAssays()
     clearCurrentSpectra()
     clearResultsfromTable()
 
     spectra = []
-    sendCommand(xrf, bruker_command_assaystart)
+
+    if not customassay:
+        # if just starting a normal (non-spectrum-only) assay
+        sendCommand(xrf, bruker_command_assaystart)
+
+    else:
+        printAndLog(
+            f"Spectrum-Only Assay Started: ({customassay_voltage:.1f}kV {customassay_current:.1f}uA, {customassay_filter} Filter.)"
+        )
+        # spectrum only assay start, with params. assuming:
+        customassay_backscatterlimit: int = 0
+        # backscatter: 0 = disabled, -1 = intelligent algorithm, >1 = raw counts per second limit
+        customassay_rejectpackets: int = 1
+
+        # set phase time for estimate
+        assay_time_total_set_seconds = customassay_duration
+
+        # fix formatting of values
+        customassay_command = f'<Command parameter="Assay"><StartParameters><Filter>{customassay_filter}</Filter><HighVoltage>{customassay_voltage:.1f}</HighVoltage><AnodeCurrent>{customassay_current:.1f}</AnodeCurrent><AssayDuration>{customassay_duration}</AssayDuration><BackScatterLimit>{customassay_backscatterlimit}</BackScatterLimit><RejectPackets>{customassay_rejectpackets}</RejectPackets></StartParameters></Command>'
+
+        sendCommand(xrf, customassay_command)
 
 
 def instrument_StopAssay():
@@ -1260,6 +1287,7 @@ def xrfListenLoop():
     global instr_assayrepeatschosenforcurrentrun
     global instr_approxsingleassaytime
     global instr_applicationspresent
+    global instr_filterspresent
     global instr_currentassayspectra
     global instr_currentassayspecenergies
     global instr_currentassaylegends
@@ -1486,6 +1514,8 @@ def xrfListenLoop():
             ):
                 # All IDF data:
                 idf = data["Response"]["InstrumentDefinition"]
+                # from pprint import pprint
+                # pprint(idf)
 
                 # Broken Down:
                 instr_model = idf.get("Model", "N/A")
@@ -1584,6 +1614,13 @@ def xrfListenLoop():
                 instr_sourcehaschangeablecollimator = idf.get(
                     "HasChangeableCollimator", "N/A"
                 )
+
+                instr_filterspresent = []
+                for filterdesc_dict in idf["Filter"]["FilterPosition"]:
+                    try:
+                        instr_filterspresent.append(filterdesc_dict["#text"])
+                    except:
+                        instr_filterspresent.append("")
 
                 try:
                     instr_firmwareSUPversion = idf["SUP"]["FirmwareVersion"]
@@ -1882,6 +1919,7 @@ def xrfListenLoop():
                 printAndLog(f"{data['Response']['#text']}")
                 instrument_QueryCurrentApplicationPhaseTimes()
 
+            # s1 version response
             elif ("@parameter" in data["Response"]) and (
                 data["Response"]["@parameter"] == "version"
             ):
@@ -2708,7 +2746,16 @@ def startAssayClicked():
             printAndLog(
                 f"Starting Assays - {instr_assayrepeatsselected} consecutive selected."
             )
-        instrument_StartAssay()
+        if applicationselected_stringvar.get() == "Spectrum Only":
+            instrument_StartAssay(
+                customassay=True,
+                customassay_filter=spectrumonly_filter_dropdown.get(),
+                customassay_voltage=int(spectrumonly_voltage_entry.get()),
+                customassay_current=float(spectrumonly_current_entry.get()),
+                customassay_duration=int(spectrumonly_duration_entry.get()),
+            )
+        else:
+            instrument_StartAssay()
 
         approx_secs_total = instr_assayrepeatsleft * instr_approxsingleassaytime
         approx_mins = approx_secs_total // 60
@@ -2757,6 +2804,7 @@ def ui_UpdateCurrentAppAndPhases():  # update application selected and phase tim
     global p2_s
     global p3_s
     global applyphasetimes
+    global spectrumonly_filter_dropdown
 
     phasecount = len(instr_currentphases)
 
@@ -2768,7 +2816,7 @@ def ui_UpdateCurrentAppAndPhases():  # update application selected and phase tim
         dropdown_application = ctk.CTkOptionMenu(
             appmethodframe,
             variable=applicationselected_stringvar,
-            values=instr_applicationspresent,
+            values=instr_applicationspresent + ["Spectrum Only"],
             command=applicationChoiceMade,
             dynamic_resizing=False,
             font=ctk_jbm12B,
@@ -2867,7 +2915,7 @@ def ui_UpdateCurrentAppAndPhases():  # update application selected and phase tim
             text="Apply",
             command=savePhaseTimes,
             font=ctk_jbm12B,
-        )  
+        )
         applyphasetimes.grid(
             row=1,
             column=3,
@@ -2933,6 +2981,7 @@ def ui_UpdateCurrentAppAndPhases():  # update application selected and phase tim
 
     applyphasetimes.grid_configure(rowspan=phasecount)
 
+    spectrumonly_filter_dropdown.configure(values=instr_filterspresent)
     # gui.update()
 
 
@@ -3000,8 +3049,21 @@ def repeatsChoiceMade(val):
 
 
 def applicationChoiceMade(val):
-    cmd = f'<Configure parameter="Application">{val}</Configure>'
-    sendCommand(xrf, cmd)
+    global phaseframe
+    if val == "Spectrum Only":
+        # destroy/unpack phase timing frame
+        # button_editinfofields.grid_remove()
+        phaseframe.grid_remove()
+        # pack spectrumonlyconfig frame
+        spectrumonlyconfigframe.grid()
+        # button_editinfofields.grid()
+    else:
+        # pack phase timing frame
+        phaseframe.grid()
+        # destroy/unpack spectrumonlyconfig frame
+        spectrumonlyconfigframe.grid_remove()
+        cmd = f'<Configure parameter="Application">{val}</Configure>'
+        sendCommand(xrf, cmd)
 
 
 def methodChoiceMade(val):
@@ -3937,6 +3999,10 @@ def queryEditFields_clicked():
     ):
         instrument_QueryEditFields()
     editinfo_windows[0].lift()
+
+
+def queryXraySettings_clicked():
+    sendCommand(xrf, '<Query parameter="XRay Settings"/>')
 
 
 if __name__ == "__main__":
@@ -4948,7 +5014,7 @@ if __name__ == "__main__":
     assayprogressbar.set(0)
 
     # Tabview for controls LHS
-    ctrltabview = ctk.CTkTabview(LHSframe, height=320)
+    ctrltabview = ctk.CTkTabview(LHSframe, height=358)
     ctrltabview.pack(
         side=tk.TOP, anchor=tk.N, fill="x", expand=False, padx=8, pady=[0, 4]
     )
@@ -4975,6 +5041,109 @@ if __name__ == "__main__":
     phaseframe.grid(
         row=4, column=0, columnspan=3, rowspan=2, padx=4, pady=4, sticky=tk.NSEW
     )
+
+    spectrumonlyconfigframe = ctk.CTkFrame(
+        ctrltabview.tab("Assay Controls"), fg_color=("#c5c5c5", "#444444")
+    )
+    spectrumonlyconfigframe.grid(
+        row=6, column=0, columnspan=3, rowspan=2, padx=4, pady=4, sticky=tk.NSEW
+    )
+    spectrumonlyconfigframe.columnconfigure(1, weight=1)
+
+    # spectrum only config frame stuff
+
+    spectrumonly_voltage_label = ctk.CTkLabel(
+        spectrumonlyconfigframe,
+        text="Voltage",
+        anchor="w",
+        font=ctk_jbm12,
+    )
+
+    spectrumonly_voltage_entry = ctk.CTkEntry(
+        spectrumonlyconfigframe,
+        width=40,
+        justify="right",
+        border_width=1,
+        font=ctk_jbm12,
+    )
+
+    spectrumonly_voltage_units = ctk.CTkLabel(
+        spectrumonlyconfigframe, width=2, text="kV", anchor="w", font=ctk_jbm12
+    )
+    spectrumonly_voltage_entry.insert(0, "50")
+
+    spectrumonly_voltage_label.grid(row=1, column=0, padx=[8, 0], pady=4, sticky=tk.EW)
+    spectrumonly_voltage_entry.grid(row=1, column=1, padx=[4, 4], pady=4, sticky=tk.EW)
+    spectrumonly_voltage_units.grid(row=1, column=2, padx=[0, 8], pady=4, sticky=tk.EW)
+
+    spectrumonly_current_label = ctk.CTkLabel(
+        spectrumonlyconfigframe,
+        text="Current",
+        anchor="w",
+        font=ctk_jbm12,
+    )
+
+    spectrumonly_current_entry = ctk.CTkEntry(
+        spectrumonlyconfigframe,
+        width=40,
+        justify="right",
+        border_width=1,
+        font=ctk_jbm12,
+    )
+
+    spectrumonly_current_units = ctk.CTkLabel(
+        spectrumonlyconfigframe, width=2, text="uA", anchor="w", font=ctk_jbm12
+    )
+    spectrumonly_current_entry.insert(0, "15")
+
+    spectrumonly_current_label.grid(row=2, column=0, padx=[8, 0], pady=4, sticky=tk.EW)
+    spectrumonly_current_entry.grid(row=2, column=1, padx=[4, 4], pady=4, sticky=tk.EW)
+    spectrumonly_current_units.grid(row=2, column=2, padx=[0, 8], pady=4, sticky=tk.EW)
+
+    spectrumonly_duration_label = ctk.CTkLabel(
+        spectrumonlyconfigframe,
+        text="Duration",
+        anchor="w",
+        font=ctk_jbm12,
+    )
+
+    spectrumonly_duration_entry = ctk.CTkEntry(
+        spectrumonlyconfigframe,
+        width=40,
+        justify="right",
+        border_width=1,
+        font=ctk_jbm12,
+    )
+
+    spectrumonly_duration_units = ctk.CTkLabel(
+        spectrumonlyconfigframe, width=2, text="s", anchor="w", font=ctk_jbm12
+    )
+    spectrumonly_duration_entry.insert(0, "30")
+
+    spectrumonly_duration_label.grid(row=3, column=0, padx=[8, 0], pady=4, sticky=tk.EW)
+    spectrumonly_duration_entry.grid(row=3, column=1, padx=[4, 4], pady=4, sticky=tk.EW)
+    spectrumonly_duration_units.grid(row=3, column=2, padx=[0, 8], pady=4, sticky=tk.EW)
+
+    spectrumonly_filter_label = ctk.CTkLabel(
+        spectrumonlyconfigframe,
+        text="Filter",
+        anchor="w",
+        font=ctk_jbm12,
+    )
+    spectrumonly_filter_dropdown = ctk.CTkOptionMenu(
+        spectrumonlyconfigframe,
+        width=210,
+        values=[""],
+        dynamic_resizing=True,
+        font=ctk_jbm12B,
+        dropdown_font=ctk_jbm12,
+    )
+    spectrumonly_filter_label.grid(row=4, column=0, padx=[8, 0], pady=4, sticky=tk.EW)
+    spectrumonly_filter_dropdown.grid(
+        row=4, column=1, columnspan=2, padx=[4, 4], pady=4, sticky=tk.EW
+    )
+
+    spectrumonlyconfigframe.grid_remove()
 
     # About Section
     about_blurb1 = ctk.CTkLabel(
@@ -5070,7 +5239,7 @@ if __name__ == "__main__":
         font=ctk_jbm12B,
     )
     button_editinfofields.grid(
-        row=6, column=0, columnspan=3, padx=4, pady=4, sticky=tk.NSEW
+        row=8, column=0, columnspan=3, padx=4, pady=4, sticky=tk.NSEW
     )
 
     # button_startlistener = tk.Button(width = 15, text = "start listen", font = jbm10, fg = buttonfg3, bg = buttonbg3, command = lambda:xrfListenLoop_Start(None)).pack(ipadx=8,ipady=2)
@@ -5174,6 +5343,18 @@ if __name__ == "__main__":
     checkbox_storespectraoninstrument.grid(
         row=7, column=0, padx=4, pady=4, sticky=tk.NSEW
     )
+
+    button_queryxraysettings = ctk.CTkButton(
+        ctrltabview.tab("Instrument"),
+        width=13,
+        image=icon_systemtime,
+        text="Query Xray Settings",
+        command=queryXraySettings_clicked,
+        font=ctk_jbm12B,
+    )
+    # button_queryxraysettings.grid(
+    #     row=8, column=0, columnspan=1, padx=4, pady=4, sticky=tk.NSEW
+    # )
 
     # button_proximityenable = ctk.CTkButton(ctrltabview.tab("Instrument"), width = 13, image=icon_sensoron, text = "Enable Proximity", command = instrument_ConfigureProximityEnable)
     # button_proximityenable.grid(row=4, column=0, padx=4, pady=4, sticky=tk.NSEW)
@@ -5297,6 +5478,7 @@ if __name__ == "__main__":
     methodselected_stringvar = ctk.StringVar(value="Method")
     instr_applicationspresent = []
     instr_methodsforcurrentapplication = []
+    instr_filterspresent = []
 
     # Log Box
 
