@@ -2,7 +2,8 @@
 # S1Control
 S1Control is remote-control software for Bruker pXRF Instruments - works with the S1 TITAN, TRACER 5i/5g, CTX, and XMS.
 Built as a service tool primarily, and as a programming excercise, so U.A.Y.O.R.
-Prepackaged portable executable version can be found in /dist/
+Prepackaged portable windows executable can be found in /dist/
+Tested and working on Windows (7,10,11), and Linux (Ubuntu 23.10, Fedora Workstation 38)
 Install all of the .ttf font files found in the root directory to ensure UI text consistency.
 
 ## Screenshots - v0.8.1
