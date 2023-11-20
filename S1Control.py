@@ -3050,6 +3050,8 @@ def repeatsChoiceMade(val):
 
 def applicationChoiceMade(val):
     global phaseframe
+    global instr_currentapplication
+    global instr_currentmethod
     if val == "Spectrum Only":
         # destroy/unpack phase timing frame
         # button_editinfofields.grid_remove()
@@ -3057,6 +3059,10 @@ def applicationChoiceMade(val):
         # pack spectrumonlyconfig frame
         spectrumonlyconfigframe.grid()
         # button_editinfofields.grid()
+        # set current application to Spectrum Only (because it's usually done via isntrument message) and fix method display
+        instr_currentapplication = "Spectrum Only"
+        instr_currentmethod = "None"
+        methodselected_stringvar.set("None")
     else:
         # pack phase timing frame
         phaseframe.grid()
@@ -5491,7 +5497,7 @@ if __name__ == "__main__":
         corner_radius=5,
         height=250,
         width=320,
-        font=ctk_jbm11,
+        font=ctk_jbm10,
         text_color=WHITEISH,
         fg_color=CHARCOAL,
         wrap=tk.NONE,
