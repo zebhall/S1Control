@@ -2,3 +2,5 @@ pyinstaller --onefile --windowed --clean --icon=pss_lb.ico --add-data 'C:\Users\
 
 pyinstaller S1Control.spec
 
+linux
+pyinstaller --onefile --windowed --clean --add-data='/home/zeb/.local/lib/python3.12/site-packages/customtkinter:customtkinter/' 'S1Control.py' --hidden-import=plyer.platforms.linux.notification

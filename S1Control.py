@@ -1,6 +1,6 @@
 # S1Control by ZH for PSS
-versionNum = "v0.8.1"
-versionDate = "2023/11/17"
+versionNum = "v0.8.2"
+versionDate = "2023/11/23"
 
 import os
 import sys
@@ -3239,22 +3239,14 @@ def configureEmissionLinesClicked():
         # linecfgwindow.geometry("700x380")
         linecfgwindow.title("Configure Emission Lines")
 
-        # use correct method of setting window icon bitmap based on platform
-        if sys.platform.startswith("win"):
-            gui.iconbitmap(default=iconpath)
-        else:
-            gui.iconbitmap(iconpath_linux)
-        # linecfgwindow.iconbitmap(iconpath)
-
         # after delay to fix toplevel icon bug in customtkinter.
-        try:
-            linecfgwindow.after(220, lambda: linecfgwindow.iconbitmap(iconpath))
-            linecfgwindow.after(200, lambda: linecfgwindow.lift())
-        except:
-            printAndLog(
-                "Unable to Correctly Set Line Config Window icon.",
-                logbox_colour_tag="WARNING",
+        if sys.platform.startswith("win"):
+            linecfgwindow.after(220, lambda: linecfgwindow.iconbitmap(default=iconpath))
+        else:
+            linecfgwindow.after(
+                220, lambda: linecfgwindow.iconphoto(False, iconphoto_linux)
             )
+        linecfgwindow.after(100, lambda: linecfgwindow.lift())
         linecfgwindows.append(linecfgwindow)
 
         periodictableframe = ctk.CTkFrame(
@@ -3633,9 +3625,15 @@ def editInfoFieldsClicked():
         # editinfowindow.bind("<Configure>", window_on_configure)
         # linecfgwindow.geometry("700x380")
         editinfowindow.title("Edit Info Fields")
-        editinfowindow.iconbitmap(iconpath)
-        editinfowindow.after(220, lambda: editinfowindow.iconbitmap(iconpath))
-        editinfowindow.after(200, lambda: editinfowindow.lift())
+        if sys.platform.startswith("win"):
+            editinfowindow.after(
+                220, lambda: editinfowindow.iconbitmap(default=iconpath)
+            )
+        else:
+            editinfowindow.after(
+                220, lambda: editinfowindow.iconphoto(False, iconphoto_linux)
+            )
+        editinfowindow.after(100, lambda: editinfowindow.lift())
         editinfo_windows.append(editinfowindow)
 
         infobuttonframe = ctk.CTkFrame(
@@ -3650,6 +3648,7 @@ def editInfoFieldsClicked():
             width=13,
             image=icon_getinfofields,
             text="Copy Info-Fields From Instrument",
+            font=ctk_jbm12B,
             command=queryEditFields_clicked,
         )
         button_getinfofields.pack(
@@ -3661,6 +3660,7 @@ def editInfoFieldsClicked():
             width=13,
             image=icon_resetinfofields,
             text="Reset All to Default",
+            font=ctk_jbm12B,
             fg_color="#D85820",
             hover_color="#973d16",
             command=resetEditFields_clicked,
@@ -3674,6 +3674,7 @@ def editInfoFieldsClicked():
             width=13,
             image=icon_applysmall,
             text="Apply Changes",
+            font=ctk_jbm12B,
             command=instrument_ApplyInfoFields,
         )
         button_applyinfofields.pack(
@@ -3686,7 +3687,7 @@ def editInfoFieldsClicked():
         editinfoframe.pack(
             side=tk.TOP, fill="both", expand=True, padx=4, pady=4, ipadx=4, ipady=4
         )
-        # editinfoframe.grid_columnconfigure(3, minsize=270, weight=1)
+        editinfoframe.grid_columnconfigure(3, weight=1)
 
         # Col/Row legends
         field_name_column_label = ctk.CTkLabel(
@@ -3734,13 +3735,21 @@ def editInfoFieldsClicked():
 
         # FIELD 1
         field1_name_entry = ctk.CTkEntry(
-            editinfoframe, width=170, justify="left", textvariable=field1_name_strvar
+            editinfoframe,
+            width=170,
+            justify="left",
+            font=ctk_jbm12,
+            textvariable=field1_name_strvar,
         )
         field1_name_entry.grid(
             row=3, column=2, padx=2, pady=2, ipadx=0, ipady=0, sticky=tk.NSEW
         )
         field1_value_entry = ctk.CTkEntry(
-            editinfoframe, width=260, justify="left", textvariable=field1_val_strvar
+            editinfoframe,
+            width=260,
+            justify="left",
+            font=ctk_jbm12,
+            textvariable=field1_val_strvar,
         )
         field1_value_entry.grid(
             row=3, column=3, padx=2, pady=2, ipadx=0, ipady=0, sticky=tk.NSEW
@@ -3761,13 +3770,21 @@ def editInfoFieldsClicked():
 
         # FIELD 2
         field2_name_entry = ctk.CTkEntry(
-            editinfoframe, width=170, justify="left", textvariable=field2_name_strvar
+            editinfoframe,
+            width=170,
+            justify="left",
+            font=ctk_jbm12,
+            textvariable=field2_name_strvar,
         )
         field2_name_entry.grid(
             row=4, column=2, padx=2, pady=2, ipadx=0, ipady=0, sticky=tk.NSEW
         )
         field2_value_entry = ctk.CTkEntry(
-            editinfoframe, width=260, justify="left", textvariable=field2_val_strvar
+            editinfoframe,
+            width=260,
+            justify="left",
+            font=ctk_jbm12,
+            textvariable=field2_val_strvar,
         )
         field2_value_entry.grid(
             row=4, column=3, padx=2, pady=2, ipadx=0, ipady=0, sticky=tk.NSEW
@@ -3788,13 +3805,21 @@ def editInfoFieldsClicked():
 
         # FIELD 3
         field3_name_entry = ctk.CTkEntry(
-            editinfoframe, width=170, justify="left", textvariable=field3_name_strvar
+            editinfoframe,
+            width=170,
+            justify="left",
+            font=ctk_jbm12,
+            textvariable=field3_name_strvar,
         )
         field3_name_entry.grid(
             row=5, column=2, padx=2, pady=2, ipadx=0, ipady=0, sticky=tk.NSEW
         )
         field3_value_entry = ctk.CTkEntry(
-            editinfoframe, width=260, justify="left", textvariable=field3_val_strvar
+            editinfoframe,
+            width=260,
+            justify="left",
+            font=ctk_jbm12,
+            textvariable=field3_val_strvar,
         )
         field3_value_entry.grid(
             row=5, column=3, padx=2, pady=2, ipadx=0, ipady=0, sticky=tk.NSEW
@@ -3815,13 +3840,21 @@ def editInfoFieldsClicked():
 
         # FIELD 4
         field4_name_entry = ctk.CTkEntry(
-            editinfoframe, width=170, justify="left", textvariable=field4_name_strvar
+            editinfoframe,
+            width=170,
+            justify="left",
+            font=ctk_jbm12,
+            textvariable=field4_name_strvar,
         )
         field4_name_entry.grid(
             row=6, column=2, padx=2, pady=2, ipadx=0, ipady=0, sticky=tk.NSEW
         )
         field4_value_entry = ctk.CTkEntry(
-            editinfoframe, width=260, justify="left", textvariable=field4_val_strvar
+            editinfoframe,
+            width=260,
+            justify="left",
+            font=ctk_jbm12,
+            textvariable=field4_val_strvar,
         )
         field4_value_entry.grid(
             row=6, column=3, padx=2, pady=2, ipadx=0, ipady=0, sticky=tk.NSEW
@@ -3842,13 +3875,21 @@ def editInfoFieldsClicked():
 
         # FIELD 5
         field5_name_entry = ctk.CTkEntry(
-            editinfoframe, width=170, justify="left", textvariable=field5_name_strvar
+            editinfoframe,
+            width=170,
+            justify="left",
+            font=ctk_jbm12,
+            textvariable=field5_name_strvar,
         )
         field5_name_entry.grid(
             row=7, column=2, padx=2, pady=2, ipadx=0, ipady=0, sticky=tk.NSEW
         )
         field5_value_entry = ctk.CTkEntry(
-            editinfoframe, width=260, justify="left", textvariable=field5_val_strvar
+            editinfoframe,
+            width=260,
+            justify="left",
+            font=ctk_jbm12,
+            textvariable=field5_val_strvar,
         )
         field5_value_entry.grid(
             row=7, column=3, padx=2, pady=2, ipadx=0, ipady=0, sticky=tk.NSEW
@@ -3869,13 +3910,21 @@ def editInfoFieldsClicked():
 
         # FIELD 6
         field6_name_entry = ctk.CTkEntry(
-            editinfoframe, width=170, justify="left", textvariable=field6_name_strvar
+            editinfoframe,
+            width=170,
+            justify="left",
+            font=ctk_jbm12,
+            textvariable=field6_name_strvar,
         )
         field6_name_entry.grid(
             row=8, column=2, padx=2, pady=2, ipadx=0, ipady=0, sticky=tk.NSEW
         )
         field6_value_entry = ctk.CTkEntry(
-            editinfoframe, width=260, justify="left", textvariable=field6_val_strvar
+            editinfoframe,
+            width=260,
+            justify="left",
+            font=ctk_jbm12,
+            textvariable=field6_val_strvar,
         )
         field6_value_entry.grid(
             row=8, column=3, padx=2, pady=2, ipadx=0, ipady=0, sticky=tk.NSEW
@@ -4059,11 +4108,13 @@ if __name__ == "__main__":
 
     # Icons and Resources
     iconpath = resource_path("pss_lb.ico")
-    iconpath_linux = f'@{resource_path("pss_lb.xbm")}'
+    iconpath_linux = f'{resource_path("pss_lb.png")}'
+    iconphoto_linux = tk.PhotoImage(file=iconpath_linux)
     energiescsvpath = resource_path("energies.csv")
     psslogo = ctk.CTkImage(
         light_image=Image.open(resource_path("pss-logo2-med.png")), size=(233, 96)
     )
+
     icon_consecutive = ctk.CTkImage(
         light_image=Image.open(resource_path("icons/repeat-2-b.png")),
         dark_image=Image.open(resource_path("icons/repeat-2-w.png")),
@@ -4119,7 +4170,7 @@ if __name__ == "__main__":
     if sys.platform.startswith("win"):
         gui.iconbitmap(default=iconpath)
     else:
-        gui.iconbitmap(iconpath_linux)
+        gui.iconphoto(False, iconphoto_linux)
         # gui.call('wm', 'iconphoto', gui._w, iconpath_linux)
 
     # Fonts
