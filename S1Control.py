@@ -1,6 +1,6 @@
 # S1Control by ZH for PSS
-versionNum = "v0.8.2"
-versionDate = "2023/11/23"
+versionNum = "v0.8.3"
+versionDate = "2023/11/27"
 
 import os
 import sys
@@ -134,7 +134,7 @@ def instrument_StartAssay(
         printAndLog(
             f"Spectrum-Only Assay Started: ({customassay_voltage:.1f}kV {customassay_current:.1f}uA, {customassay_filter} Filter.)"
         )
-        # spectrum only assay start, with params. assuming:
+        # custom spectrum assay start, with params. assuming:
         customassay_backscatterlimit: int = 0
         # backscatter: 0 = disabled, -1 = intelligent algorithm, >1 = raw counts per second limit
         customassay_rejectpackets: int = 1
@@ -2746,13 +2746,13 @@ def startAssayClicked():
             printAndLog(
                 f"Starting Assays - {instr_assayrepeatsselected} consecutive selected."
             )
-        if applicationselected_stringvar.get() == "Spectrum Only":
+        if applicationselected_stringvar.get() == "Custom Spectrum":
             instrument_StartAssay(
                 customassay=True,
-                customassay_filter=spectrumonly_filter_dropdown.get(),
-                customassay_voltage=int(spectrumonly_voltage_entry.get()),
-                customassay_current=float(spectrumonly_current_entry.get()),
-                customassay_duration=int(spectrumonly_duration_entry.get()),
+                customassay_filter=customspectrum_filter_dropdown.get(),
+                customassay_voltage=int(customspectrum_voltage_entry.get()),
+                customassay_current=float(customspectrum_current_entry.get()),
+                customassay_duration=int(customspectrum_duration_entry.get()),
             )
         else:
             instrument_StartAssay()
@@ -2804,7 +2804,7 @@ def ui_UpdateCurrentAppAndPhases():  # update application selected and phase tim
     global p2_s
     global p3_s
     global applyphasetimes
-    global spectrumonly_filter_dropdown
+    global customspectrum_filter_dropdown
 
     phasecount = len(instr_currentphases)
 
@@ -2816,7 +2816,7 @@ def ui_UpdateCurrentAppAndPhases():  # update application selected and phase tim
         dropdown_application = ctk.CTkOptionMenu(
             appmethodframe,
             variable=applicationselected_stringvar,
-            values=instr_applicationspresent + ["Spectrum Only"],
+            values=instr_applicationspresent + ["Custom Spectrum"],
             command=applicationChoiceMade,
             dynamic_resizing=False,
             font=ctk_jbm12B,
@@ -2981,7 +2981,7 @@ def ui_UpdateCurrentAppAndPhases():  # update application selected and phase tim
 
     applyphasetimes.grid_configure(rowspan=phasecount)
 
-    spectrumonly_filter_dropdown.configure(values=instr_filterspresent)
+    customspectrum_filter_dropdown.configure(values=instr_filterspresent)
     # gui.update()
 
 
@@ -3052,22 +3052,22 @@ def applicationChoiceMade(val):
     global phaseframe
     global instr_currentapplication
     global instr_currentmethod
-    if val == "Spectrum Only":
+    if val == "Custom Spectrum":
         # destroy/unpack phase timing frame
         # button_editinfofields.grid_remove()
         phaseframe.grid_remove()
-        # pack spectrumonlyconfig frame
-        spectrumonlyconfigframe.grid()
+        # pack customspectrumconfig frame
+        customspectrumconfigframe.grid()
         # button_editinfofields.grid()
-        # set current application to Spectrum Only (because it's usually done via isntrument message) and fix method display
-        instr_currentapplication = "Spectrum Only"
+        # set current application to Custom Spectrum (because it's usually done via isntrument message) and fix method display
+        instr_currentapplication = "Custom Spectrum"
         instr_currentmethod = "None"
         methodselected_stringvar.set("None")
     else:
         # pack phase timing frame
         phaseframe.grid()
-        # destroy/unpack spectrumonlyconfig frame
-        spectrumonlyconfigframe.grid_remove()
+        # destroy/unpack customspectrumconfig frame
+        customspectrumconfigframe.grid_remove()
         cmd = f'<Configure parameter="Application">{val}</Configure>'
         sendCommand(xrf, cmd)
 
@@ -3691,44 +3691,56 @@ def editInfoFieldsClicked():
 
         # Col/Row legends
         field_name_column_label = ctk.CTkLabel(
-            editinfoframe, text="Field Name", anchor=tk.W
+            editinfoframe, text="Field Name", font=ctk_jbm12, anchor=tk.W
         )
         field_name_column_label.grid(
             row=2, column=2, padx=2, pady=2, ipadx=0, ipady=0, sticky=tk.NSEW
         )
         field_value_column_label = ctk.CTkLabel(
-            editinfoframe, text="Field Value", anchor=tk.W
+            editinfoframe, text="Field Value", font=ctk_jbm12, anchor=tk.W
         )
         field_value_column_label.grid(
             row=2, column=3, padx=2, pady=2, ipadx=0, ipady=0, sticky=tk.NSEW
         )
         field_counter_column_label = ctk.CTkLabel(
-            editinfoframe, text="Counter", anchor=tk.W
+            editinfoframe, text="Counter", font=ctk_jbm12, anchor=tk.W
         )
         field_counter_column_label.grid(
             row=2, column=4, padx=2, pady=2, ipadx=0, ipady=0, sticky=tk.NSEW
         )
-        field1_row_label = ctk.CTkLabel(editinfoframe, text="1", anchor=tk.W)
+        field1_row_label = ctk.CTkLabel(
+            editinfoframe, text="1", font=ctk_jbm12, anchor=tk.W
+        )
         field1_row_label.grid(
             row=3, column=1, padx=4, pady=2, ipadx=0, ipady=0, sticky=tk.NSEW
         )
-        field2_row_label = ctk.CTkLabel(editinfoframe, text="2", anchor=tk.W)
+        field2_row_label = ctk.CTkLabel(
+            editinfoframe, text="2", font=ctk_jbm12, anchor=tk.W
+        )
         field2_row_label.grid(
             row=4, column=1, padx=4, pady=2, ipadx=0, ipady=0, sticky=tk.NSEW
         )
-        field3_row_label = ctk.CTkLabel(editinfoframe, text="3", anchor=tk.W)
+        field3_row_label = ctk.CTkLabel(
+            editinfoframe, text="3", font=ctk_jbm12, anchor=tk.W
+        )
         field3_row_label.grid(
             row=5, column=1, padx=4, pady=2, ipadx=0, ipady=0, sticky=tk.NSEW
         )
-        field4_row_label = ctk.CTkLabel(editinfoframe, text="4", anchor=tk.W)
+        field4_row_label = ctk.CTkLabel(
+            editinfoframe, text="4", font=ctk_jbm12, anchor=tk.W
+        )
         field4_row_label.grid(
             row=6, column=1, padx=4, pady=2, ipadx=0, ipady=0, sticky=tk.NSEW
         )
-        field5_row_label = ctk.CTkLabel(editinfoframe, text="5", anchor=tk.W)
+        field5_row_label = ctk.CTkLabel(
+            editinfoframe, text="5", font=ctk_jbm12, anchor=tk.W
+        )
         field5_row_label.grid(
             row=7, column=1, padx=4, pady=2, ipadx=0, ipady=0, sticky=tk.NSEW
         )
-        field6_row_label = ctk.CTkLabel(editinfoframe, text="6", anchor=tk.W)
+        field6_row_label = ctk.CTkLabel(
+            editinfoframe, text="6", font=ctk_jbm12, anchor=tk.W
+        )
         field6_row_label.grid(
             row=8, column=1, padx=4, pady=2, ipadx=0, ipady=0, sticky=tk.NSEW
         )
@@ -5099,108 +5111,126 @@ if __name__ == "__main__":
         row=4, column=0, columnspan=3, rowspan=2, padx=4, pady=4, sticky=tk.NSEW
     )
 
-    spectrumonlyconfigframe = ctk.CTkFrame(
+    customspectrumconfigframe = ctk.CTkFrame(
         ctrltabview.tab("Assay Controls"), fg_color=("#c5c5c5", "#444444")
     )
-    spectrumonlyconfigframe.grid(
+    customspectrumconfigframe.grid(
         row=6, column=0, columnspan=3, rowspan=2, padx=4, pady=4, sticky=tk.NSEW
     )
-    spectrumonlyconfigframe.columnconfigure(1, weight=1)
+    customspectrumconfigframe.columnconfigure(1, weight=1)
 
-    # spectrum only config frame stuff
+    # custom spectrum config frame stuff
 
-    spectrumonly_voltage_label = ctk.CTkLabel(
-        spectrumonlyconfigframe,
+    customspectrum_voltage_label = ctk.CTkLabel(
+        customspectrumconfigframe,
         text="Voltage",
         anchor="w",
         font=ctk_jbm12,
     )
 
-    spectrumonly_voltage_entry = ctk.CTkEntry(
-        spectrumonlyconfigframe,
+    customspectrum_voltage_entry = ctk.CTkEntry(
+        customspectrumconfigframe,
         width=40,
         justify="right",
         border_width=1,
         font=ctk_jbm12,
     )
 
-    spectrumonly_voltage_units = ctk.CTkLabel(
-        spectrumonlyconfigframe, width=2, text="kV", anchor="w", font=ctk_jbm12
+    customspectrum_voltage_units = ctk.CTkLabel(
+        customspectrumconfigframe, width=2, text="kV", anchor="w", font=ctk_jbm12
     )
-    spectrumonly_voltage_entry.insert(0, "50")
+    customspectrum_voltage_entry.insert(0, "50")
 
-    spectrumonly_voltage_label.grid(row=1, column=0, padx=[8, 0], pady=4, sticky=tk.EW)
-    spectrumonly_voltage_entry.grid(row=1, column=1, padx=[4, 4], pady=4, sticky=tk.EW)
-    spectrumonly_voltage_units.grid(row=1, column=2, padx=[0, 8], pady=4, sticky=tk.EW)
+    customspectrum_voltage_label.grid(
+        row=1, column=0, padx=[8, 0], pady=4, sticky=tk.EW
+    )
+    customspectrum_voltage_entry.grid(
+        row=1, column=1, padx=[4, 4], pady=4, sticky=tk.EW
+    )
+    customspectrum_voltage_units.grid(
+        row=1, column=2, padx=[0, 8], pady=4, sticky=tk.EW
+    )
 
-    spectrumonly_current_label = ctk.CTkLabel(
-        spectrumonlyconfigframe,
+    customspectrum_current_label = ctk.CTkLabel(
+        customspectrumconfigframe,
         text="Current",
         anchor="w",
         font=ctk_jbm12,
     )
 
-    spectrumonly_current_entry = ctk.CTkEntry(
-        spectrumonlyconfigframe,
+    customspectrum_current_entry = ctk.CTkEntry(
+        customspectrumconfigframe,
         width=40,
         justify="right",
         border_width=1,
         font=ctk_jbm12,
     )
 
-    spectrumonly_current_units = ctk.CTkLabel(
-        spectrumonlyconfigframe, width=2, text="uA", anchor="w", font=ctk_jbm12
+    customspectrum_current_units = ctk.CTkLabel(
+        customspectrumconfigframe, width=2, text="uA", anchor="w", font=ctk_jbm12
     )
-    spectrumonly_current_entry.insert(0, "15")
+    customspectrum_current_entry.insert(0, "15")
 
-    spectrumonly_current_label.grid(row=2, column=0, padx=[8, 0], pady=4, sticky=tk.EW)
-    spectrumonly_current_entry.grid(row=2, column=1, padx=[4, 4], pady=4, sticky=tk.EW)
-    spectrumonly_current_units.grid(row=2, column=2, padx=[0, 8], pady=4, sticky=tk.EW)
+    customspectrum_current_label.grid(
+        row=2, column=0, padx=[8, 0], pady=4, sticky=tk.EW
+    )
+    customspectrum_current_entry.grid(
+        row=2, column=1, padx=[4, 4], pady=4, sticky=tk.EW
+    )
+    customspectrum_current_units.grid(
+        row=2, column=2, padx=[0, 8], pady=4, sticky=tk.EW
+    )
 
-    spectrumonly_duration_label = ctk.CTkLabel(
-        spectrumonlyconfigframe,
+    customspectrum_duration_label = ctk.CTkLabel(
+        customspectrumconfigframe,
         text="Duration",
         anchor="w",
         font=ctk_jbm12,
     )
 
-    spectrumonly_duration_entry = ctk.CTkEntry(
-        spectrumonlyconfigframe,
+    customspectrum_duration_entry = ctk.CTkEntry(
+        customspectrumconfigframe,
         width=40,
         justify="right",
         border_width=1,
         font=ctk_jbm12,
     )
 
-    spectrumonly_duration_units = ctk.CTkLabel(
-        spectrumonlyconfigframe, width=2, text="s", anchor="w", font=ctk_jbm12
+    customspectrum_duration_units = ctk.CTkLabel(
+        customspectrumconfigframe, width=2, text="s", anchor="w", font=ctk_jbm12
     )
-    spectrumonly_duration_entry.insert(0, "30")
+    customspectrum_duration_entry.insert(0, "30")
 
-    spectrumonly_duration_label.grid(row=3, column=0, padx=[8, 0], pady=4, sticky=tk.EW)
-    spectrumonly_duration_entry.grid(row=3, column=1, padx=[4, 4], pady=4, sticky=tk.EW)
-    spectrumonly_duration_units.grid(row=3, column=2, padx=[0, 8], pady=4, sticky=tk.EW)
+    customspectrum_duration_label.grid(
+        row=3, column=0, padx=[8, 0], pady=4, sticky=tk.EW
+    )
+    customspectrum_duration_entry.grid(
+        row=3, column=1, padx=[4, 4], pady=4, sticky=tk.EW
+    )
+    customspectrum_duration_units.grid(
+        row=3, column=2, padx=[0, 8], pady=4, sticky=tk.EW
+    )
 
-    spectrumonly_filter_label = ctk.CTkLabel(
-        spectrumonlyconfigframe,
+    customspectrum_filter_label = ctk.CTkLabel(
+        customspectrumconfigframe,
         text="Filter",
         anchor="w",
         font=ctk_jbm12,
     )
-    spectrumonly_filter_dropdown = ctk.CTkOptionMenu(
-        spectrumonlyconfigframe,
+    customspectrum_filter_dropdown = ctk.CTkOptionMenu(
+        customspectrumconfigframe,
         width=210,
         values=[""],
         dynamic_resizing=True,
         font=ctk_jbm12B,
         dropdown_font=ctk_jbm12,
     )
-    spectrumonly_filter_label.grid(row=4, column=0, padx=[8, 0], pady=4, sticky=tk.EW)
-    spectrumonly_filter_dropdown.grid(
+    customspectrum_filter_label.grid(row=4, column=0, padx=[8, 0], pady=4, sticky=tk.EW)
+    customspectrum_filter_dropdown.grid(
         row=4, column=1, columnspan=2, padx=[4, 4], pady=4, sticky=tk.EW
     )
 
-    spectrumonlyconfigframe.grid_remove()
+    customspectrumconfigframe.grid_remove()
 
     # About Section
     about_blurb1 = ctk.CTkLabel(
