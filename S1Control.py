@@ -27,6 +27,7 @@ import csv
 from decimal import Decimal
 from plyer import notification as plyer_notification
 import subprocess
+import ctypes
 
 
 @dataclass
@@ -1175,27 +1176,27 @@ def initialiseLogFile():
 
     # Make folder in drive archive if doesn't already exist
     if (driveArchiveLoc is not None) and not os.path.exists(
-        driveArchiveLoc + f"\{driveFolderStr}"
+        driveArchiveLoc + rf"\{driveFolderStr}"
     ):
-        os.makedirs(driveArchiveLoc + f"\{instr_serialnumber}")
+        os.makedirs(driveArchiveLoc + rf"\{instr_serialnumber}")
 
     # Standard log file location in dir of program
-    if not os.path.exists(f"{os.getcwd()}\Logs"):
-        os.makedirs(f"{os.getcwd()}\Logs")
+    if not os.path.exists(rf"{os.getcwd()}\Logs"):
+        os.makedirs(rf"{os.getcwd()}\Logs")
 
         # Create Log file using time/date/XRFserial
 
     datetimeString = time.strftime("%Y%m%d-%H%M%S", time.localtime())
     logFileName = f"S1Control_Log_{datetimeString}_{instr_serialnumber}.txt"
-    logFilePath = f"{os.getcwd()}\Logs\{logFileName}"
+    logFilePath = rf"{os.getcwd()}\Logs\{logFileName}"
     if driveArchiveLoc is not None:
-        logFileArchivePath = driveArchiveLoc + f"\{driveFolderStr}" + f"\{logFileName}"
+        logFileArchivePath = rf"{driveArchiveLoc}\{driveFolderStr}\{logFileName}"
 
     logFileStartTime = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
 
     with open(logFilePath, "x", encoding="utf-16") as logFile:
         logFile.write(
-            f"TIMESTAMP \tLog File Created: {logFileStartTime} by {pc_device}\{pc_user}, using S1Control {versionNum}. \n"
+            f"TIMESTAMP \tLog File Created: {logFileStartTime} by {pc_device}/{pc_user}, using S1Control {versionNum}.\n"
         )
         logFile.write(
             "--------------------------------------------------------------------------------------------------------------------------------------------\n"
@@ -3210,7 +3211,7 @@ def onClosing():
         closeAllThreads()
         if logFileArchivePath is not None:
             shutil.copyfile(logFilePath, logFileArchivePath)
-            printAndLog(f"Log File archived to: {logFileArchivePath}")
+            printAndLog(rf"Log File archived to: {logFileArchivePath}")
             printAndLog("S1Control software Closed.")
         else:
             printAndLog(
@@ -3365,7 +3366,7 @@ def window_on_configure(e):
 def saveAssayToCSV(assay: Assay):
     """Saves a CSV file with all of the info from a single Assay."""
     assayFolderName = f"Assays_{datetimeString}_{instr_serialnumber}"
-    assayFolderPath = f"{os.getcwd()}\Results\{assayFolderName}"
+    assayFolderPath = rf"{os.getcwd()}\Results\{assayFolderName}"
     assayFileName = f"{assay.index}_{assay.cal_application}_{datetimeString}.csv"
 
     if not os.path.exists(assayFolderPath):
@@ -3503,8 +3504,8 @@ def addAssayToResultsCSV(assay: Assay):
     global current_session_results_df
 
     resultsFileName = f"Results_{datetimeString}_{instr_serialnumber}.csv"
-    resultsFolderPath = f"{os.getcwd()}\Results"
-    resultsFilePath = f"{resultsFolderPath}\{resultsFileName}"
+    resultsFolderPath = rf"{os.getcwd()}\Results"
+    resultsFilePath = rf"{resultsFolderPath}\{resultsFileName}"
     # create /Results folder in local dir if not there already
     if not os.path.exists(resultsFolderPath):
         os.makedirs(resultsFolderPath)
@@ -3542,7 +3543,7 @@ def addAssayToResultsCSV(assay: Assay):
     while results_csv_not_saved:
         try:
             current_session_results_df.to_csv(
-                f"{resultsFolderPath}\{resultsFileName}", index=False
+                rf"{resultsFolderPath}\{resultsFileName}", index=False
             )
             results_csv_not_saved = False
         except PermissionError:
@@ -4108,6 +4109,13 @@ if __name__ == "__main__":
     gui.title("S1Control")
     gui.geometry("+5+5")
 
+    # print(f"scaling={ctk.ScalingTracker.get_window_scaling(gui)}")
+    # # trying to scale ttk widgets properly with dpi changes in windows
+    # if sys.platform.startswith("win"):
+    #     ctypes.windll.shcore.SetProcessDpiAwareness(0)
+    #     ctypes.windll.user32.SetProcessDPIAware()
+    #     gui.tk.call("tk", "scaling", ctk.ScalingTracker.get_window_scaling(gui))
+
     # gui.geometry('1380x855')
 
     # APPEARANCE MODE DEFAULT AND STRVAR FOR TOGGLE - THESE TWO MUST MATCH ################################################################################
@@ -4196,6 +4204,7 @@ if __name__ == "__main__":
     jbm10 = font.Font(family="JetBrains Mono", size=10)
     jbm10B = font.Font(family="JetBrains Mono", size=10, weight="bold")
     jbm09 = font.Font(family="JetBrains Mono", size=9)
+    jbm09B = font.Font(family="JetBrains Mono", size=9, weight="bold")
     jbm08 = font.Font(family="JetBrains Mono", size=8)
     jbm08B = font.Font(family="JetBrains Mono", size=8, weight="bold")
     jbm07 = font.Font(family="JetBrains Mono", size=7)
@@ -4217,9 +4226,9 @@ if __name__ == "__main__":
     guiStyle = ttk.Style()
     guiStyle.theme_use("default")
     # Modify the font of the body
-    guiStyle.configure("Treeview", highlightthickness=0, bd=0, font=jbm08)
+    guiStyle.configure("Treeview", highlightthickness=0, bd=0, font=jbm09)
     # Modify the font of the headings
-    guiStyle.configure("Treeview.Heading", font=jbm08B)
+    guiStyle.configure("Treeview.Heading", font=jbm09B)
 
     plotCTKColour = ("#dbdbdb", "#4a4a4a")
 
@@ -5083,7 +5092,8 @@ if __name__ == "__main__":
     assayprogressbar.set(0)
 
     # Tabview for controls LHS
-    ctrltabview = ctk.CTkTabview(LHSframe, height=358)
+    ctrltabview = ctk.CTkTabview(LHSframe, height=320)
+    # was height=358
     ctrltabview.pack(
         side=tk.TOP, anchor=tk.N, fill="x", expand=False, padx=8, pady=[0, 4]
     )
