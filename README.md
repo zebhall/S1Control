@@ -21,7 +21,7 @@ Install all of the .ttf font files found in the root directory to ensure UI text
 ![image](https://github.com/zebhall/S1Control/assets/81948605/277a47bd-eeba-4a80-9689-9a3b92db4af7)
 ### Show signature element lines on the plot for quick identification
 ![image](https://github.com/zebhall/S1Control/assets/81948605/e0fb2a88-db02-4ff6-b485-e16d3cf71a4c)
-### 'Spectrum Only' mode allows the configuration of voltage, current, and filters of the x-ray source.
+### 'Spectrum Only' mode (now renamed 'Custom Spectrum') allows the configuration of voltage, current, and filters of the x-ray source.
 ![image](https://github.com/zebhall/S1Control/assets/81948605/f7434738-3fd9-482a-b982-bfe3ba2f78be)
 
 ### Light Mode
