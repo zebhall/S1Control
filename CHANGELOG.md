@@ -1,0 +1,93 @@
+# S1Control Changelog 
+
+## v0.8.4 - 2023/12/06
+- implemented several changes to improve performance on low-spec hardware (raspberry pi 3b+ tested), including a 'lightweight' mode which can be launched into by running S1Control.py with  the argument 'l' or 'lightweight'. This mode hides the spectra plotting frame completely, and is replaced by expanded results and assay table views.
+- added checkbox in options to disable automatic spectra plotting after phase completion and assay completion. auto plotting is enabled by default.
+- removed duplicate printing of logbox/logfile messages to the system terminal to improve performance.
+- changed instances of mpl .draw() to .draw_idle() to reduce freezes during plotting events.
+- added keybinding for hiding spectra plot frame (CTRL+SHIFT+S)
+
+## v0.8.3 - 2023/11/27
+- Upgraded built python runtime to 3.12.0
+- Corrected compatibility issues with linux version
+- Rectified some scaling issues caused by windows dpi/scaling factor (100%/125% etc.) for (hopefully) better font readability
+- Corrected f-string and r-string compat issues related to python version upgrade
+- Changed 'Spectrum Only' mode into 'Custom Spectrum' mode to differentiate from inbuilt application on some older instruments.
+
+## v0.8.2 - 2023/11/23
+- Various visual and filesystem changes to improve compatibility with linux
+
+## v0.8.1 - 2023/11/17
+- added proper 'spectrum only' configuration mode.
+- Added proper support for adjusting tube parameters (voltage, current, filters) a'la spectrometer mode.
+- unfortunately it doesn't work under the spectrometer mode application, because bruker are incompetent.
+- make sure to select 'SPECTRUM ONLY' at the bottom of the application menu to use it.
+
+## v0.8.0 - 2023/11/09
+- Counts per Second and Dead Time % checkbox is now 'Vitals' display - will also show requested tube voltage and current, in a widget near status bar.
+- adjusted some scheduling/threading problems that could cause crashes
+- fixed some places where the unified fonts weren't being used
+
+## v0.7.4 - 2023/11/07
+- added checkbox option for displaying the counts per second and dead time %. reports values every packet (~1/sec) in the logbox.
+
+## v0.7.3 - 2023/10/26
+- formatting adjusted to use 'black' pep 8 formatting style for readability.
+- fixed some system ping and resource path issues.
+- standardised font usage - all UI elements now use jetbrains mono. now need to manually install font file.
+- altered bitmap icon code and added XBM file for linux/mac support
+
+## v0.7.2 - 2023/10/25
+- linux beta test version
+
+## v0.7.1 - 2023/09/06
+- added more quantity options for repeat testing for stability testing purposes. will add cutom field in future, this is a just a bandaid fix
+
+## v0.7.0 - 2023/08/23
+- fixed bugs causing crashes when using:
+    - custom concentrations in calibrations
+    - calibrations that only output one elemental concentration
+    - grade library calibrations
+- added support for grade library matching results. they will print in logbox now instead of being invisible.
+- improved performance for completion of assay. now uses built-in select method of assayTable for plotting and displaying of results.
+
+## v0.6.6 - 2023/07/27
+- Implemented support for plotting multiple spectra/assays at once (overlaid). Can select multiple with ctrl+click or shift+click from the assay table. Colours will cycle.
+- visual improvements for dark mode results table and assay table.
+
+## v0.6.4 - 2023/07/14
+Added keybindings for light/dark mode toggle (CTRL+SHIFT+L), and results section show/hide toggle (CTRL+SHIFT+M).
+
+## v0.6.3 - 2023/06/30
+- Properly implemented colour-coding for logbox.
+- fixed some messy/vague error messages
+- minor UI spacing issues
+
+## v0.6.2 - 2023/06/29
+- implemented logbox colour coding for error and warning messages
+
+## v0.6.1 - 2023/06/22
+- Implemented workarounds for ctk bugs: toplevel window icon and lift().
+
+## v0.6.0 - 2023/06/22
+- icon and button overhaul
+- minor UI improvements
+- ability to query nose pressure sensor reading
+- fixes to start/stop assay button logic
+
+## v0.5.9 - 2023/06/16
+- fixed issues related to matplotlib 3.7.1 update. now uses latest version of mpl instead of 3.6.3.
+- Fixed crashes occuring when expected values aren't found in idf information. This should improve compatibility for older instruments and ones with corrupted system files.
+- fixed re-plot and odd behaviour when selecting assays in table before starting a new assay.
+- fixed ui issue - software option checkboxes misalignment
+
+## v0.5.8 - 2023/06/01
+- adjusted units display and convention. PPM is now the default.
+- fixed broken column sorting in results table introduced with switch to PPM default.
+- removed unnecessary replot of last phase spectra on plot.
+- added support for live (end of each phase) spectra plotting of normalised spectra if option is enabled. required changing when spectra counts are normalised to earlier in flow. final completeAssay function now checks for normalised data before normalising, to avoid reprocessing.
+- added change of axes label based on normalisation selection.
+
+
+
+> patchnotes prior to v0.5.8 can be found in github commits
