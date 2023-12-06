@@ -1,6 +1,6 @@
 # S1Control by ZH for PSS
-versionNum = "v0.8.3"
-versionDate = "2023/11/27"
+versionNum = "v0.8.4"
+versionDate = "2023/12/06"
 
 import os
 import sys
@@ -28,6 +28,7 @@ from decimal import Decimal
 from plyer import notification as plyer_notification
 import subprocess
 import ctypes
+import logging
 
 
 @dataclass
@@ -276,7 +277,7 @@ def instrument_AcknowledgeError(TxMsgID):
 
 
 def printAndLog(data, logbox_colour_tag="BASIC"):
-    """prints data to terminal, UI logbox, and txt log file. logbox_colour_tag can be:
+    """prints data to UI logbox and txt log file. logbox_colour_tag can be:
 
     'ERROR' (red), 'WARNING' (yellow/orange), 'INFO' (blue), or 'BASIC' (white).
 
@@ -284,7 +285,7 @@ def printAndLog(data, logbox_colour_tag="BASIC"):
     """
 
     if logFileName != "":
-        print(data)
+        # print(data)
         # Check for validity of logbox colour tag value. if invalid, set to default.
         if logbox_colour_tag not in ["ERROR", "WARNING", "INFO", "BASIC"]:
             logbox_colour_tag = "BASIC"
@@ -1345,7 +1346,7 @@ def xrfListenLoop():
 
                     xraysonbar.start()
 
-                    if plotLiveSpectra:
+                    if doAutoPlotSpectra_var.get():
                         clearCurrentSpectra()
 
                 elif statusparam == "Assay" and statustext == "Complete":
@@ -1453,7 +1454,7 @@ def xrfListenLoop():
 
                     # printAndLog(f'Temps: Detector {instr_currentdettemp}°C, Ambient {instr_currentambtemp}°F')
 
-                    if plotLiveSpectra:
+                    if doAutoPlotSpectra_var.get():
                         plotSpectrum(
                             spectra[-1],
                             specenergies[-1],
@@ -2316,7 +2317,8 @@ def completeAssay(
     )
 
     # plot, display, and print to log (v0.6.7 changed to use selection_set instead of manually plotting and displaying results.)
-    assaysTable.selection_set(assaysTable.get_children()[-1])
+    if doAutoPlotSpectra_var.get():
+        assaysTable.selection_set(assaysTable.get_children()[-1])
     # plotAssay(newassay)
     # displayResults(newassay)
 
@@ -2537,7 +2539,7 @@ def plotSpectrum(spectrum, specenergy, colour, spectrum_legend):
     spectra_ax.autoscale(enable=True, axis="y", tight=False)  ####
     spectra_ax.relim(True)
     spectra_ax.autoscale_view(tight=True)
-    spectracanvas.draw()
+    spectracanvas.draw_idle()
 
 
 def clearCurrentSpectra():
@@ -2561,7 +2563,7 @@ def clearCurrentSpectra():
     # except: pass
     plottedspectra = []  # clears this list which is now probably full of empty refs?
     spectratoolbar.update()
-    spectracanvas.draw()
+    spectracanvas.draw_idle()
 
 
 def plotEmissionLines():
@@ -2606,7 +2608,7 @@ def plotEmissionLines():
     for line, text in zip(leg.get_lines(), leg.get_texts()):
         text.set_color(plottextColour)
     spectratoolbar.update()
-    spectracanvas.draw()
+    spectracanvas.draw_idle()
 
 
 def clearCurrentEmissionLines():
@@ -2621,7 +2623,7 @@ def clearCurrentEmissionLines():
     for line, text in zip(leg.get_lines(), leg.get_texts()):
         text.set_color(plottextColour)
     spectratoolbar.update()
-    spectracanvas.draw()
+    spectracanvas.draw_idle()
 
 
 def plotAssay(assay: Assay, clean_plot: bool = True):
@@ -4041,11 +4043,28 @@ def toggleResultsFrameVisible(_):
     else:
         resultsframe.pack(
             side=tk.BOTTOM,
-            fill="x",
+            fill="both",
             anchor=tk.SW,
-            expand=False,
+            expand=True,
             padx=8,
             pady=[0, 8],
+            ipadx=4,
+            ipady=4,
+        )
+
+
+def toggleSpectraFrameVisible(_):
+    if spectraframe.winfo_ismapped():
+        spectraframe.pack_forget()
+        printAndLog("Spectra Section Hidden. Ctrl+Shift+S to restore.", "WARNING")
+    else:
+        spectraframe.pack(
+            side=tk.TOP,
+            fill="both",
+            anchor=tk.N,
+            expand=True,
+            padx=8,
+            pady=[8, 8],
             ipadx=4,
             ipady=4,
         )
@@ -4074,6 +4093,14 @@ def queryXraySettings_clicked():
 
 
 if __name__ == "__main__":
+    # get args if any
+    # lightweight mode defaults to false
+    lightweight_mode_requested = False
+    if len(sys.argv) > 1:
+        # print(f'Running S1Control with argument: {sys.argv[1]}')
+        if sys.argv[1] in ["lightweight", "l", "L", "lite"]:
+            lightweight_mode_requested = True
+
     # GUI
     thread_halt = False
     SERIALNUMBERRECV = False
@@ -4817,7 +4844,8 @@ if __name__ == "__main__":
     instr_currentphaselength_s = 0
     instr_approxsingleassaytime = 0
 
-    plotLiveSpectra = True  # used for choosing whether live spectra should be plotted
+    # set mpl log level to prevent console spam about missing fonts
+    logging.getLogger("matplotlib.font_manager").setLevel(logging.ERROR)
     driveFolderStr = ""
     s1vermanuallyrequested = False
 
@@ -5013,9 +5041,9 @@ if __name__ == "__main__":
     )
     resultsframe.pack(
         side=tk.BOTTOM,
-        fill="x",
+        fill="both",
         anchor=tk.SW,
-        expand=False,
+        expand=True,
         padx=8,
         pady=[0, 8],
         ipadx=4,
@@ -5486,6 +5514,20 @@ if __name__ == "__main__":
     )
     dropdown_displayunits.grid(row=1, column=1, padx=4, pady=4, sticky=tk.NSEW)
 
+    # FLAG TO CONTROL AUTOMATIC SPECTRA PLOTTING ON PHASE/ASSAY COMPLETION
+    doAutoPlotSpectra_var = ctk.BooleanVar(value=True)
+    checkbox_doAutoPlotSpectra = ctk.CTkCheckBox(
+        ctrltabview.tab("Options"),
+        text="Automatically Plot Spectra",
+        variable=doAutoPlotSpectra_var,
+        onvalue=True,
+        offvalue=False,
+        font=ctk_jbm12,
+    )
+    checkbox_doAutoPlotSpectra.grid(
+        row=2, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW
+    )
+
     # FLAG TO CONTROL NORMALISATION OF SPECTRA VIA AREA-AND-TIME-NORMALISATION
     doNormaliseSpectra_var = ctk.BooleanVar(value=False)
     checkbox_doNormaliseSpectra = ctk.CTkCheckBox(
@@ -5497,7 +5539,7 @@ if __name__ == "__main__":
         font=ctk_jbm12,
     )
     checkbox_doNormaliseSpectra.grid(
-        row=2, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW
+        row=3, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW
     )
     checkbox_doNormaliseSpectra.deselect()
 
@@ -5513,7 +5555,7 @@ if __name__ == "__main__":
         font=ctk_jbm12,
     )
     checkbox_doDisplayVitals.grid(
-        row=3, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW
+        row=4, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW
     )
     # checkbox_doDisplayVitals.deselect()
 
@@ -5527,7 +5569,7 @@ if __name__ == "__main__":
         font=ctk_jbm12,
     )
     checkbox_enableautoassayCSV.grid(
-        row=4, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW
+        row=5, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW
     )
 
     enableresultsCSV_var = ctk.StringVar(value="on")
@@ -5540,7 +5582,7 @@ if __name__ == "__main__":
         font=ctk_jbm12,
     )
     checkbox_enableresultsCSV.grid(
-        row=5, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW
+        row=6, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW
     )
 
     enableendofassaynotifications_var = ctk.StringVar(value="on")
@@ -5553,7 +5595,7 @@ if __name__ == "__main__":
         font=ctk_jbm12,
     )
     checkbox_enableendofassaynotifications.grid(
-        row=6, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW
+        row=7, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW
     )
 
     checkbox_enabledarkmode = ctk.CTkCheckBox(
@@ -5566,7 +5608,7 @@ if __name__ == "__main__":
         font=ctk_jbm12,
     )
     checkbox_enabledarkmode.grid(
-        row=7, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW
+        row=8, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW
     )
 
     # Current Instrument Info stuff
@@ -5635,7 +5677,7 @@ if __name__ == "__main__":
     # spectra_ax.axvline(x=0, color='k')
     spectracanvas = FigureCanvasTkAgg(fig, master=spectraframe)
 
-    spectracanvas.draw()
+    spectracanvas.draw_idle()
     spectratoolbar = NavigationToolbar2Tk(
         spectracanvas, spectraframe, pack_toolbar=False
     )
@@ -5802,6 +5844,13 @@ if __name__ == "__main__":
     # Misc Keybindings a
     gui.bind("<Control-Shift-L>", checkbox_enabledarkmode.toggle)
     gui.bind("<Control-Shift-R>", toggleResultsFrameVisible)
+    gui.bind("<Control-Shift-S>", toggleSpectraFrameVisible)
+
+    # toggle settings that should be off IF lightweight mode was requested at runtime
+    if lightweight_mode_requested:
+        checkbox_doAutoPlotSpectra.deselect()
+        spectraframe.pack_forget()
+        print("S1CONTROL Launched in Lightweight-Mode.")
 
     # Begin Instrument Connection
 
