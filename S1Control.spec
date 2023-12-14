@@ -5,7 +5,7 @@ a = Analysis(
     ['S1Control.py'],
     pathex=[],
     binaries=[],
-    datas=[('C:\\Users\\Zeb\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\customtkinter', 'customtkinter/'),("energies.csv","."),("pss_lb.ico","."),("pss_lb.png","."),("pss-logo2-med.png","."),("icons","icons")],
+    datas=[('C:\\Users\\Zeb\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages\\customtkinter', 'customtkinter/'),("energies.csv","."),("icons","icons")],
     hiddenimports=['plyer.platforms.win.notification'],
     hookspath=[],
     hooksconfig={},
@@ -34,5 +34,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['pss_lb.ico'],
+    icon=['icons\\pss_lb.ico'],
 )

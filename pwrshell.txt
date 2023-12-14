@@ -1,6 +1,6 @@
-pyinstaller --onefile --windowed --clean --icon=pss_lb.ico --add-data 'C:\Users\Zeb\AppData\Roaming\Python\Python311\site-packages\customtkinter;customtkinter/' 'S1Control.py' --hidden-import plyer.platforms.win.notification
+pyinstaller --onefile --windowed --clean --icon='icons\pss_lb.ico' --add-data 'C:\Users\Zeb\AppData\Roaming\Python\Python311\site-packages\customtkinter;customtkinter/' 'S1Control.py' --hidden-import plyer.platforms.win.notification
 
-pyinstaller --onefile --windowed --clean --icon=pss_lb.ico --add-data 'C:\Users\Zeb\AppData\Local\Programs\Python\Python312\Lib\site-packages\customtkinter;customtkinter/' 'S1Control.py' --hidden-import plyer.platforms.win.notification
+pyinstaller --onefile --windowed --clean --icon='icons\pss_lb.ico' --add-data 'C:\Users\Zeb\AppData\Local\Programs\Python\Python312\Lib\site-packages\customtkinter;customtkinter/' 'S1Control.py' --hidden-import plyer.platforms.win.notification
 
 pyinstaller S1Control.spec
 

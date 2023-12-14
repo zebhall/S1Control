@@ -1,6 +1,6 @@
 # S1Control by ZH for PSS
-versionNum = "v0.8.4"
-versionDate = "2023/12/06"
+versionNum = "v0.9.0"
+versionDate = "2023/12/14"
 
 import os
 import sys
@@ -46,14 +46,18 @@ class Assay:
     legends: list
     temps: str
     note: str
+    sanity_check_passed: str  # 'PASS', 'FAIL', or 'N/A'
 
 
-def instrument_Connect():
+def instrument_Connect(instant_connect: bool = False):
     global xrf
     # try:
     #     ping_result = os.system("ping -n 1 -w 40 " + XRF_IP_USB)
     #     print('normal ping failed')
-    ping_result = universalPing(XRF_IP_USB, 1)
+    if instant_connect:
+        ping_result = True
+    else:
+        ping_result = universalPing(XRF_IP_USB, 1)
     # print(f'ping = {ping}')
     # xrf.connect((XRF_IP_USB, XRF_PORT_USB))
     if ping_result == False:
@@ -1148,10 +1152,10 @@ def initialiseLogFile():
 
     # Check for GDrive Paths to save backup of Log file
     if os.path.exists(
-        R"G:\.shortcut-targets-by-id\1w2nUsja1tidZ-QYTuemO6DzCaclAmIlm\PXRFS\13. Service\Automatic Instrument Logs"
+        R"G:/.shortcut-targets-by-id/1w2nUsja1tidZ-QYTuemO6DzCaclAmIlm/PXRFS/13. Service/Automatic Instrument Logs"
     ):
         # use gdrive path if available
-        driveArchiveLoc = R"G:\.shortcut-targets-by-id\1w2nUsja1tidZ-QYTuemO6DzCaclAmIlm\PXRFS\13. Service\Automatic Instrument Logs"
+        driveArchiveLoc = R"G:/.shortcut-targets-by-id/1w2nUsja1tidZ-QYTuemO6DzCaclAmIlm/PXRFS/13. Service/Automatic Instrument Logs"
 
     if instr_serialnumber == "UNKNOWN":
         messagebox.showwarning(
@@ -1177,21 +1181,21 @@ def initialiseLogFile():
 
     # Make folder in drive archive if doesn't already exist
     if (driveArchiveLoc is not None) and not os.path.exists(
-        driveArchiveLoc + rf"\{driveFolderStr}"
+        driveArchiveLoc + rf"/{driveFolderStr}"
     ):
-        os.makedirs(driveArchiveLoc + rf"\{instr_serialnumber}")
+        os.makedirs(driveArchiveLoc + rf"/{instr_serialnumber}")
 
     # Standard log file location in dir of program
-    if not os.path.exists(rf"{os.getcwd()}\Logs"):
-        os.makedirs(rf"{os.getcwd()}\Logs")
+    if not os.path.exists(rf"{os.getcwd()}/Logs"):
+        os.makedirs(rf"{os.getcwd()}/Logs")
 
         # Create Log file using time/date/XRFserial
 
     datetimeString = time.strftime("%Y%m%d-%H%M%S", time.localtime())
     logFileName = f"S1Control_Log_{datetimeString}_{instr_serialnumber}.txt"
-    logFilePath = rf"{os.getcwd()}\Logs\{logFileName}"
+    logFilePath = rf"{os.getcwd()}/Logs/{logFileName}"
     if driveArchiveLoc is not None:
-        logFileArchivePath = rf"{driveArchiveLoc}\{driveFolderStr}\{logFileName}"
+        logFileArchivePath = rf"{driveArchiveLoc}/{driveFolderStr}/{logFileName}"
 
     logFileStartTime = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
 
@@ -1312,8 +1316,33 @@ def xrfListenLoop():
         try:
             data, datatype = recvData(xrf)
         except:
-            printAndLog("XRF LISTEN LOOP HAS DIED", logbox_colour_tag="ERROR")
+            printAndLog("XRF CONNECTION LOST", "ERROR")
             onInstrDisconnect()
+
+            # data = None
+            # datatype = None
+            # time.sleep(1)
+            # instrument_Connect(instant_connect=True)
+
+            # printAndLog(
+            #     "XRF CONNECTION LOST, ATTEMPTING TO RE-ESTABLISH...",
+            #     logbox_colour_tag="ERROR",
+            # )
+            # try:
+            #     instrument_Connect()
+            #     time.sleep(5)
+            #     # if connection lost, try reconnecting and then waiting 1s before recv again
+            #     data, datatype = recvData(xrf)
+            #     printAndLog(
+            #         "XRF CONNECTION RE-ESTABLISHED!",
+            #         logbox_colour_tag="WARNING",
+            #     )
+            # except:
+            #     printAndLog(
+            #         "XRF CONNECTION COULD NOT BE RE-ESTABLISHED, SHUTTING DOWN.",
+            #         logbox_colour_tag="ERROR",
+            #     )
+            #     onInstrDisconnect()
 
         if thread_halt:
             break
@@ -2081,7 +2110,8 @@ def xrfListenLoop():
             pass
 
         else:
-            printAndLog(data)
+            if data != None and datatype != None:
+                printAndLog(data)
 
         # statusUpdateCheck()
         time.sleep(0.1)
@@ -2259,7 +2289,6 @@ def completeAssay(
     assay_specenergies: list,
     assay_legends: list,
     assay_finaltemps: str,
-    assay_note: str = "",
 ):
     global assay_catalogue
     global assay_catalogue_num
@@ -2267,6 +2296,7 @@ def completeAssay(
     global assay_end_time
 
     t = time.localtime()
+    assay_sane = "N/A"
 
     if doNormaliseSpectra_var.get():
         for i in range(len(assay_spectra)):
@@ -2277,6 +2307,55 @@ def completeAssay(
                 assay_spectra[i]["normalised_data"] = normaliseSpectrum(
                     assay_spectra[i]["data"], assay_spectra[i]["fTDur"]
                 )
+
+    # perform assay sanity checks
+    any_phases_failed_sanity_check = False
+    if doSanityCheckSpectra_var.get():
+        for i in range(len(assay_spectra)):
+            _counts = assay_spectra[i]["data"]
+            _sourcevoltage = assay_spectra[i]["sngHVADC"]
+            _evchannelstart = assay_specenergies[i][
+                "fEVChanStart"
+            ]  # starting ev of spectrum channel 1
+            _evperchannel = assay_specenergies[i]["fEVPerChannel"]
+            # Use ev per channel etc for bins instead of basic 20
+            _energies = spec_channels * _evperchannel
+            _energies = _energies + _evchannelstart
+            _energies = _energies / 1000  # TO GET keV instead of eV
+            if (
+                sanityCheckSpectrum(
+                    spectrum_counts=_counts,
+                    spectrum_energies=_energies,
+                    source_voltage_in_kV=_sourcevoltage,
+                )
+                == False
+            ):
+                any_phases_failed_sanity_check = True
+                printAndLog(
+                    f"SPECTRA SANITY CHECK FAILED: Assay # {assay_catalogue_num}, Phase {i+1}. Check Spectrum for Possible Incorrect Voltage!",
+                    "ERROR",
+                )
+                break
+        if any_phases_failed_sanity_check:
+            assay_sane = "FAIL"
+        else:
+            assay_sane = "PASS"
+
+    # get notes / info fields data for notes column of assay table
+    assay_notes_list = []
+    assay_note = ""
+    if not editinfo_firsttime:
+        for infofieldval in editinfo_fieldvalues:
+            if infofieldval.get() != "":
+                assay_notes_list.append(infofieldval.get())
+        if assay_notes_list != []:
+            if len(assay_notes_list) == 1:
+                assay_note = assay_notes_list[0]
+            else:
+                assay_note = ",".join(assay_notes_list)
+
+    # after getting notes, safe to increment counter fields
+    incrementInfoFieldCounterValues()
 
     newassay = Assay(
         index=str(assay_catalogue_num).zfill(4),
@@ -2292,6 +2371,7 @@ def completeAssay(
         legends=assay_legends,
         temps=assay_finaltemps,
         note=assay_note,
+        sanity_check_passed=assay_sane,
     )
 
     # increment catalogue index number for next assay
@@ -2313,12 +2393,16 @@ def completeAssay(
             newassay.cal_application,
             newassay.time_completed,
             newassay.time_elapsed,
+            newassay.sanity_check_passed,
+            newassay.note,
         ],
     )
 
     # plot, display, and print to log (v0.6.7 changed to use selection_set instead of manually plotting and displaying results.)
     if doAutoPlotSpectra_var.get():
         assaysTable.selection_set(assaysTable.get_children()[-1])
+
+    assaysTable.yview_moveto(1)
     # plotAssay(newassay)
     # displayResults(newassay)
 
@@ -2326,6 +2410,7 @@ def completeAssay(
     printAndLog(
         f"Assay # {newassay.index} processed sucessfully ({newassay.time_elapsed})"
     )
+
     if enableautoassayCSV_var.get() == "on":
         saveAssayToCSV(newassay)
     if enableresultsCSV_var.get() == "on":
@@ -2652,7 +2737,9 @@ def onPlotClick(event):  # gets coordinates for click on plot
     ix, iy = event.xdata, event.ydata
     print(f"plot click: x={ix}, y={iy}")
     button_analysepeak.configure(
-        text="Identify Peak ", fg_color="#3B8ED0", hover_color="#36719F"
+        text="Identify Peak ",
+        fg_color=("#3B8ED0", "#1F6AA5"),
+        hover_color=("#36719F", "#144870"),
     )
     getNearbyEnergies(ix, 10)
 
@@ -2684,6 +2771,44 @@ def getNearbyEnergies(energy, qty):
     printAndLog(f"Peak Identification: {round(energy, 4)}keV", "INFO")
     printAndLog(f"The {qty} closest possibilities are:", "INFO")
     printAndLog(closest, "INFO")
+
+
+def sanityCheckSpectrum(
+    spectrum_counts: list, spectrum_energies: list, source_voltage_in_kV: int
+) -> bool:
+    """Checks that a spectrum is sensible, and that the listed voltage is accurate. This is required because of a bug in Bruker pXRF instrument software, sometimes causing phases of an assay to use an incorrect voltage. Returns TRUE if sanity check PASSES, return FALSE if not."""
+    # Calculate the standard deviation of the spectrum
+    std_dev = np.std(spectrum_counts)
+    # print(f"spectrum std dev = {std_dev}")
+
+    # Set a threshold for noise detection (too small might be prone to noise, too high isn't useful. starting with stddev/100.)
+    threshold = std_dev / 100
+    # print(f"{threshold=}")
+
+    # reverse iterate list to search backwards - no zero peak to worry about, and generally should be faster.
+    for i in range(len(spectrum_counts) - 1, 0, -1):
+        if spectrum_counts[i] > threshold:
+            # Found a peak above the noise threshold
+            peak_index = i
+            break
+    else:
+        # No peak above the noise threshold found
+        peak_index = None
+
+    if peak_index is not None:
+        # print(f"Latest point with a peak above noise: energy={spectrum_energies[peak_index]}, counts={spectrum_counts[peak_index]}")
+        if spectrum_energies[peak_index] < source_voltage_in_kV:
+            # this point should be LOWER than source voltage *almost* always. some exclusions, incl. sum peaks, but those should be niche.
+            return True
+        else:
+            printAndLog(
+                f"Failed Sanity Check Details: highest meaningful energy present={spectrum_energies[peak_index]:.2f}, meaningful counts threshold={threshold:.0f}, reported source voltage={source_voltage_in_kV:.0f}"
+            )
+            return False
+
+    else:
+        # No peak above noise detected - flat spectra?
+        return False
 
 
 def clearResultsfromTable():  # Clears all data from results table
@@ -3244,7 +3369,7 @@ def configureEmissionLinesClicked():
 
         # after delay to fix toplevel icon bug in customtkinter.
         if sys.platform.startswith("win"):
-            linecfgwindow.after(220, lambda: linecfgwindow.iconbitmap(default=iconpath))
+            linecfgwindow.after(220, lambda: linecfgwindow.iconbitmap(bitmap=iconpath))
         else:
             linecfgwindow.after(
                 220, lambda: linecfgwindow.iconphoto(False, iconphoto_linux)
@@ -3368,7 +3493,7 @@ def window_on_configure(e):
 def saveAssayToCSV(assay: Assay):
     """Saves a CSV file with all of the info from a single Assay."""
     assayFolderName = f"Assays_{datetimeString}_{instr_serialnumber}"
-    assayFolderPath = rf"{os.getcwd()}\Results\{assayFolderName}"
+    assayFolderPath = rf"{os.getcwd()}/Results/{assayFolderName}"
     assayFileName = f"{assay.index}_{assay.cal_application}_{datetimeString}.csv"
 
     if not os.path.exists(assayFolderPath):
@@ -3506,8 +3631,8 @@ def addAssayToResultsCSV(assay: Assay):
     global current_session_results_df
 
     resultsFileName = f"Results_{datetimeString}_{instr_serialnumber}.csv"
-    resultsFolderPath = rf"{os.getcwd()}\Results"
-    resultsFilePath = rf"{resultsFolderPath}\{resultsFileName}"
+    resultsFolderPath = rf"{os.getcwd()}/Results"
+    resultsFilePath = rf"{resultsFolderPath}/{resultsFileName}"
     # create /Results folder in local dir if not there already
     if not os.path.exists(resultsFolderPath):
         os.makedirs(resultsFolderPath)
@@ -3520,6 +3645,9 @@ def addAssayToResultsCSV(assay: Assay):
     new_assay_results_dict["Application"] = [assay.cal_application]
     new_assay_results_dict["Method"] = [assay.cal_method]
     new_assay_results_dict["Duration (Actual)"] = [assay.time_elapsed]
+    new_assay_results_dict["Sanity Check"] = [assay.sanity_check_passed]
+    # TODO: separate notes into individual columns
+    new_assay_results_dict["Info Fields (Combined)"] = [assay.note]
     # TODO: replace/add live times for each beam
     # TODO: add notes fields?
 
@@ -3545,7 +3673,7 @@ def addAssayToResultsCSV(assay: Assay):
     while results_csv_not_saved:
         try:
             current_session_results_df.to_csv(
-                rf"{resultsFolderPath}\{resultsFileName}", index=False
+                rf"{resultsFolderPath}/{resultsFileName}", index=False
             )
             results_csv_not_saved = False
         except PermissionError:
@@ -3630,11 +3758,11 @@ def editInfoFieldsClicked():
         editinfowindow.title("Edit Info Fields")
         if sys.platform.startswith("win"):
             editinfowindow.after(
-                220, lambda: editinfowindow.iconbitmap(default=iconpath)
+                250, lambda: editinfowindow.iconbitmap(bitmap=iconpath)
             )
         else:
             editinfowindow.after(
-                220, lambda: editinfowindow.iconphoto(False, iconphoto_linux)
+                250, lambda: editinfowindow.iconphoto(False, iconphoto_linux)
             )
         editinfowindow.after(100, lambda: editinfowindow.lift())
         editinfo_windows.append(editinfowindow)
@@ -3754,6 +3882,7 @@ def editInfoFieldsClicked():
             width=170,
             justify="left",
             font=ctk_jbm12,
+            border_width=1,
             textvariable=field1_name_strvar,
         )
         field1_name_entry.grid(
@@ -3764,6 +3893,7 @@ def editInfoFieldsClicked():
             width=260,
             justify="left",
             font=ctk_jbm12,
+            border_width=1,
             textvariable=field1_val_strvar,
         )
         field1_value_entry.grid(
@@ -3789,6 +3919,7 @@ def editInfoFieldsClicked():
             width=170,
             justify="left",
             font=ctk_jbm12,
+            border_width=1,
             textvariable=field2_name_strvar,
         )
         field2_name_entry.grid(
@@ -3799,6 +3930,7 @@ def editInfoFieldsClicked():
             width=260,
             justify="left",
             font=ctk_jbm12,
+            border_width=1,
             textvariable=field2_val_strvar,
         )
         field2_value_entry.grid(
@@ -3824,6 +3956,7 @@ def editInfoFieldsClicked():
             width=170,
             justify="left",
             font=ctk_jbm12,
+            border_width=1,
             textvariable=field3_name_strvar,
         )
         field3_name_entry.grid(
@@ -3834,6 +3967,7 @@ def editInfoFieldsClicked():
             width=260,
             justify="left",
             font=ctk_jbm12,
+            border_width=1,
             textvariable=field3_val_strvar,
         )
         field3_value_entry.grid(
@@ -3859,6 +3993,7 @@ def editInfoFieldsClicked():
             width=170,
             justify="left",
             font=ctk_jbm12,
+            border_width=1,
             textvariable=field4_name_strvar,
         )
         field4_name_entry.grid(
@@ -3869,6 +4004,7 @@ def editInfoFieldsClicked():
             width=260,
             justify="left",
             font=ctk_jbm12,
+            border_width=1,
             textvariable=field4_val_strvar,
         )
         field4_value_entry.grid(
@@ -3894,6 +4030,7 @@ def editInfoFieldsClicked():
             width=170,
             justify="left",
             font=ctk_jbm12,
+            border_width=1,
             textvariable=field5_name_strvar,
         )
         field5_name_entry.grid(
@@ -3904,6 +4041,7 @@ def editInfoFieldsClicked():
             width=260,
             justify="left",
             font=ctk_jbm12,
+            border_width=1,
             textvariable=field5_val_strvar,
         )
         field5_value_entry.grid(
@@ -3929,6 +4067,7 @@ def editInfoFieldsClicked():
             width=170,
             justify="left",
             font=ctk_jbm12,
+            border_width=1,
             textvariable=field6_name_strvar,
         )
         field6_name_entry.grid(
@@ -3939,6 +4078,7 @@ def editInfoFieldsClicked():
             width=260,
             justify="left",
             font=ctk_jbm12,
+            border_width=1,
             textvariable=field6_val_strvar,
         )
         field6_value_entry.grid(
@@ -3968,11 +4108,16 @@ def editInfoFieldsClicked():
 
 
 def instrument_ApplyInfoFields():
+    global editinfo_validcounterfieldsused
     proceedwithapplying = True
     for i in range(6):
         if editinfo_fieldcounters[i].get() == True:
+            editinfo_validcounterfieldsused = True
             if editinfo_fieldvalues[i].get().isdigit() == False:
                 proceedwithapplying = False
+                editinfo_validcounterfieldsused = (
+                    False  # set this here so that we don't increment flawed fields
+                )
                 messagebox.showwarning(
                     "Invalid Value for Counter Field",
                     f"Warning: The Value of info field {i+1} is incompatible with being a counter. Counter field values must be integers. Fields have not been applied.",
@@ -3980,6 +4125,7 @@ def instrument_ApplyInfoFields():
                 editinfo_windows[0].lift()
 
     if proceedwithapplying:
+        infofieldprintstr = ""
         infofieldsmsg = '<Configure parameter="Edit Fields"><FieldList>'
         for i in range(6):
             fieldmsgsegment = ""
@@ -4000,18 +4146,19 @@ def instrument_ApplyInfoFields():
             )
 
             if fieldmsgsegment != '<Field type="Fixed"><Name/><Value/></Field>':
-                # Empty field
+                # if is not an Empty field, append to msg for sending
                 infofieldsmsg = infofieldsmsg + fieldmsgsegment
+                # also append to str for printing to log later
+                infofieldprintstr += f"{editinfo_fieldnames[i].get()}/{editinfo_fieldvalues[i].get()}/{'<Counter>' if editinfo_fieldcounters[i].get() else '<Fixed>'} "
 
         infofieldsmsg = infofieldsmsg + "</FieldList></Configure>"
         sendCommand(xrf, infofieldsmsg)
-        printAndLog(f"Info-Fields Set.")
+        printAndLog(f"Info-Fields Set: {infofieldprintstr}")
+
+        editInfoOnClosing()
 
 
 def resetEditFields_clicked():
-    # global editinfo_fieldnames
-    # global editinfo_fieldvalues
-    # global editinfo_fieldcounters
     if messagebox.askyesno(
         "Reset All Fields and Values on Instrument?",
         "This will reset all field names and values on the instrument to a default placeholder. It will not affect assays that have already been taken. \n\nWould you like to proceed?",
@@ -4034,6 +4181,15 @@ def resetEditFields_clicked():
         instrument_ApplyInfoFields()
         # printAndLog('Info-Fields Reset.')
     editinfo_windows[0].lift()
+
+
+def incrementInfoFieldCounterValues():
+    """This will only update the values that have been marked as counters, and ONLY IN THE UI. not on the instrument. it checks editinfo_counterfieldsused == True to check that counter fields are valid and are being used"""
+    if editinfo_validcounterfieldsused:
+        for i in range(len(editinfo_fieldcounters)):
+            if editinfo_fieldcounters[i].get() == True:
+                # increment only counter fields, the same way the instrument would.
+                editinfo_fieldvalues[i].set(int(editinfo_fieldvalues[i].get()) + 1)
 
 
 def toggleResultsFrameVisible(_):
@@ -4154,12 +4310,17 @@ if __name__ == "__main__":
     ctk.set_default_color_theme("blue")  # Themes: blue (default), dark-blue, green
 
     # Icons and Resources
-    iconpath = resource_path("pss_lb.ico")
-    iconpath_linux = f'{resource_path("pss_lb.png")}'
+    iconpath = resource_path("icons/pss_lb.ico")
+    iconpath_linux = f'{resource_path("icons/pss_lb.png")}'
     iconphoto_linux = tk.PhotoImage(file=iconpath_linux)
     energiescsvpath = resource_path("energies.csv")
+    # psslogo = ctk.CTkImage(
+    #     light_image=Image.open(resource_path("pss-logo2-med.png")), size=(233, 96)
+    # )
     psslogo = ctk.CTkImage(
-        light_image=Image.open(resource_path("pss-logo2-med.png")), size=(233, 96)
+        light_image=Image.open(resource_path("icons/pss-logo2-med-b.png")),
+        dark_image=Image.open(resource_path("icons/pss-logo2-med-w.png")),
+        size=(233, 96),
     )
 
     icon_consecutive = ctk.CTkImage(
@@ -4195,7 +4356,7 @@ if __name__ == "__main__":
         light_image=Image.open(resource_path("icons/temp-cold-line.png")), size=(22, 22)
     )
     icon_editinfo = ctk.CTkImage(
-        light_image=Image.open(resource_path("icons/pencil.png")), size=(22, 22)
+        light_image=Image.open(resource_path("icons/pen-square.png")), size=(22, 22)
     )
     icon_getinfofields = ctk.CTkImage(
         light_image=Image.open(resource_path("icons/list-restart.png")), size=(22, 22)
@@ -4212,6 +4373,30 @@ if __name__ == "__main__":
     icon_pressure = ctk.CTkImage(
         light_image=Image.open(resource_path("icons/temp-hot-line.png")), size=(22, 22)
     )
+
+    icon_softwaredev = ctk.CTkImage(
+        light_image=Image.open(resource_path("icons/code-2-b.png")),
+        dark_image=Image.open(resource_path("icons/code-2-w.png")),
+        size=(28, 28),
+    )
+    # icon_plot_home = ctk.CTkImage(
+    #     light_image=Image.open(resource_path("icons/home.png")), size=(22, 22)
+    # )
+    # icon_plot_back = ctk.CTkImage(
+    #     light_image=Image.open(resource_path("icons/arrow-left.png")), size=(22, 22)
+    # )
+    # icon_plot_forward = ctk.CTkImage(
+    #     light_image=Image.open(resource_path("icons/arrow-right.png")), size=(22, 22)
+    # )
+    # icon_plot_saveimg = ctk.CTkImage(
+    #     light_image=Image.open(resource_path("icons/image-down.png")), size=(22, 22)
+    # )
+    # icon_plot_zoomrect = ctk.CTkImage(
+    #     light_image=Image.open(resource_path("icons/crop.png")), size=(22, 22)
+    # )
+    # icon_plot_move = ctk.CTkImage(
+    #     light_image=Image.open(resource_path("icons/move.png")), size=(22, 22)
+    # )
     # icon_sendinfofields = ctk.CTkImage(light_image=Image.open(resource_path("icons/install-fill.png")), size=(18, 18))
     # use correct method of setting window icon bitmap based on platform
     if sys.platform.startswith("win"):
@@ -4694,6 +4879,7 @@ if __name__ == "__main__":
     editinfo_fieldcounters = (
         []
     )  # Stores checkbox boolvar objects for editinfo window counter checkbox for ref elsewhere
+    editinfo_validcounterfieldsused = False
 
     phasetimelabels = []
     phasetimeentries = []
@@ -5050,12 +5236,12 @@ if __name__ == "__main__":
         ipady=4,
     )
 
-    assaytableframe = tk.Frame(resultsframe, width=450, height=300)
+    assaytableframe = tk.Frame(resultsframe, width=600, height=300)  # 450
     assaytableframe.pack(
         side=tk.LEFT,
         fill="both",
         anchor=tk.SW,
-        expand=False,
+        expand=True,
         padx=[8, 0],
         pady=8,
         ipadx=0,
@@ -5274,7 +5460,9 @@ if __name__ == "__main__":
     about_blurb1 = ctk.CTkLabel(
         ctrltabview.tab("About"),
         text=f"S1Control {versionNum} ({versionDate})\nCreated by Zeb Hall for PSS\nContact: zhall@portaspecs.com\n",
-        justify=tk.LEFT,
+        image=icon_softwaredev,
+        justify="center",
+        compound="top",
         font=ctk_jbm12,
     )
     about_blurb1.grid(
@@ -5290,7 +5478,7 @@ if __name__ == "__main__":
 
     about_imagelabel = ctk.CTkLabel(about_imageframe, text=" ", image=psslogo)
     about_imagelabel.pack(
-        side=tk.TOP, anchor=tk.N, fill="both", expand=True, padx=2, pady=2
+        side=tk.TOP, anchor=tk.N, fill="both", expand=True, padx=2, pady=2, ipady=8
     )
 
     # about_blurb_copyright_header = ctk.CTkLabel(ctrltabview.tab('About'), text=f'Acknowledgements:', justify = tk.LEFT, font=ctk_jbm10, text_color=plottextColour)
@@ -5585,6 +5773,20 @@ if __name__ == "__main__":
         row=6, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW
     )
 
+    # FLAG TO CONTROL DISPLAY OF COUNTS PER SEC AND DEAD TIME %
+    doSanityCheckSpectra_var = ctk.BooleanVar(value=True)
+    checkbox_doSanityCheckSpectra = ctk.CTkCheckBox(
+        ctrltabview.tab("Options"),
+        text="Sanity-check Spectra on Assay Complete",
+        variable=doSanityCheckSpectra_var,
+        onvalue=True,
+        offvalue=False,
+        font=ctk_jbm12,
+    )
+    checkbox_doSanityCheckSpectra.grid(
+        row=7, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW
+    )
+
     enableendofassaynotifications_var = ctk.StringVar(value="on")
     checkbox_enableendofassaynotifications = ctk.CTkCheckBox(
         ctrltabview.tab("Options"),
@@ -5595,7 +5797,7 @@ if __name__ == "__main__":
         font=ctk_jbm12,
     )
     checkbox_enableendofassaynotifications.grid(
-        row=7, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW
+        row=8, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW
     )
 
     checkbox_enabledarkmode = ctk.CTkCheckBox(
@@ -5608,7 +5810,7 @@ if __name__ == "__main__":
         font=ctk_jbm12,
     )
     checkbox_enabledarkmode.grid(
-        row=8, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW
+        row=9, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW
     )
 
     # Current Instrument Info stuff
@@ -5691,6 +5893,15 @@ if __name__ == "__main__":
     for child in spectratoolbar.winfo_children():
         child.config(background=plottoolbarColour)
 
+    # spectrahomebuttontest = ctk.CTkButton(
+    #     spectraframe,
+    #     text="",
+    #     width=28,
+    #     image=icon_plot_home,
+    #     command=fig.canvas.toolbar.home,
+    # )
+    # spectrahomebuttontest.pack(side=tk.LEFT, fill=None, padx=8, pady=4, ipadx=5)
+
     setPlotColours()
 
     # Other Toolbar widgets
@@ -5718,7 +5929,14 @@ if __name__ == "__main__":
     button_analysepeak.pack(side=tk.RIGHT, fill="x", padx=0, pady=4)
 
     # Assays Frame Stuff
-    assaysColumns = ("t_num", "t_app", "t_time", "t_timeelapsed")
+    assaysColumns = (
+        "t_num",
+        "t_app",
+        "t_time",
+        "t_timeelapsed",
+        "t_sanitycheck",
+        "t_notes",
+    )
     assaysTable = Treeview(
         assaytableframe, columns=assaysColumns, height="14", selectmode="extended"
     )
@@ -5738,7 +5956,7 @@ if __name__ == "__main__":
     )
     assaysTable.heading(
         "t_time",
-        text="Time Completed",
+        text="Time",
         anchor=tk.W,
         command=lambda _col="t_time": treeview_sort_column(assaysTable, _col, False),
     )
@@ -5750,11 +5968,27 @@ if __name__ == "__main__":
             assaysTable, _col, False
         ),
     )
+    assaysTable.heading(
+        "t_sanitycheck",
+        text="Sanity Check",
+        anchor=tk.W,
+        command=lambda _col="t_sanitycheck": treeview_sort_column(
+            assaysTable, _col, False
+        ),
+    )
+    assaysTable.heading(
+        "t_notes",
+        text="Info Fields",
+        anchor=tk.W,
+        command=lambda _col="t_notes": treeview_sort_column(assaysTable, _col, False),
+    )
 
     assaysTable.column("t_num", minwidth=50, width=60, stretch=0, anchor=tk.W)
-    assaysTable.column("t_app", minwidth=125, width=100, stretch=1, anchor=tk.W)
-    assaysTable.column("t_time", minwidth=100, width=115, stretch=0, anchor=tk.W)
+    assaysTable.column("t_app", minwidth=125, width=100, stretch=0, anchor=tk.W)
+    assaysTable.column("t_time", minwidth=70, width=75, stretch=0, anchor=tk.W)
     assaysTable.column("t_timeelapsed", minwidth=80, width=60, stretch=0, anchor=tk.W)
+    assaysTable.column("t_sanitycheck", minwidth=90, width=100, stretch=0, anchor=tk.W)
+    assaysTable.column("t_notes", minwidth=130, width=150, stretch=1, anchor=tk.W)
 
     assaysTableScrollbarY = ctk.CTkScrollbar(resultsframe, command=assaysTable.yview)
     assaysTableScrollbarY.pack(
