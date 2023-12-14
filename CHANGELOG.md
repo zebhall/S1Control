@@ -1,5 +1,8 @@
 # S1Control Changelog 
 
+## v0.9.1 - 2023/12/14
+- Tweaked sensitivity of sanity check by increasing counts threshold from stddev/100 to stddev/50.
+
 ## v0.9.0 - 2023/12/14
 - Implemented a 'spectrum sanity checker':
     - This function is on by default, and can be disabled in options.

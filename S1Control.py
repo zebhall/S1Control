@@ -1,5 +1,5 @@
 # S1Control by ZH for PSS
-versionNum = "v0.9.0"
+versionNum = "v0.9.1"
 versionDate = "2023/12/14"
 
 import os
@@ -2781,8 +2781,8 @@ def sanityCheckSpectrum(
     std_dev = np.std(spectrum_counts)
     # print(f"spectrum std dev = {std_dev}")
 
-    # Set a threshold for noise detection (too small might be prone to noise, too high isn't useful. starting with stddev/100.)
-    threshold = std_dev / 100
+    # Set a threshold for noise detection (too small might be prone to noise, too high isn't useful. starting with stddev/100. UPDATE - using /50, 100 was too sensitive in some cases.)
+    threshold = std_dev / 50
     # print(f"{threshold=}")
 
     # reverse iterate list to search backwards - no zero peak to worry about, and generally should be faster.
