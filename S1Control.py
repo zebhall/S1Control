@@ -5883,6 +5883,7 @@ if __name__ == "__main__":
     spectratoolbar = NavigationToolbar2Tk(
         spectracanvas, spectraframe, pack_toolbar=False
     )
+    # print(spectratoolbar.toolitems)
 
     spectratoolbar.config(background=plottoolbarColour)
     spectratoolbar._message_label.config(background=plottoolbarColour)
