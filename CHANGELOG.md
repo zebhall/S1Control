@@ -1,5 +1,9 @@
 # S1Control Changelog 
 
+## v0.9.2 - 2023/12/18
+ - Improved plotting logic, fixed several bugs related to emission line toggling and plot overlaying functionality. Should no longer leave partial phases of assays on the next plot sometimes after adding emission lines.
+ - modified numpy/pandas row referencing in preparation for upcoming feature deprecation in module
+
 ## v0.9.1 - 2023/12/14
 - Tweaked sensitivity of sanity check by increasing counts threshold from stddev/100 to stddev/50.
 

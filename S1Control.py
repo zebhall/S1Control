@@ -1,6 +1,6 @@
 # S1Control by ZH for PSS
-versionNum = "v0.9.1"
-versionDate = "2023/12/14"
+versionNum = "v0.9.2"
+versionDate = "2023/12/18"
 
 import os
 import sys
@@ -2574,6 +2574,7 @@ def assaySelected(event):
     ]
 
     # clear current spectra before plotting
+    clearCurrentEmissionLines()
     clearCurrentSpectra()
     if len(current_assaytable_selection) == 1:
         plotAssay(assays_to_plot[0])
@@ -2582,6 +2583,7 @@ def assaySelected(event):
         for assay in assays_to_plot:
             plotAssay(assay, clean_plot=False)
             displayResults(assay)
+    plotEmissionLines()
 
 
 def plotSpectrum(spectrum, specenergy, colour, spectrum_legend):
@@ -2658,7 +2660,7 @@ def plotEmissionLines():
     global plottedemissionlineslist
     global emission_lines_to_plot
 
-    clearCurrentEmissionLines()
+    # clearCurrentEmissionLines()
 
     # energies = [6.40, 7.06]
 
@@ -2700,10 +2702,24 @@ def clearCurrentEmissionLines():
     global spectra_ax
     global plottedemissionlineslist
     global emissionLinesElementslist
-    for plottedemissionline in plottedemissionlineslist:
-        plottedemissionline.remove()
+    # print(f"REMOVING: {spectra_ax.lines}")
+    # for plottedemissionline in plottedemissionlineslist:
+    #     plottedemissionline.remove()
+
+    # Get all lines in the plot
+    lines_to_remove = [
+        line
+        for line in spectra_ax.lines
+        if isinstance(line, plt.Line2D) and hasattr(line, "_x") and len(line._x) == 2
+    ]
+
+    # Remove axvlines
+    for line in lines_to_remove:
+        line.remove()
+
     plottedemissionlineslist = []
     emissionLinesElementslist = []
+
     leg = spectra_ax.legend()
     for line, text in zip(leg.get_lines(), leg.get_texts()):
         text.set_color(plottextColour)
@@ -2713,6 +2729,7 @@ def clearCurrentEmissionLines():
 
 def plotAssay(assay: Assay, clean_plot: bool = True):
     global colouridx
+    clearCurrentEmissionLines()
     if clean_plot:
         clearCurrentSpectra()
         colouridx = 0
@@ -2726,8 +2743,7 @@ def plotAssay(assay: Assay, clean_plot: bool = True):
         colouridx += 1
         # print(f'colouridx={colouridx}')
 
-    clearCurrentEmissionLines()
-    plotEmissionLines()
+    # plotEmissionLines()
 
 
 def onPlotClick(event):  # gets coordinates for click on plot
@@ -2735,7 +2751,7 @@ def onPlotClick(event):  # gets coordinates for click on plot
     global cid
     global button_analysepeak
     ix, iy = event.xdata, event.ydata
-    print(f"plot click: x={ix}, y={iy}")
+    # print(f"plot click: x={ix}, y={iy}")
     button_analysepeak.configure(
         text="Identify Peak ",
         fg_color=("#3B8ED0", "#1F6AA5"),
@@ -2821,6 +2837,7 @@ def displayResults(assay):
     clearResultsfromTable()
     data = assay.results
     for index, row in data.iterrows():
+        # print(row)
         if displayunits_var.get() == "%":
             resultsTable.insert(
                 parent="",
@@ -2831,7 +2848,12 @@ def displayResults(assay):
             resultsTable.insert(
                 parent="",
                 index="end",
-                values=[f"{row[0]:03}", row[1], f"{row[2]:.0f}", f"{row[3]:.0f}"],
+                values=[
+                    f"{row.iloc[0]:03}",
+                    row.iloc[1],
+                    f"{row.iloc[2]:.0f}",
+                    f"{row.iloc[3]:.0f}",
+                ],
             )
     # TODO: add update method for concentrataion units based on assay selected
 
@@ -3470,6 +3492,7 @@ def toggleEmissionLine(Z):
 
     # energies = [6.40, 7.06]
     linecfgwindows[0].update()
+    clearCurrentEmissionLines()
     plotEmissionLines()
 
 
