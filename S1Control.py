@@ -1,6 +1,6 @@
 # S1Control by ZH for PSS
-versionNum = "v0.9.2"
-versionDate = "2023/12/18"
+versionNum = "v0.9.3"
+versionDate = "2023/12/22"
 
 import os
 import sys
@@ -47,6 +47,19 @@ class Assay:
     temps: str
     note: str
     sanity_check_passed: str  # 'PASS', 'FAIL', or 'N/A'
+
+
+@dataclass
+class Illumination:
+    name: str  # aka 'ID', e.g. 'Exploration_15', 'Std Alloy Hi-Z'
+    voltage: int  # tube voltage in kV
+    current: float  # tube current in uA
+    current_isdefault: bool  # current tuning status for this illumination? 'Yes' = has NOT been tuned (IS default), 'No' = has been tuned (IS NOT default)
+    filterposition: str  # actually filter description. e.g. 'Cu 75um:Ti 25um:Al 200um'
+    testsample: str  # sample used for autotuning illumination. typically one of 'Al 7075', 'Cu 1100', '2205 SS', etc.
+    countrange_min: int  # min counts threshold for autotuning
+    countrange_max: int  # max counts threshold for autotuning
+    actualcounts: int  # actual tuned counts value at specififed current
 
 
 def instrument_Connect(instant_connect: bool = False):
@@ -1294,6 +1307,7 @@ def xrfListenLoop():
     global instr_approxsingleassaytime
     global instr_applicationspresent
     global instr_filterspresent
+    global instr_illuminations
     global instr_currentassayspectra
     global instr_currentassayspecenergies
     global instr_currentassaylegends
@@ -1463,7 +1477,23 @@ def xrfListenLoop():
                         printAndLog(
                             f"Consecutive Assays remaining: {instr_assayrepeatsleft} more."
                         )
-                        instrument_StartAssay()
+                        # if custom spectrum is selected, need to re-provide the parameters, as it is not an actual application on the instrument.
+                        if applicationselected_stringvar.get() == "Custom Spectrum":
+                            instrument_StartAssay(
+                                customassay=True,
+                                customassay_filter=customspectrum_filter_dropdown.get(),
+                                customassay_voltage=int(
+                                    customspectrum_voltage_entry.get()
+                                ),
+                                customassay_current=float(
+                                    customspectrum_current_entry.get()
+                                ),
+                                customassay_duration=int(
+                                    customspectrum_duration_entry.get()
+                                ),
+                            )
+                        else:
+                            instrument_StartAssay()
                     # instr_currentphase = 0
 
                 elif statusparam == "Phase Change":
@@ -1544,7 +1574,7 @@ def xrfListenLoop():
                 and (data["Response"]["@status"] == "success")
             ):
                 # All IDF data:
-                idf = data["Response"]["InstrumentDefinition"]
+                idf: dict = data["Response"]["InstrumentDefinition"]
                 # from pprint import pprint
                 # pprint(idf)
 
@@ -1589,9 +1619,13 @@ def xrfListenLoop():
                     instr_detectormaxTemp = "N/A"
                     instr_detectorminTemp = "N/A"
 
-                instr_source = idf.get("XrayTube", "N/A")
+                instr_source: dict = idf.get("XrayTube", "N/A")
+                # from pprint import pprint
+                # pprint(instr_source)
                 if instr_source != "N/A":
-                    instr_sourceoplimits = instr_source.get("OperatingLimits", "N/A")
+                    instr_sourceoplimits: dict = instr_source.get(
+                        "OperatingLimits", "N/A"
+                    )
                     instr_sourcemanufacturer = instr_source.get("Manufacturer", "N/A")
                     instr_sourcetargetZ = instr_source.get("TargetElementNumber", 0)
                     instr_sourcetargetSymbol = elementZtoSymbol(
@@ -1626,6 +1660,63 @@ def xrfListenLoop():
                         instr_sourcemaxI = "N/A"
                         instr_sourceminI = "N/A"
                         instr_sourcemaxP = "N/A"
+
+                    # get illuminations
+                    instr_rawilluminationdefs: list[dict] = instr_source.get(
+                        "IlluminationDefinition", "N/A"
+                    )
+                    # only proceed with processing illuminations IF it hasn't been done already.
+                    if instr_rawilluminationdefs != "N/A" and instr_illuminations == []:
+                        for entry in instr_rawilluminationdefs:
+                            # first, fix 'AnodeCurrent', which is a dict.
+                            anodecurrent_dict: dict = entry.get(
+                                "AnodeCurrent", {"#text": "0.0", "@default": "Yes"}
+                            )
+                            # an entry in this list is NOT NECESSARILY JUST ONE ILLUMINATION. IF TWO ILLUMINATIONS ARE IDENTICAL IN ALL, THEN THEY CAN BE ONE ENTRY IN THE IDF ILLUMINATIONDEFINITION WITH 2 ID FIELDS. IN THIS CASE, THEY WILL APPEAR IN THE DICT WITH A LIST OF NAMES UNDER THE 'ID' ENTRY!!!
+                            # so, first check for  list type in ID entry, if no list then make a list of len 1, then can just iterate over list either way:
+                            if isinstance(entry.get("ID"), list):
+                                # if multiple 'ID' values in this entry, use list.
+                                id_list = entry.get("ID")
+                            else:
+                                # if only 1 ID in entry, treat as a list anyway for ease of reusing code
+                                id_list = [entry.get("ID")]
+                            # then, iterate over list of id(s) and assign to Illumination dataclass.
+                            for _id in id_list:
+                                # create new Illumination dataclass object and add to list of illuminations
+                                instr_illuminations.append(
+                                    Illumination(
+                                        name=str(_id),
+                                        voltage=int(entry.get("HighVoltage", 0)),
+                                        current=float(anodecurrent_dict.get("#text")),
+                                        current_isdefault=(
+                                            False
+                                            if (
+                                                anodecurrent_dict.get("#text").lower()
+                                                == "no"
+                                            )
+                                            else True
+                                        ),
+                                        filterposition=str(
+                                            entry.get("FilterPosition") or ""
+                                        ),  # if no filter specified, then entry.get('FilterPosition') returns None, so the or statement is used.
+                                        testsample=str(entry.get("TestSample", "")),
+                                        countrange_min=int(
+                                            entry.get("CountRangeMin", 0)
+                                        ),
+                                        countrange_max=int(
+                                            entry.get("CountRangeMax", 0)
+                                        ),
+                                        actualcounts=int(entry.get("ActualCounts", 0)),
+                                    )
+                                )
+                        # after all illuminations have been scanned, sort the list of illuminations.
+                        instr_illuminations.sort(key=lambda x: x.name)
+                        # print("illuminations SORTED")
+                        # for illum in instr_illuminations:
+                        #     print(
+                        #         f"{illum.name}: {illum.voltage=}, {illum.current=}, {illum.current_isdefault=}, {illum.filterposition=}, {illum.testsample=}, {illum.countrange_min=}, {illum.countrange_max=}, {illum.actualcounts=}............"
+                        #     )
+
                 else:
                     instr_sourcemanufacturer = "N/A"
                     instr_sourcetargetZ = "N/A"
@@ -2332,8 +2423,8 @@ def completeAssay(
             ):
                 any_phases_failed_sanity_check = True
                 printAndLog(
-                    f"SPECTRA SANITY CHECK FAILED: Assay # {assay_catalogue_num}, Phase {i+1}. Check Spectrum for Possible Incorrect Voltage!",
-                    "ERROR",
+                    f"SPECTRA SANITY CHECK FAILED: Assay # {assay_catalogue_num}, Phase {i+1}. Check Spectrum for Possible Incorrect Voltage! Note: This function has no way of checking for sum peaks or low-fluorescence samples, so false positives may occur.",
+                    "WARNING",
                 )
                 break
         if any_phases_failed_sanity_check:
@@ -2797,8 +2888,8 @@ def sanityCheckSpectrum(
     std_dev = np.std(spectrum_counts)
     # print(f"spectrum std dev = {std_dev}")
 
-    # Set a threshold for noise detection (too small might be prone to noise, too high isn't useful. starting with stddev/100. UPDATE - using /50, 100 was too sensitive in some cases.)
-    threshold = std_dev / 50
+    # Set a threshold for noise detection (too small might be prone to noise, too high isn't useful. starting with stddev/100. UPDATE - using /50, 100 was too sensitive in some cases. /40 now. need to come up with a better method for this, it gives a lot of false positives.)
+    threshold = std_dev / 40
     # print(f"{threshold=}")
 
     # reverse iterate list to search backwards - no zero peak to worry about, and generally should be faster.
@@ -3132,6 +3223,9 @@ def ui_UpdateCurrentAppAndPhases():  # update application selected and phase tim
     applyphasetimes.grid_configure(rowspan=phasecount)
 
     customspectrum_filter_dropdown.configure(values=instr_filterspresent)
+    customspectrum_illumination_dropdown.configure(
+        values=[illum.name for illum in instr_illuminations]
+    )
     # gui.update()
 
 
@@ -3213,6 +3307,7 @@ def applicationChoiceMade(val):
         instr_currentapplication = "Custom Spectrum"
         instr_currentmethod = "None"
         methodselected_stringvar.set("None")
+        dropdown_method.configure(values=["None"])
     else:
         # pack phase timing frame
         phaseframe.grid()
@@ -3249,6 +3344,17 @@ def savePhaseTimes():
         msg = msg + ph3
     msg = msg + msg_end
     sendCommand(xrf, msg)
+
+
+def customSpectrumIlluminationChosen(choice):
+    # get data for choice
+    for illum in instr_illuminations:
+        if illum.name == choice:
+            customspectrum_voltage_entry.delete(0, ctk.END)
+            customspectrum_voltage_entry.insert(0, illum.voltage)
+            customspectrum_current_entry.delete(0, ctk.END)
+            customspectrum_current_entry.insert(0, illum.current)
+            customspectrum_filter_dropdown.set(illum.filterposition)
 
 
 # CTK appearance mode switcher
@@ -4542,12 +4648,13 @@ if __name__ == "__main__":
             )
             guiStyle.map("Treeview.Heading", background=[("active", "#3b8ed0")])
 
-    instr_isarmed = False
-    instr_isloggedin = False
-    instr_assayisrunning = False
-    instr_assayrepeatsleft = 1
-    instr_assayrepeatsselected = 1  # initial set
-    instr_assayrepeatschosenforcurrentrun = 1
+    instr_isarmed: bool = False
+    instr_isloggedin: bool = False
+    instr_assayisrunning: bool = False
+    instr_assayrepeatsleft: int = 1
+    instr_assayrepeatsselected: int = 1  # initial set
+    instr_assayrepeatschosenforcurrentrun: int = 1
+    instr_illuminations: list[Illumination] = []
 
     all_lines = [
         ["Be", "Be Kα", 0.108],
@@ -5367,6 +5474,20 @@ if __name__ == "__main__":
     customspectrumconfigframe.columnconfigure(1, weight=1)
 
     # custom spectrum config frame stuff
+
+    customspectrum_illumination_dropdown = ctk.CTkOptionMenu(
+        customspectrumconfigframe,
+        width=210,
+        values=[""],
+        command=customSpectrumIlluminationChosen,
+        dynamic_resizing=True,
+        font=ctk_jbm12B,
+        dropdown_font=ctk_jbm12,
+    )
+    customspectrum_illumination_dropdown.grid(
+        row=0, column=0, columnspan=3, padx=[4, 4], pady=4, sticky=tk.EW
+    )
+    customspectrum_illumination_dropdown.set("Illuminations")
 
     customspectrum_voltage_label = ctk.CTkLabel(
         customspectrumconfigframe,

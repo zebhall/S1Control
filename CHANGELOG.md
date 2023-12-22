@@ -1,5 +1,15 @@
 # S1Control Changelog 
 
+## v0.9.3 - 2023/12/22
+ - Added the option to select an Illumination from a dropdown in Custom Spectrum mode.
+    - Did this by implementing an 'Illumination' dataclass to store illumination data from the IDF in a more sensible way. This should be scalable in future for runorder/tempcal purposes.
+ - Fixed an issue with the repeat-assays logic that caused Custom spectrum settings to not be used for subsequent assays.
+    - Repeat assays on Custom-spectrum mode should work correctly now.
+ - Slightly adjusted threshold for spectrum sanity check, and added some text to the warning messasge explaining the shortcomings of the check:
+    - "Note: This function has no way of checking for sum peaks or low-fluorescence samples, so false positives may occur."
+ - Fixed method dropdown still being populated by previously selected application's methods when Custom spectrum is selected.
+
+
 ## v0.9.2 - 2023/12/18
  - Improved plotting logic, fixed several bugs related to emission line toggling and plot overlaying functionality. Should no longer leave partial phases of assays on the next plot sometimes after adding emission lines.
  - modified numpy/pandas row referencing in preparation for upcoming feature deprecation in module
