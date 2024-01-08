@@ -1,0 +1,2 @@
+Assay #,Serial #,Date,Time,Application,Method,Duration (Actual),Sanity Check,Info Fields (Combined),MgO,MgO Err,Al2O3,Al2O3 Err,SiO2,SiO2 Err,P,P Err,S,S Err,Cl,Cl Err,K2O,K2O Err,Ca,Ca Err,Ti,Ti Err
+0001,800C5780,2024/01/08,14:41:36,GeoExploration,Oxide3phase,9.91s,PASS,,9689.0,7498.0,52979.0,3442.0,989119.0,9414.0,76.0,132.0,700.0,111.0,0.0,102.0,4039.0,141.0,302.0,57.0,1348.0,39.0

@@ -1,5 +1,14 @@
 # S1Control Changelog 
 
+## v0.9.4 - 2024/01/08
+ - Overhauled the spectrum 'sanity-checking' algorithm: 
+    - Now finds the point where the spectrum 'drops off' by using a 98%/2% split of total spectrum counts, instead of the previous noise-standard-deviation method.
+    - In testing, this completely removed false-positive sanity check failures on low-fluorescence samples like Silica, assays with unusually short/long phase times, and samples causing sum peaks on 15kV phases.
+    - It also reliably detected all of the 7 different 'known fail' pdz files during testing.
+    - Hopefully this is the last iteration of this algorithm! Famous last words.
+    - New tester function is called sanityCheckSpectrum_SumMethod(), have left in previous (now unused) sanityCheckSpectrum() function for reference.
+ - Slightly adjusted Assaytable column widths to fix mistake with minwidths and defaultwidths being incongruent.
+
 ## v0.9.3 - 2023/12/22
  - Added the option to select an Illumination from a dropdown in Custom Spectrum mode.
     - Did this by implementing an 'Illumination' dataclass to store illumination data from the IDF in a more sensible way. This should be scalable in future for runorder/tempcal purposes.

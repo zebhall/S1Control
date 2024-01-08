@@ -1,6 +1,6 @@
 # S1Control by ZH for PSS
-versionNum = "v0.9.3"
-versionDate = "2023/12/22"
+versionNum = "v0.9.4"
+versionDate = "2024/01/08"
 
 import os
 import sys
@@ -2414,7 +2414,7 @@ def completeAssay(
             _energies = _energies + _evchannelstart
             _energies = _energies / 1000  # TO GET keV instead of eV
             if (
-                sanityCheckSpectrum(
+                sanityCheckSpectrum_SumMethod(
                     spectrum_counts=_counts,
                     spectrum_energies=_energies,
                     source_voltage_in_kV=_sourcevoltage,
@@ -2883,7 +2883,10 @@ def getNearbyEnergies(energy, qty):
 def sanityCheckSpectrum(
     spectrum_counts: list, spectrum_energies: list, source_voltage_in_kV: int
 ) -> bool:
-    """Checks that a spectrum is sensible, and that the listed voltage is accurate. This is required because of a bug in Bruker pXRF instrument software, sometimes causing phases of an assay to use an incorrect voltage. Returns TRUE if sanity check PASSES, return FALSE if not."""
+    """Checks that a spectrum is sensible, and that the listed voltage is accurate.
+    This is required because of a bug in Bruker pXRF instrument software, sometimes causing phases of an assay to use an incorrect voltage.
+    Returns TRUE if sanity check PASSES, return FALSE if not.
+    DEPRECATED 2024/01/08, USE sanityCheckSpectrum_SumMethod instead."""
     # Calculate the standard deviation of the spectrum
     std_dev = np.std(spectrum_counts)
     # print(f"spectrum std dev = {std_dev}")
@@ -2915,6 +2918,36 @@ def sanityCheckSpectrum(
 
     else:
         # No peak above noise detected - flat spectra?
+        return False
+
+
+def sanityCheckSpectrum_SumMethod(
+    spectrum_counts: list, spectrum_energies: list, source_voltage_in_kV: int
+) -> bool:
+    """Checks that a spectrum is sensible, and that the listed voltage is accurate.
+    This is required because of a bug in Bruker pXRF instrument software, sometimes causing phases of an assay to use an incorrect voltage.
+    Returns TRUE if sanity check passed, return FALSE if not.
+    An UPDATED version of the sanityCheckSpectrum function that should be less prone to false positives, and faster.
+    """
+    counts_sum = np.sum(spectrum_counts)
+    two_percent_counts_threshold = counts_sum * 0.02
+    sum_counting = 0
+    for i in range(len(spectrum_counts) - 1, 0, -1):
+        sum_counting += spectrum_counts[i]
+        if sum_counting > two_percent_counts_threshold:
+            abovethreshold_index = i
+            break
+    if spectrum_energies[abovethreshold_index] < source_voltage_in_kV:
+        # this point should be LOWER than source voltage always.
+        # printAndLog(
+        #     f"PASSED Sanity Check Details: The 2%-total-counts threshold energy ({spectrum_energies[abovethreshold_index]:.2f}kV) was LOWER than the Reported source voltage ({source_voltage_in_kV}kV).""
+        # )
+        return True
+    else:
+        printAndLog(
+            f"FAILED Sanity Check Details: The 2%-total-counts threshold energy ({spectrum_energies[abovethreshold_index]:.2f}kV) was HIGHER than the Reported source voltage ({source_voltage_in_kV}kV).",
+            "WARNING",
+        )
         return False
 
 
@@ -6129,9 +6162,9 @@ if __name__ == "__main__":
     )
 
     assaysTable.column("t_num", minwidth=50, width=60, stretch=0, anchor=tk.W)
-    assaysTable.column("t_app", minwidth=125, width=100, stretch=0, anchor=tk.W)
+    assaysTable.column("t_app", minwidth=125, width=130, stretch=0, anchor=tk.W)
     assaysTable.column("t_time", minwidth=70, width=75, stretch=0, anchor=tk.W)
-    assaysTable.column("t_timeelapsed", minwidth=80, width=60, stretch=0, anchor=tk.W)
+    assaysTable.column("t_timeelapsed", minwidth=60, width=65, stretch=0, anchor=tk.W)
     assaysTable.column("t_sanitycheck", minwidth=90, width=100, stretch=0, anchor=tk.W)
     assaysTable.column("t_notes", minwidth=130, width=150, stretch=1, anchor=tk.W)
 
