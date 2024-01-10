@@ -1,6 +1,6 @@
 # S1Control by ZH for PSS
-versionNum = "v0.9.4"
-versionDate = "2024/01/08"
+versionNum = "v0.9.5"
+versionDate = "2024/01/10"
 
 import os
 import sys
@@ -2818,6 +2818,14 @@ def clearCurrentEmissionLines():
     spectracanvas.draw_idle()
 
 
+def onPlotCanvasMotion(event):
+    x, y = event.xdata, event.ydata
+    if x is not None and y is not None:
+        plot_coords_strvar.set(f"{x:.4f} keV / {y:.0f} Counts")
+    else:
+        plot_coords_strvar.set("")
+
+
 def plotAssay(assay: Assay, clean_plot: bool = True):
     global colouridx
     clearCurrentEmissionLines()
@@ -4541,24 +4549,28 @@ if __name__ == "__main__":
         dark_image=Image.open(resource_path("icons/code-2-w.png")),
         size=(28, 28),
     )
-    # icon_plot_home = ctk.CTkImage(
-    #     light_image=Image.open(resource_path("icons/home.png")), size=(22, 22)
-    # )
-    # icon_plot_back = ctk.CTkImage(
-    #     light_image=Image.open(resource_path("icons/arrow-left.png")), size=(22, 22)
-    # )
-    # icon_plot_forward = ctk.CTkImage(
-    #     light_image=Image.open(resource_path("icons/arrow-right.png")), size=(22, 22)
-    # )
-    # icon_plot_saveimg = ctk.CTkImage(
-    #     light_image=Image.open(resource_path("icons/image-down.png")), size=(22, 22)
-    # )
-    # icon_plot_zoomrect = ctk.CTkImage(
-    #     light_image=Image.open(resource_path("icons/crop.png")), size=(22, 22)
-    # )
-    # icon_plot_move = ctk.CTkImage(
-    #     light_image=Image.open(resource_path("icons/move.png")), size=(22, 22)
-    # )
+    icon_plot_home = ctk.CTkImage(
+        light_image=Image.open(resource_path("icons/home.png")), size=(22, 22)
+    )
+    icon_plot_back = ctk.CTkImage(
+        light_image=Image.open(resource_path("icons/undo.png")), size=(22, 22)
+    )
+    icon_plot_forward = ctk.CTkImage(
+        light_image=Image.open(resource_path("icons/redo.png")), size=(22, 22)
+    )
+    icon_plot_saveimg = ctk.CTkImage(
+        light_image=Image.open(resource_path("icons/image-down.png")), size=(22, 22)
+    )
+    icon_plot_crop = ctk.CTkImage(
+        light_image=Image.open(resource_path("icons/crop.png")), size=(22, 22)
+    )
+    icon_plot_move = ctk.CTkImage(
+        light_image=Image.open(resource_path("icons/move.png")), size=(22, 22)
+    )
+    icon_plot_configure = ctk.CTkImage(
+        light_image=Image.open(resource_path("icons/sliders-horizontal.png")),
+        size=(22, 22),
+    )
     # icon_sendinfofields = ctk.CTkImage(light_image=Image.open(resource_path("icons/install-fill.png")), size=(18, 18))
     # use correct method of setting window icon bitmap based on platform
     if sys.platform.startswith("win"):
@@ -6044,6 +6056,7 @@ if __name__ == "__main__":
     spectra_ax = fig.add_subplot(111)
     spectra_ax.set_xlabel("Energy (keV)")
     spectra_ax.set_ylabel("Counts (Total)")
+    spectra_ax.format_coord = lambda x, y: "{:.4f} keV / {:.0f} Counts".format(x, y)
 
     spectra_ax.set_xlim(xmin=0, xmax=40)
     spectra_ax.set_ylim(ymin=0, ymax=10000)
@@ -6055,30 +6068,103 @@ if __name__ == "__main__":
     # spectra_ax.axhline(y=0, color='k')
     # spectra_ax.axvline(x=0, color='k')
     spectracanvas = FigureCanvasTkAgg(fig, master=spectraframe)
+    spectracanvas.mpl_connect("motion_notify_event", onPlotCanvasMotion)
 
     spectracanvas.draw_idle()
+
     spectratoolbar = NavigationToolbar2Tk(
         spectracanvas, spectraframe, pack_toolbar=False
     )
-    # print(spectratoolbar.toolitems)
 
     spectratoolbar.config(background=plottoolbarColour)
-    spectratoolbar._message_label.config(background=plottoolbarColour)
+    spectratoolbar._message_label.config(background=plottoolbarColour, font=jbm09)
     spectracanvas.get_tk_widget().pack(
         side=tk.TOP, fill="both", expand=True, padx=8, pady=[8, 0]
     )
-    spectratoolbar.pack(side=tk.LEFT, fill="x", padx=8, pady=4, ipadx=5)
+    # spectratoolbar.pack(side=tk.LEFT, fill="x", padx=8, pady=4, ipadx=5)
     for child in spectratoolbar.winfo_children():
         child.config(background=plottoolbarColour)
 
-    # spectrahomebuttontest = ctk.CTkButton(
+    spectratoolbar_button_home = ctk.CTkButton(
+        spectraframe,
+        text="",
+        width=5,
+        image=icon_plot_home,
+        command=fig.canvas.toolbar.home,
+    )
+    spectratoolbar_button_home.pack(
+        side=tk.LEFT, fill=None, padx=[8, 2], pady=[0, 8], ipadx=0
+    )
+
+    spectratoolbar_button_back = ctk.CTkButton(
+        spectraframe,
+        text="",
+        width=5,
+        image=icon_plot_back,
+        command=fig.canvas.toolbar.back,
+    )
+    spectratoolbar_button_back.pack(
+        side=tk.LEFT, fill=None, padx=[2, 2], pady=[0, 8], ipadx=0
+    )
+
+    spectratoolbar_button_forward = ctk.CTkButton(
+        spectraframe,
+        text="",
+        width=5,
+        image=icon_plot_forward,
+        command=fig.canvas.toolbar.forward,
+    )
+    spectratoolbar_button_forward.pack(
+        side=tk.LEFT, fill=None, padx=[2, 2], pady=[0, 8], ipadx=0
+    )
+
+    spectratoolbar_button_move = ctk.CTkButton(
+        spectraframe,
+        text="",
+        width=5,
+        image=icon_plot_move,
+        command=fig.canvas.toolbar.pan,
+    )
+    spectratoolbar_button_move.pack(
+        side=tk.LEFT, fill=None, padx=[2, 2], pady=[0, 8], ipadx=0
+    )
+
+    spectratoolbar_button_crop = ctk.CTkButton(
+        spectraframe,
+        text="",
+        width=5,
+        image=icon_plot_crop,
+        command=fig.canvas.toolbar.zoom,
+    )
+    spectratoolbar_button_crop.pack(
+        side=tk.LEFT, fill=None, padx=[2, 2], pady=[0, 8], ipadx=0
+    )
+
+    # spectratoolbar_button_configure = ctk.CTkButton(
     #     spectraframe,
     #     text="",
-    #     width=28,
-    #     image=icon_plot_home,
-    #     command=fig.canvas.toolbar.home,
+    #     width=5,
+    #     image=icon_plot_configure,
+    #     command=fig.canvas.toolbar.configure_subplots,
     # )
-    # spectrahomebuttontest.pack(side=tk.LEFT, fill=None, padx=8, pady=4, ipadx=5)
+    # spectratoolbar_button_configure.pack(side=tk.LEFT, fill=None, padx=8, pady=[0,8], ipadx=0)
+
+    spectratoolbar_button_save = ctk.CTkButton(
+        spectraframe,
+        text="",
+        width=5,
+        image=icon_plot_saveimg,
+        command=fig.canvas.toolbar.save_figure,
+    )
+    spectratoolbar_button_save.pack(
+        side=tk.LEFT, fill=None, padx=[2, 2], pady=[0, 8], ipadx=0
+    )
+
+    plot_coords_strvar = ctk.StringVar(value="")
+    label_plot_coords = ctk.CTkLabel(
+        spectraframe, textvariable=plot_coords_strvar, font=ctk_jbm12
+    )
+    label_plot_coords.pack(side=tk.LEFT, fill=None, padx=8, pady=[0, 8], ipadx=0)
 
     setPlotColours()
 
@@ -6091,7 +6177,9 @@ if __name__ == "__main__":
         command=configureEmissionLinesClicked,
         font=ctk_jbm12B,
     )
-    button_configureemissionlines.pack(side=tk.RIGHT, fill="x", padx=8, pady=4)
+    button_configureemissionlines.pack(
+        side=tk.RIGHT, fill="x", padx=[8, 8], pady=[0, 8]
+    )
 
     # button_clearemissionlines = ctk.CTkButton(spectraframe, width = 13, text = "Clear Emission Lines", command = clearEmissionLinesClicked)
     # button_clearemissionlines.pack(side=tk.RIGHT, fill = 'x', padx = 0, pady = 4)
@@ -6104,7 +6192,7 @@ if __name__ == "__main__":
         command=startPlotClickListener,
         font=ctk_jbm12B,
     )
-    button_analysepeak.pack(side=tk.RIGHT, fill="x", padx=0, pady=4)
+    button_analysepeak.pack(side=tk.RIGHT, fill="x", padx=0, pady=[0, 8])
 
     # Assays Frame Stuff
     assaysColumns = (

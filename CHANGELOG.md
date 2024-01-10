@@ -1,5 +1,9 @@
 # S1Control Changelog 
 
+## v0.9.5 - 2024/01/10
+ - Redesigned plot toolbar and improved info readouts.
+    - This was necessary to prevent mpl incompatabilities with larger/smaller display scalings and to prevent cross-platform issues.
+
 ## v0.9.4 - 2024/01/08
  - Overhauled the spectrum 'sanity-checking' algorithm: 
     - Now finds the point where the spectrum 'drops off' by using a 98%/2% split of total spectrum counts, instead of the previous noise-standard-deviation method.
