@@ -1,5 +1,16 @@
 # S1Control Changelog 
 
+## v0.9.6 - 2024/01/22
+ - Implemented near-complete backend for GeRDA CNC System control for quasi-run-order and sample run functionality.
+    - Class-based approaches for GerdaCNCController, GerdaSampleInfo, and GerdaSampleList (made up of GerdaSampleInfo instances).
+    - Sample list scanning (for calibrations, etc) will use a threaded asynchronous approach to account for mechanical delay of gerda system.
+    - Further implementation into UI will happen in the next update.
+ - Fixed a bug causing instrument to continue trying to scan when set to multiple assays, when a count rate error occurs.
+ - Fixed a bug related to instrument vitals readouts when an instrument error occurs, causing the program to crash. Errant values will now cause vitals to read 0 across the board.
+ - Restructured some messier parts of code to separate py file (element string lists) to improve readability.
+ - Modified log file printing function behaviour if no log file name has been determined yet. This should make debugging early crashes easier.
+ - Fixed some colour issues on mpl canvas.
+
 ## v0.9.5 - 2024/01/10
  - Redesigned plot toolbar and improved info readouts.
     - This was necessary to prevent mpl incompatabilities with larger/smaller display scalings and to prevent cross-platform issues.

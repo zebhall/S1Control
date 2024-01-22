@@ -1,6 +1,6 @@
 # S1Control by ZH for PSS
-versionNum = "v0.9.5"
-versionDate = "2024/01/10"
+versionNum = "v0.9.6"  # v0.9.6 was the first GeRDA-control version
+versionDate = "2024/01/22"
 
 import os
 import sys
@@ -29,6 +29,12 @@ from plyer import notification as plyer_notification
 import subprocess
 import ctypes
 import logging
+import serial
+from element_string_lists import (
+    elementstr_symbolsonly,
+    elementstr_namesonly,
+    elementstr_symbolswithzinbrackets,
+)
 
 
 @dataclass
@@ -355,6 +361,8 @@ def printAndLog(data, logbox_colour_tag="BASIC"):
             logbox.insert("end", "\n")
             logbox.see("end")
             logbox.configure(state="disabled")
+    else:
+        print(f"(Logfile/Logbox uninitialised) Tried to print: {data}")
 
 
 def sendCommand(s, command):
@@ -454,127 +462,7 @@ def elementZtoSymbol(Z):
     if Z == 0:
         return ""
     elif Z <= 118:
-        elementSymbols = [
-            "H",
-            "He",
-            "Li",
-            "Be",
-            "B",
-            "C",
-            "N",
-            "O",
-            "F",
-            "Ne",
-            "Na",
-            "Mg",
-            "Al",
-            "Si",
-            "P",
-            "S",
-            "Cl",
-            "Ar",
-            "K",
-            "Ca",
-            "Sc",
-            "Ti",
-            "V",
-            "Cr",
-            "Mn",
-            "Fe",
-            "Co",
-            "Ni",
-            "Cu",
-            "Zn",
-            "Ga",
-            "Ge",
-            "As",
-            "Se",
-            "Br",
-            "Kr",
-            "Rb",
-            "Sr",
-            "Y",
-            "Zr",
-            "Nb",
-            "Mo",
-            "Tc",
-            "Ru",
-            "Rh",
-            "Pd",
-            "Ag",
-            "Cd",
-            "In",
-            "Sn",
-            "Sb",
-            "Te",
-            "I",
-            "Xe",
-            "Cs",
-            "Ba",
-            "La",
-            "Ce",
-            "Pr",
-            "Nd",
-            "Pm",
-            "Sm",
-            "Eu",
-            "Gd",
-            "Tb",
-            "Dy",
-            "Ho",
-            "Er",
-            "Tm",
-            "Yb",
-            "Lu",
-            "Hf",
-            "Ta",
-            "W",
-            "Re",
-            "Os",
-            "Ir",
-            "Pt",
-            "Au",
-            "Hg",
-            "Tl",
-            "Pb",
-            "Bi",
-            "Po",
-            "At",
-            "Rn",
-            "Fr",
-            "Ra",
-            "Ac",
-            "Th",
-            "Pa",
-            "U",
-            "Np",
-            "Pu",
-            "Am",
-            "Cm",
-            "Bk",
-            "Cf",
-            "Es",
-            "Fm",
-            "Md",
-            "No",
-            "Lr",
-            "Rf",
-            "Db",
-            "Sg",
-            "Bh",
-            "Hs",
-            "Mt",
-            "Ds",
-            "Rg",
-            "Cn",
-            "Nh",
-            "Fl",
-            "Mc",
-            "Lv",
-            "Ts",
-            "Og",
-        ]
-        return elementSymbols[Z - 1]
+        return elementstr_symbolsonly[Z - 1]
     else:
         return "Error: Z out of range"
 
@@ -582,127 +470,7 @@ def elementZtoSymbol(Z):
 def elementZtoSymbolZ(Z):
     """Returns 1-2 character Element symbol formatted WITH atomic number in brackets"""
     if Z <= 118:
-        elementSymbols = [
-            "H (1)",
-            "He (2)",
-            "Li (3)",
-            "Be (4)",
-            "B (5)",
-            "C (6)",
-            "N (7)",
-            "O (8)",
-            "F (9)",
-            "Ne (10)",
-            "Na (11)",
-            "Mg (12)",
-            "Al (13)",
-            "Si (14)",
-            "P (15)",
-            "S (16)",
-            "Cl (17)",
-            "Ar (18)",
-            "K (19)",
-            "Ca (20)",
-            "Sc (21)",
-            "Ti (22)",
-            "V (23)",
-            "Cr (24)",
-            "Mn (25)",
-            "Fe (26)",
-            "Co (27)",
-            "Ni (28)",
-            "Cu (29)",
-            "Zn (30)",
-            "Ga (31)",
-            "Ge (32)",
-            "As (33)",
-            "Se (34)",
-            "Br (35)",
-            "Kr (36)",
-            "Rb (37)",
-            "Sr (38)",
-            "Y (39)",
-            "Zr (40)",
-            "Nb (41)",
-            "Mo (42)",
-            "Tc (43)",
-            "Ru (44)",
-            "Rh (45)",
-            "Pd (46)",
-            "Ag (47)",
-            "Cd (48)",
-            "In (49)",
-            "Sn (50)",
-            "Sb (51)",
-            "Te (52)",
-            "I (53)",
-            "Xe (54)",
-            "Cs (55)",
-            "Ba (56)",
-            "La (57)",
-            "Ce (58)",
-            "Pr (59)",
-            "Nd (60)",
-            "Pm (61)",
-            "Sm (62)",
-            "Eu (63)",
-            "Gd (64)",
-            "Tb (65)",
-            "Dy (66)",
-            "Ho (67)",
-            "Er (68)",
-            "Tm (69)",
-            "Yb (70)",
-            "Lu (71)",
-            "Hf (72)",
-            "Ta (73)",
-            "W (74)",
-            "Re (75)",
-            "Os (76)",
-            "Ir (77)",
-            "Pt (78)",
-            "Au (79)",
-            "Hg (80)",
-            "Tl (81)",
-            "Pb (82)",
-            "Bi (83)",
-            "Po (84)",
-            "At (85)",
-            "Rn (86)",
-            "Fr (87)",
-            "Ra (88)",
-            "Ac (89)",
-            "Th (90)",
-            "Pa (91)",
-            "U (92)",
-            "Np (93)",
-            "Pu (94)",
-            "Am (95)",
-            "Cm (96)",
-            "Bk (97)",
-            "Cf (98)",
-            "Es (99)",
-            "Fm (100)",
-            "Md (101)",
-            "No (102)",
-            "Lr (103)",
-            "Rf (104)",
-            "Db (105)",
-            "Sg (106)",
-            "Bh (107)",
-            "Hs (108)",
-            "Mt (109)",
-            "Ds (110)",
-            "Rg (111)",
-            "Cn (112)",
-            "Nh (113)",
-            "Fl (114)",
-            "Mc (115)",
-            "Lv (116)",
-            "Ts (117)",
-            "Og (118)",
-        ]
-        return elementSymbols[Z - 1]
+        return elementstr_symbolswithzinbrackets[Z - 1]
     else:
         return "Error: Z out of range"
 
@@ -710,127 +478,7 @@ def elementZtoSymbolZ(Z):
 def elementZtoName(Z):
     """Returns Element name from element Z"""
     if Z <= 118:
-        elementNames = [
-            "Hydrogen",
-            "Helium",
-            "Lithium",
-            "Beryllium",
-            "Boron",
-            "Carbon",
-            "Nitrogen",
-            "Oxygen",
-            "Fluorine",
-            "Neon",
-            "Sodium",
-            "Magnesium",
-            "Aluminium",
-            "Silicon",
-            "Phosphorus",
-            "Sulfur",
-            "Chlorine",
-            "Argon",
-            "Potassium",
-            "Calcium",
-            "Scandium",
-            "Titanium",
-            "Vanadium",
-            "Chromium",
-            "Manganese",
-            "Iron",
-            "Cobalt",
-            "Nickel",
-            "Copper",
-            "Zinc",
-            "Gallium",
-            "Germanium",
-            "Arsenic",
-            "Selenium",
-            "Bromine",
-            "Krypton",
-            "Rubidium",
-            "Strontium",
-            "Yttrium",
-            "Zirconium",
-            "Niobium",
-            "Molybdenum",
-            "Technetium",
-            "Ruthenium",
-            "Rhodium",
-            "Palladium",
-            "Silver",
-            "Cadmium",
-            "Indium",
-            "Tin",
-            "Antimony",
-            "Tellurium",
-            "Iodine",
-            "Xenon",
-            "Caesium",
-            "Barium",
-            "Lanthanum",
-            "Cerium",
-            "Praseodymium",
-            "Neodymium",
-            "Promethium",
-            "Samarium",
-            "Europium",
-            "Gadolinium",
-            "Terbium",
-            "Dysprosium",
-            "Holmium",
-            "Erbium",
-            "Thulium",
-            "Ytterbium",
-            "Lutetium",
-            "Hafnium",
-            "Tantalum",
-            "Tungsten",
-            "Rhenium",
-            "Osmium",
-            "Iridium",
-            "Platinum",
-            "Gold",
-            "Mercury",
-            "Thallium",
-            "Lead",
-            "Bismuth",
-            "Polonium",
-            "Astatine",
-            "Radon",
-            "Francium",
-            "Radium",
-            "Actinium",
-            "Thorium",
-            "Protactinium",
-            "Uranium",
-            "Neptunium",
-            "Plutonium",
-            "Americium",
-            "Curium",
-            "Berkelium",
-            "Californium",
-            "Einsteinium",
-            "Fermium",
-            "Mendelevium",
-            "Nobelium",
-            "Lawrencium",
-            "Rutherfordium",
-            "Dubnium",
-            "Seaborgium",
-            "Bohrium",
-            "Hassium",
-            "Meitnerium",
-            "Darmstadtium",
-            "Roentgenium",
-            "Copernicium",
-            "Nihonium",
-            "Flerovium",
-            "Moscovium",
-            "Livermorium",
-            "Tennessine",
-            "Oganesson",
-        ]
-        return elementNames[Z - 1]
+        return elementstr_namesonly[Z - 1]
     else:
         return "Error: Z out of range"
 
@@ -838,249 +486,9 @@ def elementZtoName(Z):
 def elementSymboltoName(sym: str):
     """returns element name from element symbol e.g. 'He' -> 'Helium'"""
     if len(sym) < 4:
-        elementSymbols = [
-            "H",
-            "He",
-            "Li",
-            "Be",
-            "B",
-            "C",
-            "N",
-            "O",
-            "F",
-            "Ne",
-            "Na",
-            "Mg",
-            "Al",
-            "Si",
-            "P",
-            "S",
-            "Cl",
-            "Ar",
-            "K",
-            "Ca",
-            "Sc",
-            "Ti",
-            "V",
-            "Cr",
-            "Mn",
-            "Fe",
-            "Co",
-            "Ni",
-            "Cu",
-            "Zn",
-            "Ga",
-            "Ge",
-            "As",
-            "Se",
-            "Br",
-            "Kr",
-            "Rb",
-            "Sr",
-            "Y",
-            "Zr",
-            "Nb",
-            "Mo",
-            "Tc",
-            "Ru",
-            "Rh",
-            "Pd",
-            "Ag",
-            "Cd",
-            "In",
-            "Sn",
-            "Sb",
-            "Te",
-            "I",
-            "Xe",
-            "Cs",
-            "Ba",
-            "La",
-            "Ce",
-            "Pr",
-            "Nd",
-            "Pm",
-            "Sm",
-            "Eu",
-            "Gd",
-            "Tb",
-            "Dy",
-            "Ho",
-            "Er",
-            "Tm",
-            "Yb",
-            "Lu",
-            "Hf",
-            "Ta",
-            "W",
-            "Re",
-            "Os",
-            "Ir",
-            "Pt",
-            "Au",
-            "Hg",
-            "Tl",
-            "Pb",
-            "Bi",
-            "Po",
-            "At",
-            "Rn",
-            "Fr",
-            "Ra",
-            "Ac",
-            "Th",
-            "Pa",
-            "U",
-            "Np",
-            "Pu",
-            "Am",
-            "Cm",
-            "Bk",
-            "Cf",
-            "Es",
-            "Fm",
-            "Md",
-            "No",
-            "Lr",
-            "Rf",
-            "Db",
-            "Sg",
-            "Bh",
-            "Hs",
-            "Mt",
-            "Ds",
-            "Rg",
-            "Cn",
-            "Nh",
-            "Fl",
-            "Mc",
-            "Lv",
-            "Ts",
-            "Og",
-        ]
-        elementNames = [
-            "Hydrogen",
-            "Helium",
-            "Lithium",
-            "Beryllium",
-            "Boron",
-            "Carbon",
-            "Nitrogen",
-            "Oxygen",
-            "Fluorine",
-            "Neon",
-            "Sodium",
-            "Magnesium",
-            "Aluminium",
-            "Silicon",
-            "Phosphorus",
-            "Sulfur",
-            "Chlorine",
-            "Argon",
-            "Potassium",
-            "Calcium",
-            "Scandium",
-            "Titanium",
-            "Vanadium",
-            "Chromium",
-            "Manganese",
-            "Iron",
-            "Cobalt",
-            "Nickel",
-            "Copper",
-            "Zinc",
-            "Gallium",
-            "Germanium",
-            "Arsenic",
-            "Selenium",
-            "Bromine",
-            "Krypton",
-            "Rubidium",
-            "Strontium",
-            "Yttrium",
-            "Zirconium",
-            "Niobium",
-            "Molybdenum",
-            "Technetium",
-            "Ruthenium",
-            "Rhodium",
-            "Palladium",
-            "Silver",
-            "Cadmium",
-            "Indium",
-            "Tin",
-            "Antimony",
-            "Tellurium",
-            "Iodine",
-            "Xenon",
-            "Caesium",
-            "Barium",
-            "Lanthanum",
-            "Cerium",
-            "Praseodymium",
-            "Neodymium",
-            "Promethium",
-            "Samarium",
-            "Europium",
-            "Gadolinium",
-            "Terbium",
-            "Dysprosium",
-            "Holmium",
-            "Erbium",
-            "Thulium",
-            "Ytterbium",
-            "Lutetium",
-            "Hafnium",
-            "Tantalum",
-            "Tungsten",
-            "Rhenium",
-            "Osmium",
-            "Iridium",
-            "Platinum",
-            "Gold",
-            "Mercury",
-            "Thallium",
-            "Lead",
-            "Bismuth",
-            "Polonium",
-            "Astatine",
-            "Radon",
-            "Francium",
-            "Radium",
-            "Actinium",
-            "Thorium",
-            "Protactinium",
-            "Uranium",
-            "Neptunium",
-            "Plutonium",
-            "Americium",
-            "Curium",
-            "Berkelium",
-            "Californium",
-            "Einsteinium",
-            "Fermium",
-            "Mendelevium",
-            "Nobelium",
-            "Lawrencium",
-            "Rutherfordium",
-            "Dubnium",
-            "Seaborgium",
-            "Bohrium",
-            "Hassium",
-            "Meitnerium",
-            "Darmstadtium",
-            "Roentgenium",
-            "Copernicium",
-            "Nihonium",
-            "Flerovium",
-            "Moscovium",
-            "Livermorium",
-            "Tennessine",
-            "Oganesson",
-        ]
         try:
-            i = elementSymbols.index(sym)
-            return elementNames[i]
+            i = elementstr_symbolsonly.index(sym)
+            return elementstr_namesonly[i]
         except:
             print("Element symbol unrecognised")
     else:
@@ -1953,11 +1361,13 @@ def xrfListenLoop():
             elif "InfoReport" in data:
                 # printAndLog(data)
                 TxMsgID = data["InfoReport"]["@TxMsgID"]
-                UserAckable = data["InfoReport"]["@UserAckable"]  # 'Yes' or 'No'
-                InfoMsg = data["InfoReport"]["#text"]
+                isuseracknowldegable = data["InfoReport"][
+                    "@UserAckable"
+                ]  # 'Yes' or 'No'
+                infomsg = data["InfoReport"]["#text"]
                 # e.g. "Nose Door Open. Close it to Continue."
-                printAndLog(f"Instrument INFO/WARNING: {InfoMsg}")
-                if UserAckable == "Yes":
+                printAndLog(f"Instrument INFO/WARNING: {infomsg}")
+                if isuseracknowldegable == "Yes":
                     instrument_AcknowledgeError(TxMsgID)
                     printAndLog(
                         "Info/Warning Acknowledgment Sent. Attempting to resume..."
@@ -1966,16 +1376,24 @@ def xrfListenLoop():
                     printAndLog(
                         "ERROR: Info/Warning Message Cannot be Acknowledged Remotely. Please evaluate info/warning on instrument."
                     )
+                if "Backscatter Limit Failure::Count Rate too Low" in infomsg:
+                    printAndLog(
+                        "'Count Rate Too Low' error occurred. Remaining repeat assays will be cancelled.",
+                        "ERROR",
+                    )
+                    instr_assayrepeatsleft = 0
 
             # ERROR HAS OCCURRED
             elif "ErrorReport" in data:
                 # Must respond to these. If an acknowledgement message is not received within 5 seconds ofthe initial transmission the message will be retransmitted. This process continues until an acknowledge is received or the message is transmitted 5 times.
                 TxMsgID = data["ErrorReport"]["@TxMsgID"]
-                UserAckable = data["ErrorReport"]["@UserAckable"]  # 'Yes' or 'No'
+                isuseracknowldegable = data["ErrorReport"][
+                    "@UserAckable"
+                ]  # 'Yes' or 'No'
                 ErrorMsg = data["ErrorReport"]["#text"]
                 # e.g. "System temperature out of range."
                 printAndLog(f"Instrument ERROR: {ErrorMsg}")
-                if UserAckable == "Yes":
+                if isuseracknowldegable == "Yes":
                     instrument_AcknowledgeError(TxMsgID)
                     printAndLog("Error Acknowledgment Sent. Attempting to resume...")
                 else:
@@ -2354,13 +1772,20 @@ def updateCurrentVitalsDisplay(spectra=None, override=None):
         # print values each time this func is called. only temporary!
         # printAndLog(f"Counts/Sec: {int((instantaneous_iRaw_Cnts / instantaneous_iADur) * 1000)}, Deadtime:{(((instantaneous_iRaw_Cnts - instantaneous_iValid_Cnts) / instantaneous_iRaw_Cnts) * 100):6.2f}%")
         # printAndLog(f'{txt["sngHVADC"]}kV, {round(float(txt["sngCurADC"]),2)}\u03bcA')
+        # try-excepts in case of assay failure, can't divide by zero
+        try:
+            instr_countrate_stringvar.set(
+                f"{int((instantaneous_iRaw_Cnts / instantaneous_iADur) * 1000)}cps"
+            )
+        except:
+            instr_countrate_stringvar.set("0cps")
+        try:
+            instr_deadtime_stringvar.set(
+                f"{(((instantaneous_iRaw_Cnts - instantaneous_iValid_Cnts) / instantaneous_iRaw_Cnts) * 100):6.2f}%dead"
+            )
+        except:
+            instr_deadtime_stringvar.set("0%dead")
 
-        instr_countrate_stringvar.set(
-            f"{int((instantaneous_iRaw_Cnts / instantaneous_iADur) * 1000)}cps"
-        )
-        instr_deadtime_stringvar.set(
-            f"{(((instantaneous_iRaw_Cnts - instantaneous_iValid_Cnts) / instantaneous_iRaw_Cnts) * 100):6.2f}%dead"
-        )
         instr_tubevoltagecurrent_stringvar.set(
             f"{instantaneous_sngHVADC}kV / {instantaneous_sngCurADC}\u03bcA"
         )
@@ -3398,6 +2823,277 @@ def customSpectrumIlluminationChosen(choice):
             customspectrum_filter_dropdown.set(illum.filterposition)
 
 
+@dataclass
+class GerdaSingleSampleInfo:
+    """DataClass to contain all info and data for single Gerda Sample.
+    scan_number:int
+    name_or_note:str
+    x_position:int
+    y_position:int
+    optional_illumination_name:str = None # optional
+    optional_time_in_s:int = None # optional"""
+
+    scan_number: int
+    name_or_note: str
+    x_position: int
+    y_position: int
+    optional_illumination_name: str = None  # optional
+    optional_time_in_s: int = None  # optional
+
+    def __post_init__(self):
+        if self.optional_illumination_name == "":
+            self.optional_illumination_name = None
+        if self.optional_time_in_s == "":
+            self.optional_time_in_s = None
+        if (self.optional_illumination_name != None) and (
+            self.optional_time_in_s == None
+        ):
+            # Time (s) (optional, IF COLUMN E SPECIFIES ILLUMINATION NAME IT WILL DEFAULT TO 60s.)
+            self.optional_time_in_s = 60
+        if (self.optional_illumination_name != None) and (
+            self.optional_illumination_name
+            not in [illum.name for illum in instr_illuminations]
+        ):
+            printAndLog(
+                f"Illumination '{self.optional_illumination_name}' was not found on instrument. Illumination set from CSV has been overridden. Please check instrument or CSV and try again.",
+                "ERROR",
+            )
+            self.optional_illumination_name = None
+            self.optional_time_in_s = None
+
+
+class GerdaSampleList:
+    """Class to initialise and generate co-ordinate - sample name pairs.
+    input should be CSV file of following format: first row HEADERS, info starts on second row.
+    Col A: # (1->)
+    Col B: Name of sample / desired pdz file name (will be stored in notes field, then later used to rename pdz files?)
+    Col C: x coordinate on gerda (mm)
+    Col D: y coordinate on gerda (mm)
+    Col E: Illumination Name (optional, if missing will use whatever application is currently selected.)
+    Col F: Time (s) (optional, IF COLUMN E SPECIFIES ILLUMINATION NAME IT WILL DEFAULT TO 60s.)
+    """
+
+    def __init__(self, csv_file_path: str = None) -> None:
+        self.init_sucessful = False
+        self.known_good_headers = [
+            "ScanNumber",
+            "Name/Note",
+            "XPosition(mm)",
+            "YPosition(mm)",
+            "Illumination(optional)",
+            "Time(sec)(optional)",
+        ]
+        self.listofsampleobjects: list[GerdaSingleSampleInfo] = []
+        try:
+            # open csv and iterate over rows
+            with open(csv_file_path, "r") as csv_file:
+                self.csv_reader = csv.reader(csv_file)
+                self.headers = next(self.csv_reader)
+                if self.headers == self.known_good_headers:
+                    # get indexes (to avoid mistakes after editing/expanding headers)
+                    self.colindex_scannumber = self.headers.index("ScanNumber")
+                    self.colindex_namenote = self.headers.index("Name/Note")
+                    self.colindex_xpos = self.headers.index("XPosition(mm)")
+                    self.colindex_ypos = self.headers.index("YPosition(mm)")
+                    self.colindex_illumination = self.headers.index(
+                        "Illumination(optional)"
+                    )
+                    self.colindex_time = self.headers.index("Time(sec)(optional)")
+                    for row in self.csv_reader:
+                        # if row is empty, ignore
+                        if row:
+                            self.listofsampleobjects.append(
+                                GerdaSingleSampleInfo(
+                                    scan_number=int(row[self.colindex_scannumber]),
+                                    name_or_note=row[self.colindex_namenote],
+                                    x_position=int(row[self.colindex_xpos]),
+                                    y_position=int(row[self.colindex_ypos]),
+                                    optional_illumination_name=row[
+                                        self.colindex_illumination
+                                    ],
+                                    optional_time_in_s=int(row[self.colindex_time]),
+                                )
+                            )
+                            # process each row
+                            print(row)
+
+                    printAndLog(f"Sample List CSV File successfully processed.", "INFO")
+                    self.init_sucessful = True
+                    self.listofsamplenames = [
+                        sample.name_or_note for sample in self.listofsampleobjects
+                    ]
+                else:
+                    printAndLog(
+                        f"ERROR: Sample List CSV: Headers do not match known headers: correct format = {self.known_good_headers}",
+                        "ERROR",
+                    )
+        except Exception as e:
+            # Handle exceptions (e.g., file not found, invalid CSV format)
+            printAndLog(f"ERROR: Sample List CSV: {e}", "ERROR")
+
+
+def loadGerdaSampleListCSV_clicked() -> None:
+    """called when 'load gerda sample list csv' button is clicked."""
+    global gerda_sample_list
+    gerda_sample_list = None
+    # prompt user to browse and open csv file
+    file_path = ctk.filedialog.askopenfilename(filetypes=[("CSV Files", "*.csv")])
+    # check if file selected
+    if file_path:
+        gerda_sample_list = GerdaSampleList(csv_file_path=file_path)
+        if gerda_sample_list.init_sucessful:
+            printAndLog(
+                f"CSV Sample List Loaded successfully. Total Scans: {len(gerda_sample_list)}",
+                "INFO",
+            )
+            printAndLog(f"{gerda_sample_list.listofsamplenames}")
+            # if csv was processed properly, then continue.
+            # update ui stuff to recognise loaded sample list
+            pass
+    else:
+        printAndLog("Sample List: No CSV File selected.", "WARNING")
+
+
+class GerdaCNCController:
+    """Class representing the control system of the CNC that allows xrf to be moved. Intended to be addressed"""
+
+    def __init__(self, port="/dev/ttyUSB0", baudrate=115200, timeout=30) -> None:
+        printAndLog("Attempting to connect to GeRDA CNC Controller...", "INFO")
+        try:
+            self.cnc_serial = serial.Serial(port, baudrate, timeout=timeout)
+            printAndLog("CNC Controller successfully connected.", "INFO")
+        except serial.serialutil.SerialException as e:
+            printAndLog(f"ERROR CONNECTING TO CNC: SerialException: {e}", "ERROR")
+            self.cnc_serial = None
+        except FileNotFoundError as e:
+            printAndLog(f"ERROR CONNECTING TO CNC: FileNotFoundError: {e}", "ERROR")
+            self.cnc_serial = None
+        except PermissionError as e:
+            printAndLog(f"ERROR CONNECTING TO CNC: PermissionError: {e}", "ERROR")
+            self.cnc_serial = None
+        except Exception as e:
+            printAndLog(f"ERROR CONNECTING TO CNC: An unexpected error occurred: {e}")
+            self.cnc_serial = None
+
+        self.lock = threading.Lock()  # apparently ensures thread safety
+        self.event = threading.Event()  # for synchronization
+        self.thread = None
+        self.last_command_response = (
+            []
+        )  # store the last response lines for threaded shit
+
+    def send_command(self, command):
+        """DON'T CALL DIRECTLY OUTSIDE CLASS. MEANT TO BE USED BY THREADED SEND COMMAND. send command to GeRDA CNC control board. returns list containing all responses from cnc control board upon completion or error."""
+        with self.lock:
+            if self.cnc_serial != None:
+                self.cnc_serial.write((command + "\n").encode())
+                printAndLog(f"Sent CNC Command: '{command}'", "INFO")
+                # Read all available response lines until completed or error
+                response_lines = []
+                while True:
+                    response = self.cnc_serial.readline().decode().strip()
+                    printAndLog(f"CNC Repsonse: {response}")
+                    response_lines.append(response)
+                    if "error" in response.lower():
+                        printAndLog(f"CNC ERROR HAS OCCURRED!", "ERROR")
+                        break
+                    elif response == "ok":
+                        printAndLog(f"CNC Command completed successfully.", "INFO")
+                        break
+                self.last_command_response = response_lines
+                return response_lines
+            else:
+                printAndLog("ERROR: No GeRDA CNC Device Connected", "ERROR")
+                return None
+
+    def send_command_in_thread(self, command):
+        if self.thread and self.thread.is_alive():
+            return  # A thread is already running, don't start another one
+
+        self.thread = threading.Thread(target=self.send_command, args=(command,))
+        self.thread.start()
+
+    def move_to(self, x: int, y: int, z: int):
+        """Send command to GeRDA CNC controller to move the head to coordinates x,y,z. (mm)"""
+        command = f"G0 X{x} Y{y} Z{z}"
+        self.send_command_in_thread(command)
+
+    def get_current_position(self):
+        self.send_command_in_thread("?")
+        self.wait_for_completion()
+        response = self.last_command_response
+        printAndLog(f"current position response: {response}")
+        return response
+
+    def home(self):
+        response = self.send_command_in_thread("$H")
+        return response
+
+    def wait_for_completion(self):
+        # Wait for the event to be set, means the current step has been completed
+        self.event.clear()
+        self.event.wait()
+
+    def begin_sample_sequence(
+        self,
+        xy_coordinates: list[tuple],
+        names: list[str],
+        wait_time_between_samples_s: int = 1,
+    ):
+        self.home()
+        self.wait_for_completion()
+
+        time.sleep(wait_time_between_samples_s)
+
+
+def gerdaCNC_MoveTo(
+    controller: GerdaCNCController, x: int, y: int, z: int, home_first: bool = False
+):
+    pass
+
+
+def gerdaCNC_InitialiseConnectionIfPossible() -> None:
+    """Initialises the gerda CNC serial connection if possible / if it is connected"""
+    global gerdaCNC
+    if gerdaCNC == None:
+        # gerdaCNC = None is set near top of main(). if it equals None, it means it still hasn't been initialised.
+        gerdaCNC = GerdaCNCController()
+    else:
+        pass
+        # already connected
+
+
+def gerdaCNC_Home_clicked() -> None:
+    """on click function for home button for gerda ui"""
+    if gerdaCNC != None:
+        gerdaCNC.home()
+    else:
+        printAndLog(
+            "ERROR: GeRDA CNC Serial Connection has not been initialised, cannot Home.",
+            "ERROR",
+        )
+
+
+def gerdaCNC_GetCurrentPosition_clicked() -> None:
+    """on click function for get pos for gerda ui"""
+    if gerdaCNC != None:
+        position_response_list = gerdaCNC.get_current_position
+        printAndLog(position_response_list)  # TODO fix this for actual coords.
+    else:
+        printAndLog(
+            "ERROR: GeRDA CNC Serial Connection has not been initialised, cannot Get Current Position.",
+            "ERROR",
+        )
+
+
+def gerdaCNC_HelpMe_clicked() -> None:
+    """on click function for HELP ME in gerda ui. supposed to provide description of what gerda is and does."""
+    messagebox.showinfo(
+        "GeRDA Help",
+        "GeRDA stands for 'GEochemical Research and Documentation Assistant'. It is a CNC-platform-based system designed by MeffaLab and Lab127. S1Control can be installed on the Raspberry Pi SBC that controls GeRDA and used instead of the standard UI. This is achieved by interfacing directly with GeRDA's CNC control board. For this to work, the CNC controller USB cable must be connected to /dev/ttyUSB0 on the Pi. \n\n This functionality is a work in progress. Contact ZH@PSS for assistance.",
+    )
+
+
 # CTK appearance mode switcher
 def ctk_change_appearance_mode_event(new_appearance_mode: str):
     ctk.set_appearance_mode(new_appearance_mode)
@@ -3408,8 +3104,8 @@ def ctk_change_appearance_mode_event(new_appearance_mode: str):
     global plotgridColour
     match new_appearance_mode:
         case "dark":
-            plottoolbarColour = "#4a4a4a"
-            treeviewColour_bg = "#4a4a4a"
+            plottoolbarColour = "#333333"  # "#4a4a4a"
+            treeviewColour_bg = "#333333"  # "#4a4a4a"
             plotbgColour = "#414141"
             plottextColour = WHITEISH
             plotgridColour = "#666666"
@@ -3500,6 +3196,8 @@ def setPlotColours():
     spectratoolbar._message_label.config(background=plottoolbarColour)
     for child in spectratoolbar.winfo_children():
         child.config(background=plottoolbarColour)
+    spectratoolbar.update()
+    spectracanvas.draw_idle()
 
 
 def onClosing():
@@ -4422,6 +4120,7 @@ if __name__ == "__main__":
     # get args if any
     # lightweight mode defaults to false
     lightweight_mode_requested = False
+    logFileName = ""
     if len(sys.argv) > 1:
         # print(f'Running S1Control with argument: {sys.argv[1]}')
         if sys.argv[1] in ["lightweight", "l", "L", "lite"]:
@@ -4461,7 +4160,7 @@ if __name__ == "__main__":
     # gui.bind("<Configure>", window_on_configure)
     gui.title("S1Control")
     gui.geometry("+5+5")
-
+    printAndLog("asdasd")
     # print(f"scaling={ctk.ScalingTracker.get_window_scaling(gui)}")
     # # trying to scale ttk widgets properly with dpi changes in windows
     # if sys.platform.startswith("win"):
@@ -4616,12 +4315,12 @@ if __name__ == "__main__":
     # Modify the font of the headings
     guiStyle.configure("Treeview.Heading", font=jbm09B)
 
-    plotCTKColour = ("#dbdbdb", "#4a4a4a")
+    plotCTKColour = ("#dbdbdb", "#333333")  # ("#dbdbdb", "#4a4a4a")
 
     match ctk.get_appearance_mode():
         case "Dark":
-            plottoolbarColour = "#4a4a4a"
-            treeviewColour_bg = "#4a4a4a"
+            plottoolbarColour = "#333333"  # "#4a4a4a"
+            treeviewColour_bg = "#333333"  # "#4a4a4a"
             plotbgColour = "#414141"
             plottextColour = WHITEISH
             plotgridColour = "#666666"
@@ -5132,6 +4831,10 @@ if __name__ == "__main__":
     XRF_IP_USB = "192.168.137.139"
     XRF_PORT_USB = 55204  # 55204
 
+    # CONNECTION STUFF FOR GeRDA CNC
+    gerdaCNC: GerdaCNCController = None
+    gerda_sample_list = None
+
     # CONNECTION DETAILS FOR WIFI  (Not Recommended - Also, DHCP will cause IP to change. Port may change as well?) Wifi is unreliable and prone to massive packet loss and delayed commands/info transmit.
     XRF_IP_WIFI = "192.168.153.167"  # '192.168.153.167:55101' found to work for ruffo when on phone hotspot network. both values may change depending on network settings?
     XRF_PORT_WIFI = 55101
@@ -5490,6 +5193,7 @@ if __name__ == "__main__":
     ctrltabview.add("Assay Controls")
     ctrltabview.add("Instrument")
     ctrltabview.add("Options")
+    ctrltabview.add("GeRDA")
     ctrltabview.add("About")
     ctrltabview.tab("Assay Controls").grid_columnconfigure(0, weight=1)
     ctrltabview.tab("Instrument").grid_columnconfigure(0, weight=1)
@@ -5644,6 +5348,44 @@ if __name__ == "__main__":
     )
 
     customspectrumconfigframe.grid_remove()
+
+    # GeRDA Section
+    button_gerda_initialise = ctk.CTkButton(
+        ctrltabview.tab("GeRDA"),
+        text="Connect to GeRDA CNC Controller",
+        command=gerdaCNC_InitialiseConnectionIfPossible,
+        font=ctk_jbm12B,
+    )
+    button_gerda_initialise.grid(
+        row=0, column=0, columnspan=1, padx=4, pady=4, sticky=tk.NSEW
+    )
+    button_gerda_home = ctk.CTkButton(
+        ctrltabview.tab("GeRDA"),
+        text="CNC: Home",
+        command=gerdaCNC_Home_clicked,
+        font=ctk_jbm12B,
+    )
+    button_gerda_home.grid(
+        row=1, column=0, columnspan=1, padx=4, pady=4, sticky=tk.NSEW
+    )
+    button_gerda_getcurrentpos = ctk.CTkButton(
+        ctrltabview.tab("GeRDA"),
+        text="CNC: Get Current Position",
+        command=gerdaCNC_GetCurrentPosition_clicked,
+        font=ctk_jbm12B,
+    )
+    button_gerda_getcurrentpos.grid(
+        row=2, column=0, columnspan=1, padx=4, pady=4, sticky=tk.NSEW
+    )
+    button_gerda_helpme = ctk.CTkButton(
+        ctrltabview.tab("GeRDA"),
+        text="HELP",
+        command=gerdaCNC_HelpMe_clicked,
+        font=ctk_jbm12B,
+    )
+    button_gerda_helpme.grid(
+        row=3, column=0, columnspan=1, padx=4, pady=4, sticky=tk.NSEW
+    )
 
     # About Section
     about_blurb1 = ctk.CTkLabel(
@@ -6338,8 +6080,6 @@ if __name__ == "__main__":
     resultsTable.configure(yscrollcommand=resultsTableScrollbarY.set)
 
     tables.append(resultsTable)
-
-    logFileName = ""
 
     # Misc Keybindings a
     gui.bind("<Control-Shift-L>", checkbox_enabledarkmode.toggle)
