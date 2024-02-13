@@ -1,0 +1,5 @@
+﻿ScanNumber,Name/Note,XPosition(mm),YPosition(mm),Illumination(optional),Time(sec)(optional)
+1,SiO2,42,70,,
+2,OREAS45d,42,105,,
+3,OREAS461,42,140,,
+4,OREAS148,42,175,,

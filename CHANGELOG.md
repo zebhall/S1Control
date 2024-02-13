@@ -1,5 +1,22 @@
 # S1Control Changelog 
 
+## v1.0.0 - 2024/02/13 - MAJOR UPDATE - GeRDA/CNC System Integration
+ - Implemented GeRDA / CNC Platform functionality for Sample Sequences, Sampling Jobs, and Calibrations.
+    - The GeRDA Controls can now be accessed on the 'GeRDA' tab of the action menu in the top-left of the UI.
+    - The software can be used to control the CNC-based GeRDA system in conjunction with an instrument if both are connected.
+    - At this point, this functionality is designed to run onboard the Raspberry Pi 3b microcomputer inside the GeRDA control box. It will be expanded in future to allow control from any computer connected to the CNC control board and Instrument. 
+    - Currently, only the Titan's coordinate offsets are programmed in, so the Tracer is currently not supported for this mode.
+    - To run samples with GeRDA using S1Control, First click on the 'Connect to CNC Controller' button. When connection is sucessful, the other functions become available.
+    - The system is designed to take in a CSV-format 'Sample Sequence CSV'. This is a CSV File with the following Headers: ``"ScanNumber", "Name/Note", "XPosition(mm)", "YPosition(mm)", "Illumination(optional)", "Time(sec)(optional)"``. An example file is included for reference. The "Illumination" and "Time" columns can be left blank and the instrument will instead use the normal selected application for analysis. The Coordinates for standard sampling tray positions A->J are also included for reference in 'gerda_spacers_coords_for_sampling.csv'.
+    - Additionally, about a million other things too lengthy to list here.
+- The Sanity-checking functionality has been updated to include checks for 'null' spectra: i.e, spectra with only a zero-peak. This is to allow for error-checking during sample sequences.
+- The software will now try to re-establish dropped connections for a moment before panicking.
+- Improved handling of Custom Spectrum mode analyses to better integrate with system.
+- Updated some status flag logic to better gauge when the instrument is busy scanning.
+- X-ray lines data was shifted to the element_string_lists.py file for cleanliness' sake.
+- Included script file 'Rename-PDZ-using-amended-S1Control-Results-csv.py' to allow for auto-renaming of PDZ files to their sample names. This will be updated in future to be integrated into S1Control.
+
+
 ## v0.9.6 - 2024/01/22
  - Implemented near-complete backend for GeRDA CNC System control for quasi-run-order and sample run functionality.
     - Class-based approaches for GerdaCNCController, GerdaSampleInfo, and GerdaSampleList (made up of GerdaSampleInfo instances).

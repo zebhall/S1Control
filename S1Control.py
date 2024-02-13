@@ -1,6 +1,6 @@
 # S1Control by ZH for PSS
-versionNum = "v0.9.6"  # v0.9.6 was the first GeRDA-control version
-versionDate = "2024/01/22"
+versionNum = "v1.0.0"  # v0.9.6 was the first GeRDA-control version
+versionDate = "2024/02/13"
 
 import os
 import sys
@@ -34,6 +34,7 @@ from element_string_lists import (
     elementstr_symbolsonly,
     elementstr_namesonly,
     elementstr_symbolswithzinbrackets,
+    all_xray_lines,
 )
 
 
@@ -44,7 +45,9 @@ class Assay:
     time_completed: str  # Time str showing time assay was completed. format HH:mm:ss
     time_elapsed: str  # Actual elapsed time for Assay (finish time minus start time). from Start pressed to assay completed. typically = (time_total_set + 5n), where n is number of phases
     time_total_set: int  # Total num seconds set for the analysis, i.e. sum of all set phase lengths. (e.g. for 3-phase analysis set to 20s per phase, would equal 60)
-    cal_application: str  # Calibration Application used (e.g. GeoExploration, REE_IDX, etc)
+    cal_application: (
+        str  # Calibration Application used (e.g. GeoExploration, REE_IDX, etc)
+    )
     cal_method: str  # Method of the calibration application (e.g. Oxide3Phase for GeoExploration)
     results: pd.DataFrame
     spectra: list
@@ -144,6 +147,8 @@ def instrument_StartAssay(
     global spectra
     global assay_catalogue_num
     global assay_time_total_set_seconds
+    global instr_assayisrunning
+    instr_assayisrunning = True
     printAndLog(f"Starting Assay # {str(assay_catalogue_num).zfill(4)}", "INFO")
     unselectAllAssays()
     clearCurrentSpectra()
@@ -156,8 +161,15 @@ def instrument_StartAssay(
         sendCommand(xrf, bruker_command_assaystart)
 
     else:
+        # if customassay, then make ui follow along.
+        applicationselected_stringvar.set("Custom Spectrum")
+        # clear and then fill custom assay duration box with
+        customspectrum_duration_entry.delete(0, -1)
+        customspectrum_duration_entry.insert(0, str(customassay_duration))
+
+        _no = "No"
         printAndLog(
-            f"Spectrum-Only Assay Started: ({customassay_voltage:.1f}kV {customassay_current:.1f}uA, {customassay_filter} Filter.)"
+            f"Spectrum-Only Assay Started: ({customassay_voltage:.1f}kV {customassay_current:.1f}uA, {customassay_filter if customassay_filter else _no} Filter)"
         )
         # custom spectrum assay start, with params. assuming:
         customassay_backscatterlimit: int = 0
@@ -175,7 +187,9 @@ def instrument_StartAssay(
 
 def instrument_StopAssay():
     global instr_assayrepeatsleft
+    global instr_assayisrunning
     instr_assayrepeatsleft = 0
+    instr_assayisrunning = False
     sendCommand(xrf, bruker_command_assaystop)
 
 
@@ -310,59 +324,150 @@ def printAndLog(data, logbox_colour_tag="BASIC"):
     if logFileName != "":
         # print(data)
         # Check for validity of logbox colour tag value. if invalid, set to default.
-        if logbox_colour_tag not in ["ERROR", "WARNING", "INFO", "BASIC"]:
+        if logbox_colour_tag not in ["ERROR", "WARNING", "INFO", "BASIC", "GERDA"]:
             logbox_colour_tag = "BASIC"
+
         with open(logFilePath, "a", encoding="utf-16") as logFile:
-            logbox.configure(state="normal")
+            logbox_msg: str = ""
+            # logbox.configure(state="normal")
             logFile.write(time.strftime("%H:%M:%S", time.localtime()))
             logFile.write("\t")
             if type(data) is dict:
                 logFile.write(json.dumps(data))
-                logbox.insert("end", json.dumps(data), logbox_colour_tag)
+                logbox_msg += json.dumps(data)
             elif type(data) is str:
                 logFile.write(data)
-                if "ERROR" in data:
-                    logbox.insert("end", data, "ERROR")
-                elif "WARNING" in data:
-                    logbox.insert("end", data, "WARNING")
-                else:
-                    logbox.insert("end", data, logbox_colour_tag)
+                if (
+                    "GERDA" in data.upper()
+                    or "CNC " in data.upper()
+                    or "CNC:" in data.upper()
+                ) and logbox_colour_tag == "BASIC":
+                    logbox_colour_tag = "GERDA"
+                elif "WARNING" in data and logbox_colour_tag == "BASIC":
+                    logbox_colour_tag = "WARNING"
+                elif "ERROR" in data and logbox_colour_tag == "BASIC":
+                    logbox_colour_tag = "ERROR"
+                logbox_msg += data
             elif type(data) is pd.DataFrame:
                 # Because results are printed normally to resultsbox, this should now print results table to log but NOT console.
                 logFile.write(data.to_string(index=False).replace("\n", "\n\t\t"))
                 # logbox.insert('end', data.to_string(index = False))
                 if "Energy (keV)" in data.columns:
                     # If df contains energy column (i.e. is from peak ID, not results), then print to logbox.
-                    logbox.insert("end", data.to_string(index=False), "INFO")
+                    logbox_msg += data.to_string(index=False)
+                    logbox_colour_tag = "INFO"
                 elif "Grade" in data.columns:  # grade library results (*alloys etc*)
-                    logbox.insert("end", data.to_string(index=False), "INFO")
+                    logbox_msg += data.to_string(index=False)
+                    logbox_colour_tag = "INFO"
                 else:  # Else, df is probably results, so don't print to logbox.
-                    logbox.insert(
-                        "end", "Assay Results written to log file.", logbox_colour_tag
-                    )
+                    logbox_msg += "Assay Results written to log file."
             elif type(data) is list:
                 listastext = ", ".join(str(e) for e in data)
                 logFile.write(f"[{listastext}]")
-                logbox.insert("end", (f"[{listastext}]"), logbox_colour_tag)
+                logbox_msg += f"[{listastext}]"
             else:
                 try:
                     logFile.write(data)
-                    logbox.insert("end", data, logbox_colour_tag)
-                except:
+                except Exception as e:
                     logFile.write(
-                        f"ERROR: Data type {type(data)} unable to be written to log."
+                        f"ERROR: Data type {type(data)} unable to be written to log file. ({e})"
                     )
+                try:
+                    logbox.insert("end", data, logbox_colour_tag)
+                except Exception as e:
                     logbox.insert(
                         "end",
-                        (f"ERROR: Data type {type(data)} unable to be written to log."),
+                        (
+                            f"ERROR: Data type {type(data)} unable to be written to log box. ({e})"
+                        ),
                         "ERROR",
                     )
+                    print(f"(Unabled to be written to log box): {data}")
             logFile.write("\n")
-            logbox.insert("end", "\n")
+            logbox_msg += "\n"
+            logbox.configure(state="normal")
+            logbox.insert("end", logbox_msg, logbox_colour_tag)
+            # logbox.insert("end", "\n")
             logbox.see("end")
             logbox.configure(state="disabled")
     else:
         print(f"(Logfile/Logbox uninitialised) Tried to print: {data}")
+
+
+# def printAndLog_OLD(data, logbox_colour_tag="BASIC"):
+#     """prints data to UI logbox and txt log file. logbox_colour_tag can be:
+
+#     'ERROR' (red), 'WARNING' (yellow/orange), 'INFO' (blue), or 'BASIC' (white).
+
+#     This colour selection may be overidden if the message contains 'ERROR' or 'WARNING'
+#     """
+
+#     if logFileName != "":
+#         # print(data)
+#         # Check for validity of logbox colour tag value. if invalid, set to default.
+#         if logbox_colour_tag not in ["ERROR", "WARNING", "INFO", "BASIC", "GERDA"]:
+#             logbox_colour_tag = "BASIC"
+#         with open(logFilePath, "a", encoding="utf-16") as logFile:
+#             logbox.configure(state="normal")
+#             logFile.write(time.strftime("%H:%M:%S", time.localtime()))
+#             logFile.write("\t")
+#             if type(data) is dict:
+#                 logFile.write(json.dumps(data))
+#                 logbox.insert("end", json.dumps(data), logbox_colour_tag)
+#             elif type(data) is str:
+#                 logFile.write(data)
+#                 if "ERROR" in data:
+#                     logbox_colour_tag = "ERROR"
+#                 elif "WARNING" in data:
+#                     logbox_colour_tag = "WARNING"
+#                 elif (
+#                     "GERDA" in data.upper()
+#                     or "CNC " in data.upper()
+#                     or "CNC:" in data.upper()
+#                 ):
+#                     logbox_colour_tag = "GERDA"
+#                 logbox.insert("end", data, logbox_colour_tag)
+#             elif type(data) is pd.DataFrame:
+#                 # Because results are printed normally to resultsbox, this should now print results table to log but NOT console.
+#                 logFile.write(data.to_string(index=False).replace("\n", "\n\t\t"))
+#                 # logbox.insert('end', data.to_string(index = False))
+#                 if "Energy (keV)" in data.columns:
+#                     # If df contains energy column (i.e. is from peak ID, not results), then print to logbox.
+#                     logbox.insert("end", data.to_string(index=False), "INFO")
+#                 elif "Grade" in data.columns:  # grade library results (*alloys etc*)
+#                     logbox.insert("end", data.to_string(index=False), "INFO")
+#                 else:  # Else, df is probably results, so don't print to logbox.
+#                     logbox.insert(
+#                         "end", "Assay Results written to log file.", logbox_colour_tag
+#                     )
+#             elif type(data) is list:
+#                 listastext = ", ".join(str(e) for e in data)
+#                 logFile.write(f"[{listastext}]")
+#                 logbox.insert("end", (f"[{listastext}]"), logbox_colour_tag)
+#             else:
+#                 try:
+#                     logFile.write(data)
+#                 except Exception as e:
+#                     logFile.write(
+#                         f"ERROR: Data type {type(data)} unable to be written to log file. ({e})"
+#                     )
+#                 try:
+#                     logbox.insert("end", data, logbox_colour_tag)
+#                 except Exception as e:
+#                     logbox.insert(
+#                         "end",
+#                         (
+#                             f"ERROR: Data type {type(data)} unable to be written to log box. ({e})"
+#                         ),
+#                         "ERROR",
+#                     )
+#                     print(f"(Unabled to be written to log box): {data}")
+#             logFile.write("\n")
+#             logbox.insert("end", "\n")
+#             logbox.see("end")
+#             logbox.configure(state="disabled")
+#     else:
+#         print(f"(Logfile/Logbox uninitialised) Tried to print: {data}")
 
 
 def sendCommand(s, command):
@@ -546,9 +651,10 @@ def notifyAllAssaysComplete(number_completed: int):
                 timeout=10,
             )
         except:
-            printAndLog(
-                "Minor UI Error: Assays complete notification was unable to execute. This is likely due to plyer/windows jank."
-            )
+            pass
+            # printAndLog(
+            #     "Minor UI Error: Assays complete notification was unable to execute. This is likely due to plyer/windows jank."
+            # )
 
 
 def initialiseLogFile():
@@ -661,8 +767,13 @@ def xrfListenLoopThread_Check():
     if listen_thread.is_alive():
         gui.after(20, xrfListenLoopThread_Check)
     else:
-        printAndLog("ERROR: XRF listen loop broke", "ERROR")
-        raise SystemExit(0)
+        printAndLog("ERROR: XRF listen loop broke. Attempting to Restart...", "ERROR")
+        try:
+            xrfListenLoopThread_Start(None)
+            printAndLog("Listen Loop successfully restarted.")
+        except:
+            printAndLog("Unable to restart listen loop.")
+            # raise SystemExit(0)
 
 
 # TESTING OUT LISTEN LOOP PROCESS instead of thread
@@ -712,7 +823,7 @@ def xrfListenLoop():
     global instr_currentphaselength_s
     global instr_assayrepeatsleft
     global instr_assayrepeatschosenforcurrentrun
-    global instr_approxsingleassaytime
+    global instr_estimatedrealisticassaytime
     global instr_applicationspresent
     global instr_filterspresent
     global instr_illuminations
@@ -782,9 +893,11 @@ def xrfListenLoop():
                 if statusparam == "Assay" and statustext == "Start":
                     instr_currentphase = 0
                     instr_currentphaselength_s = int(phasedurations[instr_currentphase])
-                    assay_time_total_set_seconds = 0
-                    for dur in phasedurations:
-                        assay_time_total_set_seconds += int(dur)
+                    if instr_currentapplication != "Custom Spectrum":
+                        # only need to calculate assay total set time if it ISN'T a custom spectrum assay. if it is, it is set in startAssay()
+                        assay_time_total_set_seconds = 0
+                        for dur in phasedurations:
+                            assay_time_total_set_seconds += int(dur)
                     assay_start_time = time.time()
                     instr_assayisrunning = True
                     assay_phase_spectrumpacketcounter = 0
@@ -1325,11 +1438,10 @@ def xrfListenLoop():
 
                 instr_currentphases = list(zip(phasenums, phasenames, phasedurations))
                 instr_phasecount = len(instr_currentphases)
-
-                instr_approxsingleassaytime = 0
+                instr_estimatedrealisticassaytime = 0
                 for dur in phasedurations:
-                    instr_approxsingleassaytime += int(dur) + 5
                     # add 4 seconds per phase for general slowness and processing time on S1 titan, Tracer, CTX.
+                    instr_estimatedrealisticassaytime += int(dur) + 4
 
                 # printAndLog(f'Current Phases: {instr_currentphases}')
                 ui_UpdateCurrentAppAndPhases()
@@ -2361,6 +2473,7 @@ def sanityCheckSpectrum_SumMethod(
     This is required because of a bug in Bruker pXRF instrument software, sometimes causing phases of an assay to use an incorrect voltage.
     Returns TRUE if sanity check passed, return FALSE if not.
     An UPDATED version of the sanityCheckSpectrum function that should be less prone to false positives, and faster.
+    NOW ALSO CHECKS FOR NULL SPECTRA, i.e. zero-peak only.
     """
     counts_sum = np.sum(spectrum_counts)
     two_percent_counts_threshold = counts_sum * 0.02
@@ -2370,18 +2483,23 @@ def sanityCheckSpectrum_SumMethod(
         if sum_counting > two_percent_counts_threshold:
             abovethreshold_index = i
             break
-    if spectrum_energies[abovethreshold_index] < source_voltage_in_kV:
+    if spectrum_energies[abovethreshold_index] > source_voltage_in_kV:
         # this point should be LOWER than source voltage always.
-        # printAndLog(
-        #     f"PASSED Sanity Check Details: The 2%-total-counts threshold energy ({spectrum_energies[abovethreshold_index]:.2f}kV) was LOWER than the Reported source voltage ({source_voltage_in_kV}kV).""
-        # )
-        return True
-    else:
         printAndLog(
             f"FAILED Sanity Check Details: The 2%-total-counts threshold energy ({spectrum_energies[abovethreshold_index]:.2f}kV) was HIGHER than the Reported source voltage ({source_voltage_in_kV}kV).",
             "WARNING",
         )
         return False
+    elif spectrum_energies[abovethreshold_index] < 1:
+        # if the 2% threshold is below 1, then spectra is empty/null/zero-peak only.
+        printAndLog(
+            f"FAILED Sanity Check Details: The 2%-total-counts threshold energy ({spectrum_energies[abovethreshold_index]:.2f}kV) was LOWER than 1 keV. This occurs when the spectrum is null (i.e. the only peak is the zero-peak.)",
+            "WARNING",
+        )
+        return False
+    else:
+        # spectum passed checks
+        return True
 
 
 def clearResultsfromTable():  # Clears all data from results table
@@ -2464,14 +2582,13 @@ def startAssayClicked():
         else:
             instrument_StartAssay()
 
-        approx_secs_total = instr_assayrepeatsleft * instr_approxsingleassaytime
+        approx_secs_total = instr_assayrepeatsleft * instr_estimatedrealisticassaytime
         approx_mins = approx_secs_total // 60
         approx_secs = approx_secs_total % 60
         printAndLog(
             f"Approximate time until completion: {approx_mins}:{approx_secs:02}"
         )
 
-        instr_assayisrunning = True
         # button_assay_text.set('\u2BC0 Stop Assay')
         button_assay.configure(
             text=getAssayPlurality("stop"),
@@ -2824,7 +2941,7 @@ def customSpectrumIlluminationChosen(choice):
 
 
 @dataclass
-class GerdaSingleSampleInfo:
+class GerdaSample:
     """DataClass to contain all info and data for single Gerda Sample.
     scan_number:int
     name_or_note:str
@@ -2862,15 +2979,15 @@ class GerdaSingleSampleInfo:
             self.optional_time_in_s = None
 
 
-class GerdaSampleList:
+class GerdaSampleSequence:
     """Class to initialise and generate co-ordinate - sample name pairs.
     input should be CSV file of following format: first row HEADERS, info starts on second row.
-    Col A: # (1->)
-    Col B: Name of sample / desired pdz file name (will be stored in notes field, then later used to rename pdz files?)
-    Col C: x coordinate on gerda (mm)
-    Col D: y coordinate on gerda (mm)
-    Col E: Illumination Name (optional, if missing will use whatever application is currently selected.)
-    Col F: Time (s) (optional, IF COLUMN E SPECIFIES ILLUMINATION NAME IT WILL DEFAULT TO 60s.)
+    Col A: "ScanNumber" (1->)
+    Col B: "Name/Note" (Name of sample / desired pdz file name (will be stored in notes field, then later used to rename pdz files?))
+    Col C: "XPosition(mm)" (x coordinate on gerda (mm))
+    Col D: "YPosition(mm)" (y coordinate on gerda (mm))
+    Col E: "Illumination(optional)" (Illumination Name (optional, if missing will use whatever application is currently selected.))
+    Col F: "Time(sec)(optional)" (Time (s) (optional, IF COLUMN E SPECIFIES ILLUMINATION NAME IT WILL DEFAULT TO 60s.))
     """
 
     def __init__(self, csv_file_path: str = None) -> None:
@@ -2883,13 +3000,13 @@ class GerdaSampleList:
             "Illumination(optional)",
             "Time(sec)(optional)",
         ]
-        self.listofsampleobjects: list[GerdaSingleSampleInfo] = []
+        self.listofsampleobjects: list[GerdaSample] = []
         try:
             # open csv and iterate over rows
-            with open(csv_file_path, "r") as csv_file:
+            with open(csv_file_path, "r", encoding="utf-8-sig") as csv_file:
                 self.csv_reader = csv.reader(csv_file)
                 self.headers = next(self.csv_reader)
-                if self.headers == self.known_good_headers:
+                if all(header in self.headers for header in self.known_good_headers):
                     # get indexes (to avoid mistakes after editing/expanding headers)
                     self.colindex_scannumber = self.headers.index("ScanNumber")
                     self.colindex_namenote = self.headers.index("Name/Note")
@@ -2903,7 +3020,7 @@ class GerdaSampleList:
                         # if row is empty, ignore
                         if row:
                             self.listofsampleobjects.append(
-                                GerdaSingleSampleInfo(
+                                GerdaSample(
                                     scan_number=int(row[self.colindex_scannumber]),
                                     name_or_note=row[self.colindex_namenote],
                                     x_position=int(row[self.colindex_xpos]),
@@ -2918,40 +3035,21 @@ class GerdaSampleList:
                             print(row)
 
                     printAndLog(f"Sample List CSV File successfully processed.", "INFO")
+                    # self.estimated_total_duration_s = 0
+                    # for sample in self.listofsampleobjects:
+                    #     self.estimated_total_duration_s +=
                     self.init_sucessful = True
                     self.listofsamplenames = [
                         sample.name_or_note for sample in self.listofsampleobjects
                     ]
                 else:
                     printAndLog(
-                        f"ERROR: Sample List CSV: Headers do not match known headers: correct format = {self.known_good_headers}",
+                        f"ERROR: Sample List CSV: Headers do not match known headers: (correct format = {self.known_good_headers}, your headers = {self.headers}",
                         "ERROR",
                     )
         except Exception as e:
             # Handle exceptions (e.g., file not found, invalid CSV format)
             printAndLog(f"ERROR: Sample List CSV: {e}", "ERROR")
-
-
-def loadGerdaSampleListCSV_clicked() -> None:
-    """called when 'load gerda sample list csv' button is clicked."""
-    global gerda_sample_list
-    gerda_sample_list = None
-    # prompt user to browse and open csv file
-    file_path = ctk.filedialog.askopenfilename(filetypes=[("CSV Files", "*.csv")])
-    # check if file selected
-    if file_path:
-        gerda_sample_list = GerdaSampleList(csv_file_path=file_path)
-        if gerda_sample_list.init_sucessful:
-            printAndLog(
-                f"CSV Sample List Loaded successfully. Total Scans: {len(gerda_sample_list)}",
-                "INFO",
-            )
-            printAndLog(f"{gerda_sample_list.listofsamplenames}")
-            # if csv was processed properly, then continue.
-            # update ui stuff to recognise loaded sample list
-            pass
-    else:
-        printAndLog("Sample List: No CSV File selected.", "WARNING")
 
 
 class GerdaCNCController:
@@ -2975,81 +3073,357 @@ class GerdaCNCController:
             printAndLog(f"ERROR CONNECTING TO CNC: An unexpected error occurred: {e}")
             self.cnc_serial = None
 
-        self.lock = threading.Lock()  # apparently ensures thread safety
-        self.event = threading.Event()  # for synchronization
-        self.thread = None
-        self.last_command_response = (
-            []
-        )  # store the last response lines for threaded shit
+        # store the last response lines for threaded shit
+        self.last_command_response: list = []
+        # store the last moved-to position x and y
+        self.instrument_last_moved_to_xyz_position: tuple = (0, 0, 0)
+        # get serial num letter for determining xyz offsets per instrument
+        match instr_model:
+            case "Titan":
+                # TODO: set ACTUAL titan xyz offsets
+                self.instr_offset_x: int = 37
+                self.instr_offset_y: int = 65
+                self.instr_offset_z: int = 62
+                printAndLog(
+                    f"CNC Co-ordinate offsets set for instrument type: {instr_model} (x={self.instr_offset_x},y={self.instr_offset_y},z={self.instr_offset_x})"
+                )
+            case "Tracer":
+                # TODO: set ACTUAL tracer xyz offsets
+                self.instr_offset_x: int = 39
+                self.instr_offset_y: int = 75
+                self.instr_offset_z: int = 60
+                printAndLog(
+                    f"CNC Co-ordinate offsets set for instrument type: {instr_model} (x={self.instr_offset_x},y={self.instr_offset_y},z={self.instr_offset_x})"
+                )
+            case _:
+                self.instr_offset_x: int = 0
+                self.instr_offset_y: int = 0
+                self.instr_offset_z: int = 0
+                printAndLog(
+                    f"CNC Co-ordinate offsets UNABLE to be set for unknown instrument type: {instr_model} (x={self.instr_offset_x},y={self.instr_offset_y},z={self.instr_offset_x})",
+                    "ERROR",
+                )
+        self.sample_z_dist_from_origin = 130
+        self.halt_sample_sequence = False  # flag for stoppiong a sample sequence
+        # self.wait_time_between_samples_s = (
+        #     5  # number of seconds to pause between samples
+        # )
 
-    def send_command(self, command):
-        """DON'T CALL DIRECTLY OUTSIDE CLASS. MEANT TO BE USED BY THREADED SEND COMMAND. send command to GeRDA CNC control board. returns list containing all responses from cnc control board upon completion or error."""
-        with self.lock:
-            if self.cnc_serial != None:
-                self.cnc_serial.write((command + "\n").encode())
-                printAndLog(f"Sent CNC Command: '{command}'", "INFO")
-                # Read all available response lines until completed or error
-                response_lines = []
-                while True:
-                    response = self.cnc_serial.readline().decode().strip()
-                    printAndLog(f"CNC Repsonse: {response}")
-                    response_lines.append(response)
-                    if "error" in response.lower():
-                        printAndLog(f"CNC ERROR HAS OCCURRED!", "ERROR")
-                        break
-                    elif response == "ok":
-                        printAndLog(f"CNC Command completed successfully.", "INFO")
-                        break
-                self.last_command_response = response_lines
-                return response_lines
+    def send_command(self, command: str, be_quiet: bool = False):
+        """send command to GeRDA CNC control board. returns list containing all responses from cnc control board upon acknowledgment or error.
+        Note: This function will return immediately upon CNC acknowledging understanding of the command, or reporting an error in the command. It doesn't wait for the command to ACTUALLY complete.
+        `be_quiet=True` suppresses unimportant print messages.
+        """
+        if self.cnc_serial != None:
+            if command == "?":
+                # ? command doesn't need newline?
+                self.cnc_serial.write((command).encode())
             else:
-                printAndLog("ERROR: No GeRDA CNC Device Connected", "ERROR")
-                return None
+                self.cnc_serial.write((command + "\n").encode())
+            if not be_quiet:
+                printAndLog(f"Sent CNC Command: '{command}'", "INFO")
+            # Read all available response lines until completed or error
+            response_lines = []
+            while True:
+                response = self.cnc_serial.readline().decode().strip()
+                if not be_quiet:
+                    printAndLog(f"CNC Response: {response}")
+                response_lines.append(response)
+                if "error" in response.lower():
+                    printAndLog(
+                        f"CNC COMMAND ERROR HAS OCCURRED, command: '{command}', response: {response.lower()}",
+                        "ERROR",
+                    )
+                    break
+                elif response == "ok":
+                    if not be_quiet:
+                        printAndLog(f"CNC Command sent successfully.", "INFO")
+                    break
+                elif response and response[0] == "<" and response[-1] == ">":
+                    # status / currentpos response!
+                    if not be_quiet:
+                        printAndLog(f"CNC Status request sent successfully.", "INFO")
+                    break
+                time.sleep(0.05)
+            self.last_command_response = response_lines
+            # printAndLog(f"CNC Response: {response_lines}")
+            return response_lines
+        else:
+            printAndLog(
+                f"ERROR: No GeRDA CNC Device Connected, unable to send command '{command}'",
+                "ERROR",
+            )
+            return None
 
-    def send_command_in_thread(self, command):
-        if self.thread and self.thread.is_alive():
-            return  # A thread is already running, don't start another one
+    def wait_for_cnc_idle(self):
+        """checks the cnc's status twice per second and returns when instrument is idle."""
+        while True:
+            status, x, y, z = self.get_current_status_and_position()
+            if status == "Idle":
+                return
+            elif status == "Alarm":
+                printAndLog("CNC ALARM WHILE WAITING FOR IDLE!", "ERROR")
+            else:
+                time.sleep(0.5)
 
-        self.thread = threading.Thread(target=self.send_command, args=(command,))
-        self.thread.start()
+    def sleep_cnc(self, sleep_time):
+        printAndLog(f"CNC Sleeping for {sleep_time}s...")
+        time1 = time.time()
+        time.sleep(sleep_time)
+        time2 = time.time()
+        printAndLog(
+            f"CNC Awake. Resuming... (slept from {time1} to {time2}, total={time2-time1})"
+        )
 
-    def move_to(self, x: int, y: int, z: int):
-        """Send command to GeRDA CNC controller to move the head to coordinates x,y,z. (mm)"""
-        command = f"G0 X{x} Y{y} Z{z}"
-        self.send_command_in_thread(command)
+    def convert_normal_coords_to_offset_coords(self, x: int, y: int, z: int) -> tuple:
+        """takes normal coordinates as displayed by the CNC, and adjusts them to account for the offset of the instrument."""
+        x_adj = x - self.instr_offset_x
+        y_adj = y - self.instr_offset_y
+        z_adj = z - self.instr_offset_z
+        if (x_adj < 0) or (y_adj < 0) or (z_adj < 0):
+            printAndLog(
+                f"ERROR: offset-adjusted sample co-ordinates are past origin 0,0,0. (adjusted: {x_adj},{y_adj},{z_adj})"
+            )
+            # return origin coords for safety, and halt scan
 
-    def get_current_position(self):
-        self.send_command_in_thread("?")
-        self.wait_for_completion()
-        response = self.last_command_response
-        printAndLog(f"current position response: {response}")
+            return (5, 5, 5)
+        return (x_adj, y_adj, z_adj)
+
+    def move_instrument_to_xyz(
+        self,
+        x: int = None,
+        y: int = None,
+        z: int = None,
+        rapid_mode: bool = False,
+        speed: int = 2000,
+    ):
+        """Command GeRDA CNC controller to move the head to coordinates x,y,z. (mm). If x, y, or z are left out as args, the cnc won't move on that axis.
+        `rapid_mode=True` overrides speed and forces a G0 mode, which is rapid move.
+        `speed` is the feed rate in G1 (linear motion, default) mode. believe units are mm per minute? so 1000mm/min = 16.66 mm per second.
+        IMPORTANT: I BELIEVE THAT GERDA USES NEGATIVE COORDS FOR EVERYTHING?"""
+        # get last coords as temp variablies for lastmovedto var, in case not all coords change
+        (temp_x, temp_y, temp_z) = self.instrument_last_moved_to_xyz_position
+
+        if x is not None:
+            temp_x = x
+        if y is not None:
+            temp_y = y
+        if z is not None:
+            temp_z = z
+
+        # check coords and adjust for instrument offsets
+        x_adj, y_adj, z_adj = self.convert_normal_coords_to_offset_coords(
+            temp_x, temp_y, temp_z
+        )
+        # build gcode command, while converting normal coords to NEGATIVE coords for gerda controller bullshit.
+        if rapid_mode:
+            command = "G0"
+        else:
+            command = "G1"
+        command += f" X{x_adj * (-1)}"
+        command += f" Y{y_adj * (-1)}"
+        command += f" Z{z_adj * (-1)}"
+
+        if not rapid_mode:
+            # if in G1 mode, need to include speed/feedrate (mm/min)
+            command += f" F{speed}"
+        printAndLog(
+            f"{instr_model} moving to position: {(temp_x, temp_y, temp_z)}, at speed: {'RAPID' if rapid_mode else speed} (actual CNC co-ords (negative, incl offset) = {(x_adj, y_adj, z_adj)}))"
+        )
+        response = self.send_command(command)
+        self.instrument_last_moved_to_xyz_position = (temp_x, temp_y, temp_z)
         return response
+
+    def move_instrument_to_sample_safely(self, sample: GerdaSample):
+        """Function to move from one sample to the next safely, by moving up on z first, then across to next sample xy, then down onto sample z. AVOIDS DRAGGING. DOES NOT RETURN UNTIL MOVEMENT COMPLETE."""
+        sample_x = sample.x_position
+        sample_y = sample.y_position
+        sample_z = self.sample_z_dist_from_origin
+
+        # print(
+        #     f"{(sample_x, sample_y, sample_z)} == {self.instrument_last_moved_to_xyz_position}?"
+        # )
+        if (sample_x, sample_y, sample_z) == self.instrument_last_moved_to_xyz_position:
+            # if desired position and last moved position are the same, can do nothing.
+            # this is in case of run-order / custom spectrum useage, or multiple scans on sample sample (multiple GerdaSample objects with same position consecutively)
+            printAndLog("CNC: Already in position, no movement required.")
+            return
+        printAndLog(
+            f"CNC Moving safely to new sample {sample.name_or_note} @ {sample_x, sample_y, sample_z}, from {self.instrument_last_moved_to_xyz_position}"
+        )
+        printAndLog(f"CNC Z moving up")
+        self.move_instrument_to_xyz(z=(sample_z - 50), speed=800)
+        self.wait_for_cnc_idle()
+        printAndLog(f"CNC XY moving over new sample")
+        self.move_instrument_to_xyz(x=sample_x, y=sample_y, rapid_mode=True)
+        self.wait_for_cnc_idle()
+        printAndLog(f"CNC Z moving down onto sample")
+        self.move_instrument_to_xyz(z=sample_z, speed=800)
+        self.wait_for_cnc_idle()
+        return
+
+    def get_current_status_and_position(self) -> tuple:
+        """Returns tuple of format `(status())`"""
+        response = self.send_command("?", be_quiet=True)
+        status_msg_str: str = response[-1]  # bc response is list
+        # double-check that it's actually a status response
+        if status_msg_str[0] == "<" and status_msg_str[-1] == ">":
+            # example: <Idle|MPos:-5.000,-5.000,-5.000|FS:0,0|Ov:100,100,100>
+            status_msg_list = status_msg_str.strip("<>").split("|")
+            status: str = status_msg_list[
+                0
+            ]  # ALWAYS one of: Idle, Run, Hold, Jog, Alarm, Door, Check, Home, Sleep
+            mpos: str = status_msg_list[1].replace("MPos:", "")
+            mpos_x, mpos_y, mpos_z = mpos.split(",")
+
+            status_and_pos = (
+                status,
+                int(float(mpos_x)),
+                int(float(mpos_y)),
+                int(float(mpos_z)),
+            )
+        else:
+            status_and_pos = ("UNKNOWN", 0, 0, 0)
+        return status_and_pos
 
     def home(self):
-        response = self.send_command_in_thread("$H")
+        printAndLog("CNC Homing...")
+        response = self.send_command("$H")
+        self.instrument_last_moved_to_xyz_position = (0, 0, 0)
+        printAndLog("CNC Homing Complete.")
         return response
 
-    def wait_for_completion(self):
-        # Wait for the event to be set, means the current step has been completed
-        self.event.clear()
-        self.event.wait()
+    def wait_for_assay_completion(self):
+        """waits until it knows instr_assayisrunning == False."""
+        time.sleep(1)
+        printAndLog("GeRDA Waiting for Assay Completion...")
+        while instr_assayisrunning:
+            time.sleep(1)
+        return
 
-    def begin_sample_sequence(
+    def stop_sample_sequence_immediately(self):
+        self.halt_sample_sequence = True
+        instrument_StopAssay()
+        printAndLog("GeRDA Sample Sequence will halt immediately.")
+
+    def stop_sample_sequence_after_current_assay_complete(self):
+        self.halt_sample_sequence = True
+        printAndLog(
+            "GeRDA Sample Sequence will stop after completion of the current assay."
+        )
+
+    def sample_sequence(
         self,
-        xy_coordinates: list[tuple],
-        names: list[str],
-        wait_time_between_samples_s: int = 1,
+        sample_sequence: GerdaSampleSequence,
     ):
+        # disable start sample seq buttons and enable stop buttons
+        button_gerda_startsampleseq.configure(state="disabled")
+        button_gerda_stopsampleseq_immediate.configure(state="normal")
+        button_gerda_stopsampleseq_afterthis.configure(state="normal")
+        button_gerda_loadcsv.configure(state="disabled")
+
+        self.halt_sample_sequence = False
         self.home()
-        self.wait_for_completion()
 
-        time.sleep(wait_time_between_samples_s)
+        # self.current_sample_num: int = 1
+        # self.previous_sample_xy_position: tuple = (0, 0)
+        gerda_sampleseq_scanscompleted: int = 0
+        gerda_sampleseq_scanstotal: int = len(sample_sequence.listofsampleobjects)
+        progressbar_gerda_sampleseq.set(0)
+        for sample_obj in sample_sequence.listofsampleobjects:
+            # check if halt command has been given
+            if self.halt_sample_sequence:
+                printAndLog(
+                    f"CNC Instructed to Stop - Stopped before scanning sample # {sample_obj.scan_number} ({sample_obj.name_or_note})"
+                )
+                break
+            # main loop going over samples / scans to complete
+            printAndLog(f"CNC Moving to Sample: {sample_obj.name_or_note}")
+            self.move_instrument_to_sample_safely(sample_obj)
+            # check AGAIN if halt command has been given - in case faulty coordinates are given.
+            if self.halt_sample_sequence:
+                printAndLog(
+                    f"CNC Instructed to Stop - Stopped before scanning sample # {sample_obj.scan_number} ({sample_obj.name_or_note})"
+                )
+                break
+            # set "name" info field to be the name_or_note value from the sampleseq.
+            printAndLog(
+                f"GeRDA Setting Instrument Info-fields: Name={sample_obj.name_or_note}, X={sample_obj.x_position}, Y={sample_obj.y_position}"
+            )
 
+            infofield_msg = f'<Configure parameter="Edit Fields"><FieldList><Field type="Fixed"><Name>GeRDA_Sample_Name</Name><Value>{sample_obj.name_or_note}</Value></Field><Field type="Fixed"><Name>GeRDA_X</Name><Value>{sample_obj.x_position}</Value></Field><Field type="Fixed"><Name>GeRDA_Y</Name><Value>{sample_obj.y_position}</Value></Field></FieldList></Configure>'
+            sendCommand(xrf, infofield_msg)
+            field1_name_strvar.set("Name")
+            field1_val_strvar.set(sample_obj.name_or_note)
+            field2_name_strvar.set("X")
+            field2_val_strvar.set(sample_obj.x_position)
+            field3_name_strvar.set("Y")
+            field3_val_strvar.set(sample_obj.y_position)
+            # give it a sec to process?
+            time.sleep(0.2)
+            printAndLog(
+                f"Starting GeRDA Scan # {sample_obj.scan_number} ({gerda_sampleseq_scanscompleted+1}/{gerda_sampleseq_scanstotal})"
+            )
+            # get start time to compare later if scan completed fully.
+            scan_start_time = time.time()
+            if sample_obj.optional_illumination_name == None:
+                # if no illumination specified, use whatever application is selected and whatever phase timings are selected
+                instrument_StartAssay()
+            else:
+                applicationChoiceMade("Custom Spectrum")
+                # if illumination specified, get details of illumination and use it to start assay
+                illumination_obj = getIlluminationFromName(
+                    sample_obj.optional_illumination_name
+                )
+                if illumination_obj != None:
+                    instrument_StartAssay(
+                        customassay=True,
+                        customassay_voltage=illumination_obj.voltage,
+                        customassay_current=illumination_obj.current,
+                        customassay_filter=illumination_obj.filterposition,
+                        customassay_duration=sample_obj.optional_time_in_s,
+                    )
+                else:
+                    printAndLog(
+                        f"Custom Assay skipped due to invalid Illumination Name - '{sample_obj.optional_illumination_name}'"
+                    )
+            # wait for assay complete
+            self.wait_for_assay_completion()
 
-def gerdaCNC_MoveTo(
-    controller: GerdaCNCController, x: int, y: int, z: int, home_first: bool = False
-):
-    pass
+            # after assay completed, compare elapsed time to sum of phase times OR custom spectrum set time to ensure completion.
+            scan_completion_time = time.time()
+            scan_duration_s = scan_completion_time - scan_start_time
+            if sample_obj.optional_illumination_name == None:
+                scan_time_minimum_required = assay_time_total_set_seconds
+            else:
+                scan_time_minimum_required = sample_obj.optional_time_in_s
+            if scan_duration_s < scan_time_minimum_required:
+                # if scan was not as long as it should have been, throw error.
+                printAndLog(
+                    f"WARNING: GeRDA Scan # {sample_obj.scan_number} on Sample: {sample_obj.name_or_note} does not appear to have run for the correct duration. Actual duration={scan_duration_s:.2f}s, should be at least {scan_time_minimum_required}s.",
+                    "WARNING",
+                )
+
+            # get progress
+            gerda_sampleseq_scanscompleted += 1
+            printAndLog(
+                f"Completed GeRDA Scan # {sample_obj.scan_number} ({gerda_sampleseq_scanscompleted}/{gerda_sampleseq_scanstotal})"
+            )
+            progress_float = gerda_sampleseq_scanscompleted / gerda_sampleseq_scanstotal
+            if progress_float > 1:
+                progress_float = 1
+            progressbar_gerda_sampleseq.set(progress_float)
+            # after assay has completed.
+            self.sleep_cnc(sleep_time=wait_time_between_samples_intvar.get())
+            # then repeat!
+        # once all samples scanned,
+        # reconfigure relevant buttons now that process has stopped.
+        button_gerda_startsampleseq.configure(state="normal")
+        button_gerda_stopsampleseq_immediate.configure(state="disabled")
+        button_gerda_stopsampleseq_afterthis.configure(state="disabled")
+        button_gerda_loadcsv.configure(state="normal")
+        self.home()
+        printAndLog("GeRDA Sample Sequence Finished.")
 
 
 def gerdaCNC_InitialiseConnectionIfPossible() -> None:
@@ -3058,15 +3432,22 @@ def gerdaCNC_InitialiseConnectionIfPossible() -> None:
     if gerdaCNC == None:
         # gerdaCNC = None is set near top of main(). if it equals None, it means it still hasn't been initialised.
         gerdaCNC = GerdaCNCController()
+        # enable relevant ui buttons
+        button_gerda_debug.configure(state="normal")
+        button_gerda_loadcsv.configure(state="normal")
     else:
-        pass
+        if messagebox.askyesno(
+            title="Reconnect to GeRDA CNC",
+            message=f"Are you sure you would like to reinitialise the GeRDA CNC connection? This functionality has not been fully tested and may lead to strange behaviour. Restarting S1Control from scratch is highly reccommended.",
+        ):
+            gerdaCNC = GerdaCNCController()
         # already connected
 
 
 def gerdaCNC_Home_clicked() -> None:
     """on click function for home button for gerda ui"""
     if gerdaCNC != None:
-        gerdaCNC.home()
+        gerdaRunCommandInThread(gerdaCNC.home)
     else:
         printAndLog(
             "ERROR: GeRDA CNC Serial Connection has not been initialised, cannot Home.",
@@ -3077,8 +3458,9 @@ def gerdaCNC_Home_clicked() -> None:
 def gerdaCNC_GetCurrentPosition_clicked() -> None:
     """on click function for get pos for gerda ui"""
     if gerdaCNC != None:
-        position_response_list = gerdaCNC.get_current_position
-        printAndLog(position_response_list)  # TODO fix this for actual coords.
+        status, x, y, z = gerdaCNC.get_current_status_and_position()
+        printAndLog(f"CNC Status: {status}, {x=} {y=} {z=}")
+        # printAndLog(position_response_list)  # TODO fix this for actual coords.
     else:
         printAndLog(
             "ERROR: GeRDA CNC Serial Connection has not been initialised, cannot Get Current Position.",
@@ -3092,6 +3474,146 @@ def gerdaCNC_HelpMe_clicked() -> None:
         "GeRDA Help",
         "GeRDA stands for 'GEochemical Research and Documentation Assistant'. It is a CNC-platform-based system designed by MeffaLab and Lab127. S1Control can be installed on the Raspberry Pi SBC that controls GeRDA and used instead of the standard UI. This is achieved by interfacing directly with GeRDA's CNC control board. For this to work, the CNC controller USB cable must be connected to /dev/ttyUSB0 on the Pi. \n\n This functionality is a work in progress. Contact ZH@PSS for assistance.",
     )
+    try:
+        gerdaCNC.send_command("$$")
+        gerdaCNC.send_command("$#")
+    except:
+        pass
+
+
+def loadGerdaSampleListCSV_clicked() -> None:
+    """called when 'load gerda sample list csv' button is clicked."""
+    global gerda_sample_sequence
+    gerda_sample_sequence = None
+    # prompt user to browse and open csv file
+    file_path = ctk.filedialog.askopenfilename(filetypes=[("CSV Files", "*.csv")])
+    # check if file selected
+    if file_path:
+        gerda_sample_sequence = GerdaSampleSequence(csv_file_path=file_path)
+        if gerda_sample_sequence.init_sucessful:
+            # if csv was processed properly, then continue.
+            printAndLog(
+                f"CSV Sample List Loaded successfully. Total Scans: {len(gerda_sample_sequence.listofsamplenames)}",
+                "INFO",
+            )
+            # printAndLog(f"Sample List: {gerda_sample_sequence.listofsamplenames}")
+            button_gerda_startsampleseq.configure(state="normal")
+            # open edit info window once and then close to initialise notes
+            editInfoFieldsClicked()
+            gui.after(500, editInfoOnClosing)
+    else:
+        printAndLog("Sample List: No CSV File selected.", "WARNING")
+
+
+def gerdaCNC_StartSampleSequence_clicked() -> None:
+    global gerda_sample_sequence
+    if gerdaCNC == None:
+        printAndLog(
+            "ERROR: GeRDA CNC Serial Connection has not been initialised, cannot Start Sample Sequence.",
+            "ERROR",
+        )
+        return
+    elif gerda_sample_sequence == None:
+        printAndLog(
+            "ERROR: GeRDA Sample Sequence CSV has not been loaded, cannot Start.",
+            "ERROR",
+        )
+        return
+    else:
+        printAndLog("Attempting to Start GeRDA Sample Sequence...", "INFO")
+        sample_seq_list = gerda_sample_sequence
+        gerdaRunCommandInThread(gerdaCNC.sample_sequence, sample_seq_list)
+
+        # gerdaCNC.sample_sequence(
+        #     sample_sequence=gerda_sample_sequence, wait_time_between_samples_s=2
+        # )
+
+
+def gerdaCNC_StopSampleSequenceImmediate_clicked() -> None:
+    if gerdaCNC == None:
+        printAndLog(
+            "ERROR: GeRDA CNC Serial Connection has not been initialised, cannot Stop Sample Sequence.",
+            "ERROR",
+        )
+        return
+    elif gerda_sample_sequence == None:
+        printAndLog(
+            "ERROR: GeRDA Sample Sequence CSV has not been loaded, cannot Start.",
+            "ERROR",
+        )
+        return
+    else:
+        gerdaCNC.stop_sample_sequence_immediately()
+
+
+def gerdaCNC_StopSampleSequenceAfterCurrentAssayComplete_clicked() -> None:
+    if gerdaCNC == None:
+        printAndLog(
+            "ERROR: GeRDA CNC Serial Connection has not been initialised, cannot Stop Sample Sequence.",
+            "ERROR",
+        )
+        return
+    elif gerda_sample_sequence == None:
+        printAndLog(
+            "ERROR: GeRDA Sample Sequence CSV has not been loaded, cannot Start.",
+            "ERROR",
+        )
+        return
+    else:
+        gerdaCNC.stop_sample_sequence_after_current_assay_complete()
+
+
+def gerdaRunCommandInThread(gerda_function, *args):
+    global gerda_last_executed_thread
+    # check if last thread exists and is still working
+    if gerda_last_executed_thread and gerda_last_executed_thread.is_alive():
+        # and if so, wait for it to complete.
+        gerda_last_executed_thread.join()
+    # once last thread completes, begin new thread
+
+    gerda_new_thread = threading.Thread(target=gerda_function, args=args, daemon=True)
+    gerda_new_thread.start()
+    # new thread is now old thread
+    gerda_last_executed_thread = gerda_new_thread
+
+
+def gerdaCNC_moveto_coords_clicked() -> None:
+    x = entry_gerda_moveto_x.get()
+    y = entry_gerda_moveto_y.get()
+    z = entry_gerda_moveto_z.get()
+    if x == "":
+        x = None
+    else:
+        x = int(x)
+    if y == "":
+        y = None
+    else:
+        y = int(y)
+    if z == "":
+        z = None
+    else:
+        z = int(z)
+    printAndLog("CNC Moving to")
+    gerdaRunCommandInThread(gerdaCNC.move_instrument_to_xyz, x, y, z)
+
+
+# def gerdaCommandMonitorThread(event):
+#     pass
+
+
+# def gerdaControlThread():
+#     """main loop running in thread to control gerda."""
+
+
+def getIlluminationFromName(illumination_name: str) -> Illumination:
+    if instr_illuminations != []:
+        for illum in instr_illuminations:
+            if illum.name == illumination_name:
+                return illum
+        printAndLog(
+            f"ERROR: Illumination '{illumination_name}' was not found on the instrument."
+        )
+        return None
 
 
 # CTK appearance mode switcher
@@ -3223,6 +3745,115 @@ def closeAllThreads():
     thread_halt = True
 
 
+def gerdaDebugClicked():
+    global gerda_debug_firsttime
+    global gerdadebugwindows
+    if gerda_debug_firsttime:
+        gerda_debug_firsttime = False
+        gerda_debug_window = ctk.CTkToplevel()
+        # linecfgwindow.bind("<Configure>", window_on_configure)
+        # linecfgwindow.geometry("700x380")
+        gerda_debug_window.title("GeRDA / CNC Debug Controls")
+
+        # after delay to fix toplevel icon bug in customtkinter.
+        if sys.platform.startswith("win"):
+            gerda_debug_window.after(
+                220, lambda: gerda_debug_window.iconbitmap(bitmap=iconpath)
+            )
+        else:
+            gerda_debug_window.after(
+                220, lambda: gerda_debug_window.iconphoto(False, iconphoto_linux)
+            )
+        gerda_debug_window.after(100, lambda: gerda_debug_window.lift())
+        gerdadebugwindows.append(gerda_debug_window)
+
+        gerda_debug_controls_frame = ctk.CTkFrame(
+            gerda_debug_window, width=30, height=10, corner_radius=5
+        )
+        gerda_debug_controls_frame.pack(
+            side=tk.TOP, fill="both", expand=True, padx=4, pady=4, ipadx=4, ipady=4
+        )
+        gerda_debug_controls_frame.grid_columnconfigure(index=3, weight=2)
+        gerda_debug_controls_frame.grid_columnconfigure(index=[0, 1, 2], weight=1)
+
+        button_gerda_home = ctk.CTkButton(
+            gerda_debug_controls_frame,
+            text="CNC: Home",
+            command=gerdaCNC_Home_clicked,
+            font=ctk_jbm12B,
+            image=icon_home_origin,
+            state="normal",
+        )
+        button_gerda_home.grid(
+            row=1, column=0, columnspan=4, padx=4, pady=4, sticky=tk.NSEW
+        )
+        button_gerda_getcurrentpos = ctk.CTkButton(
+            gerda_debug_controls_frame,
+            text="Query Current CNC Position",
+            command=gerdaCNC_GetCurrentPosition_clicked,
+            image=icon_3d_axis,
+            font=ctk_jbm12B,
+            state="normal",
+        )
+        button_gerda_getcurrentpos.grid(
+            row=2, column=0, columnspan=4, padx=4, pady=4, sticky=tk.NSEW
+        )
+
+        entry_gerda_moveto_x = ctk.CTkEntry(
+            gerda_debug_controls_frame,
+            width=50,
+            justify="right",
+            placeholder_text="X",
+            border_width=1,
+            font=ctk_jbm12,
+            state="disabled",
+        )
+        entry_gerda_moveto_x.grid(
+            row=8, column=0, columnspan=1, padx=4, pady=4, sticky=tk.NSEW
+        )
+        entry_gerda_moveto_y = ctk.CTkEntry(
+            gerda_debug_controls_frame,
+            width=50,
+            justify="right",
+            placeholder_text="Y",
+            border_width=1,
+            font=ctk_jbm12,
+            state="disabled",
+        )
+        entry_gerda_moveto_y.grid(
+            row=8, column=1, columnspan=1, padx=4, pady=4, sticky=tk.NSEW
+        )
+        entry_gerda_moveto_z = ctk.CTkEntry(
+            gerda_debug_controls_frame,
+            width=50,
+            justify="right",
+            placeholder_text="Z",
+            border_width=1,
+            font=ctk_jbm12,
+            state="disabled",
+        )
+        entry_gerda_moveto_z.grid(
+            row=8, column=2, columnspan=1, padx=4, pady=4, sticky=tk.NSEW
+        )
+
+        button_gerda_moveto_go = ctk.CTkButton(
+            gerda_debug_controls_frame,
+            text="Go To",
+            command=gerdaCNC_moveto_coords_clicked,
+            font=ctk_jbm12B,
+            image=icon_3d_axis_move,
+            state="disabled",
+        )
+        button_gerda_moveto_go.grid(
+            row=8, column=3, columnspan=1, padx=4, pady=4, sticky=tk.NSEW
+        )
+
+        gerda_debug_window.protocol("WM_DELETE_WINDOW", gerdaDebugOnClosing)
+    else:
+        # Brings back window from being withdrawn instead of fully creating again.
+        gerdadebugwindows[0].deiconify()
+
+
 def configureEmissionLinesClicked():
     global linecfg_firsttime
     global linecfgwindows
@@ -3314,7 +3945,7 @@ def toggleEmissionLine(Z):
     #         linedata = [f'{elementZtoSymbol(Z)} {name}',ene]
     #         lines.append(linedata)
     #         #print(f'Adding line: {linedata}')
-    for linedata in all_lines:
+    for linedata in all_xray_lines:
         if linedata[0] == element_sym:  # symbol
             lines.append(linedata)
 
@@ -3339,6 +3970,11 @@ def toggleEmissionLine(Z):
     linecfgwindows[0].update()
     clearCurrentEmissionLines()
     plotEmissionLines()
+
+
+def gerdaDebugOnClosing():
+    # .withdraw() hides, .deiconify() brings back.
+    gerdadebugwindows[0].withdraw()
 
 
 def lineCfgOnClosing():
@@ -4160,7 +4796,6 @@ if __name__ == "__main__":
     # gui.bind("<Configure>", window_on_configure)
     gui.title("S1Control")
     gui.geometry("+5+5")
-    printAndLog("asdasd")
     # print(f"scaling={ctk.ScalingTracker.get_window_scaling(gui)}")
     # # trying to scale ttk widgets properly with dpi changes in windows
     # if sys.platform.startswith("win"):
@@ -4268,6 +4903,34 @@ if __name__ == "__main__":
     )
     icon_plot_configure = ctk.CTkImage(
         light_image=Image.open(resource_path("icons/sliders-horizontal.png")),
+        size=(22, 22),
+    )
+    icon_open_csv = ctk.CTkImage(
+        light_image=Image.open(resource_path("icons/file-spreadsheet.png")),
+        size=(22, 22),
+    )
+    icon_helpme = ctk.CTkImage(
+        light_image=Image.open(resource_path("icons/help-circle.png")),
+        size=(22, 22),
+    )
+    icon_3d_axis = ctk.CTkImage(
+        light_image=Image.open(resource_path("icons/axis-3d.png")),
+        size=(22, 22),
+    )
+    icon_3d_axis_move = ctk.CTkImage(
+        light_image=Image.open(resource_path("icons/move-3d.png")),
+        size=(22, 22),
+    )
+    icon_home_origin = ctk.CTkImage(
+        light_image=Image.open(resource_path("icons/locate-fixed.png")),
+        size=(22, 22),
+    )
+    icon_usb = ctk.CTkImage(
+        light_image=Image.open(resource_path("icons/usb.png")),
+        size=(22, 22),
+    )
+    icon_debug = ctk.CTkImage(
+        light_image=Image.open(resource_path("icons/bug-play.png")),
         size=(22, 22),
     )
     # icon_sendinfofields = ctk.CTkImage(light_image=Image.open(resource_path("icons/install-fill.png")), size=(18, 18))
@@ -4400,349 +5063,13 @@ if __name__ == "__main__":
     instr_assayrepeatschosenforcurrentrun: int = 1
     instr_illuminations: list[Illumination] = []
 
-    all_lines = [
-        ["Be", "Be Kα", 0.108],
-        ["B", "B Kα", 0.183],
-        ["C", "C Kα", 0.277],
-        ["N", "N Kα", 0.392],
-        ["O", "O Kα", 0.525],
-        ["F", "F Kα", 0.677],
-        ["Ne", "Ne Kα", 0.849],
-        ["Na", "Na Kα", 1.04],
-        ["Mg", "Mg Kα", 1.254],
-        ["Mg", "Mg Kβ", 1.302],
-        ["Al", "Al Kα", 1.486],
-        ["Al", "Al Kβ", 1.557],
-        ["Si", "Si Kα", 1.74],
-        ["Si", "Si Kβ", 1.837],
-        ["P", "P Kα", 2.01],
-        ["P", "P Kβ", 2.139],
-        ["S", "S Kα", 2.309],
-        ["S", "S Kβ", 2.465],
-        ["Cl", "Cl Kα", 2.622],
-        ["Cl", "Cl Kβ", 2.812],
-        ["Ar", "Ar Kα", 2.958],
-        ["Ar", "Ar Kβ", 3.19],
-        ["K", "K Kα", 3.314],
-        ["K", "K Kβ", 3.59],
-        ["Ca", "Ca Kα", 3.692],
-        ["Ca", "Ca Kβ", 4.013],
-        ["Sc", "Sc Kα", 4.093],
-        ["Sc", "Sc Kβ", 4.464],
-        ["Ti", "Ti Kα", 4.512],
-        ["Ti", "Ti Kβ", 4.933],
-        ["Ti", "Ti Lβ", 0.458],
-        ["Ti", "Ti Lα", 0.452],
-        ["V", "V Kα", 4.953],
-        ["V", "V Kβ", 5.428],
-        ["V", "V Lβ", 0.518],
-        ["V", "V Lα", 0.51],
-        ["Cr", "Cr Kα", 5.415],
-        ["Cr", "Cr Kβ", 5.947],
-        ["Cr", "Cr Lβ", 0.582],
-        ["Cr", "Cr Lα", 0.572],
-        ["Mn", "Mn Kα", 5.9],
-        ["Mn", "Mn Kβ", 6.492],
-        ["Mn", "Mn Lβ", 0.648],
-        ["Mn", "Mn Lα", 0.637],
-        ["Fe", "Fe Kα", 6.405],
-        ["Fe", "Fe Kβ", 7.059],
-        ["Fe", "Fe Lβ", 0.718],
-        ["Fe", "Fe Lα", 0.705],
-        ["Co", "Co Kα", 6.931],
-        ["Co", "Co Kβ", 7.649],
-        ["Co", "Co Lβ", 0.79],
-        ["Co", "Co Lα", 0.775],
-        ["Ni", "Ni Kα", 7.48],
-        ["Ni", "Ni Kβ", 8.267],
-        ["Ni", "Ni Lβ", 0.866],
-        ["Ni", "Ni Lα", 0.849],
-        ["Cu", "Cu Kα", 8.046],
-        ["Cu", "Cu Kβ", 8.904],
-        ["Cu", "Cu Lβ", 0.947],
-        ["Cu", "Cu Lα", 0.928],
-        ["Zn", "Zn Kα", 8.637],
-        ["Zn", "Zn Kβ", 9.57],
-        ["Zn", "Zn Lβ", 1.035],
-        ["Zn", "Zn Lα", 1.012],
-        ["Ga", "Ga Kα", 9.251],
-        ["Ga", "Ga Kβ", 10.267],
-        ["Ga", "Ga Lβ", 1.125],
-        ["Ga", "Ga Lα", 1.098],
-        ["Ge", "Ge Kα", 9.886],
-        ["Ge", "Ge Kβ", 10.982],
-        ["Ge", "Ge Lβ", 1.218],
-        ["Ge", "Ge Lα", 1.188],
-        ["As", "As Kα", 10.543],
-        ["As", "As Kβ", 11.726],
-        ["As", "As Lβ", 1.317],
-        ["As", "As Lα", 1.282],
-        ["Se", "Se Kα", 11.224],
-        ["Se", "Se Kβ", 12.497],
-        ["Se", "Se Lβ", 1.419],
-        ["Se", "Se Lα", 1.379],
-        ["Br", "Br Kα", 11.924],
-        ["Br", "Br Kβ", 13.292],
-        ["Br", "Br Lβ", 1.526],
-        ["Br", "Br Lα", 1.481],
-        ["Kr", "Kr Kα", 12.648],
-        ["Kr", "Kr Kβ", 14.112],
-        ["Kr", "Kr Lβ", 1.636],
-        ["Kr", "Kr Lα", 1.585],
-        ["Rb", "Rb Kα", 13.396],
-        ["Rb", "Rb Kβ", 14.961],
-        ["Rb", "Rb Lβ", 1.751],
-        ["Rb", "Rb Lα", 1.692],
-        ["Sr", "Sr Kα", 14.165],
-        ["Sr", "Sr Kβ", 15.835],
-        ["Sr", "Sr Lβ", 1.871],
-        ["Sr", "Sr Lα", 1.806],
-        ["Y", "Y Kα", 14.958],
-        ["Y", "Y Kβ", 16.739],
-        ["Y", "Y Lβ", 1.998],
-        ["Y", "Y Lα", 1.924],
-        ["Zr", "Zr Kα", 15.775],
-        ["Zr", "Zr Kβ", 17.668],
-        ["Zr", "Zr Lβ", 2.126],
-        ["Zr", "Zr Lα", 2.044],
-        ["Nb", "Nb Kα", 16.615],
-        ["Nb", "Nb Kβ", 18.625],
-        ["Nb", "Nb Lβ", 2.26],
-        ["Nb", "Nb Lα", 2.169],
-        ["Mo", "Mo Kα", 17.48],
-        ["Mo", "Mo Kβ", 19.606],
-        ["Mo", "Mo Lβ", 2.394],
-        ["Mo", "Mo Lα", 2.292],
-        ["Tc", "Tc Kα", 18.367],
-        ["Tc", "Tc Kβ", 20.626],
-        ["Tc", "Tc Lβ", 2.535],
-        ["Tc", "Tc Lα", 2.423],
-        ["Ru", "Ru Kα", 19.279],
-        ["Ru", "Ru Kβ", 21.655],
-        ["Ru", "Ru Lβ", 2.683],
-        ["Ru", "Ru Lα", 2.558],
-        ["Rh", "Rh Kα", 20.216],
-        ["Rh", "Rh Kβ", 22.724],
-        ["Rh", "Rh Lβ", 2.834],
-        ["Rh", "Rh Lα", 2.697],
-        ["Pd", "Pd Kα", 21.177],
-        ["Pd", "Pd Kβ", 23.818],
-        ["Pd", "Pd Lβ", 2.99],
-        ["Pd", "Pd Lα", 2.838],
-        ["Ag", "Ag Kα", 22.163],
-        ["Ag", "Ag Kβ", 24.941],
-        ["Ag", "Ag Lβ", 3.15],
-        ["Ag", "Ag Lα", 2.983],
-        ["Cd", "Cd Kα", 23.173],
-        ["Cd", "Cd Kβ", 26.093],
-        ["Cd", "Cd Lβ", 3.315],
-        ["Cd", "Cd Lα", 3.133],
-        ["In", "In Kα", 24.21],
-        ["In", "In Kβ", 27.275],
-        ["In", "In Lβ", 3.487],
-        ["In", "In Lα", 3.286],
-        ["Sn", "Sn Kα", 25.271],
-        ["Sn", "Sn Kβ", 28.485],
-        ["Sn", "Sn Lβ", 3.663],
-        ["Sn", "Sn Lα", 3.444],
-        ["Sb", "Sb Kα", 26.359],
-        ["Sb", "Sb Kβ", 29.725],
-        ["Sb", "Sb Lβ", 3.842],
-        ["Sb", "Sb Lα", 3.604],
-        ["Te", "Te Kα", 27.473],
-        ["Te", "Te Kβ", 30.993],
-        ["Te", "Te Lβ", 4.029],
-        ["Te", "Te Lα", 3.768],
-        ["I", "I Kα", 28.612],
-        ["I", "I Kβ", 32.294],
-        ["I", "I Lβ", 4.221],
-        ["I", "I Lα", 3.938],
-        ["Xe", "Xe Kα", 29.775],
-        ["Xe", "Xe Kβ", 33.62],
-        ["Xe", "Xe Lβ", 4.418],
-        ["Xe", "Xe Lα", 4.11],
-        ["Cs", "Cs Kα", 30.973],
-        ["Cs", "Cs Kβ", 34.982],
-        ["Cs", "Cs Lβ", 4.619],
-        ["Cs", "Cs Lα", 4.285],
-        ["Ba", "Ba Kα", 32.194],
-        ["Ba", "Ba Kβ", 36.378],
-        ["Ba", "Ba Lβ", 4.828],
-        ["Ba", "Ba Lα", 4.466],
-        ["La", "La Kα", 33.442],
-        ["La", "La Kβ", 37.797],
-        ["La", "La Lβ", 5.038],
-        ["La", "La Lα", 4.647],
-        ["Ce", "Ce Kα", 34.72],
-        ["Ce", "Ce Kβ", 39.256],
-        ["Ce", "Ce Lβ", 5.262],
-        ["Ce", "Ce Lα", 4.839],
-        ["Pr", "Pr Kα", 36.027],
-        ["Pr", "Pr Kβ", 40.749],
-        ["Pr", "Pr Lβ", 5.492],
-        ["Pr", "Pr Lα", 5.035],
-        ["Nd", "Nd Kα", 37.361],
-        ["Nd", "Nd Kβ", 42.272],
-        ["Nd", "Nd Lβ", 5.719],
-        ["Nd", "Nd Lα", 5.228],
-        ["Pm", "Pm Kα", 38.725],
-        ["Pm", "Pm Kβ", 43.827],
-        ["Pm", "Pm Lβ", 5.961],
-        ["Pm", "Pm Lα", 5.432],
-        ["Sm", "Sm Kα", 40.118],
-        ["Sm", "Sm Kβ", 45.414],
-        ["Sm", "Sm Lβ", 6.201],
-        ["Sm", "Sm Lα", 5.633],
-        ["Eu", "Eu Kα", 41.542],
-        ["Eu", "Eu Kβ", 47.038],
-        ["Eu", "Eu Lβ", 6.458],
-        ["Eu", "Eu Lα", 5.849],
-        ["Gd", "Gd Kα", 42.996],
-        ["Gd", "Gd Kβ", 48.695],
-        ["Gd", "Gd Lβ", 6.708],
-        ["Gd", "Gd Lα", 6.053],
-        ["Tb", "Tb Kα", 44.482],
-        ["Tb", "Tb Kβ", 50.385],
-        ["Tb", "Tb Lβ", 6.975],
-        ["Tb", "Tb Lα", 6.273],
-        ["Dy", "Dy Kα", 45.999],
-        ["Dy", "Dy Kβ", 52.113],
-        ["Dy", "Dy Lβ", 7.248],
-        ["Dy", "Dy Lα", 6.498],
-        ["Ho", "Ho Kα", 47.547],
-        ["Ho", "Ho Kβ", 53.877],
-        ["Ho", "Ho Lβ", 7.526],
-        ["Ho", "Ho Lα", 6.72],
-        ["Er", "Er Kα", 49.128],
-        ["Er", "Er Kβ", 55.674],
-        ["Er", "Er Lβ", 7.811],
-        ["Er", "Er Lα", 6.949],
-        ["Tm", "Tm Kα", 50.742],
-        ["Tm", "Tm Kβ", 57.505],
-        ["Tm", "Tm Lβ", 8.102],
-        ["Tm", "Tm Lα", 7.18],
-        ["Yb", "Yb Kα", 52.388],
-        ["Yb", "Yb Kβ", 59.382],
-        ["Yb", "Yb Lβ", 8.402],
-        ["Yb", "Yb Lα", 7.416],
-        ["Lu", "Lu Kα", 54.07],
-        ["Lu", "Lu Kβ", 61.29],
-        ["Lu", "Lu Lβ", 8.71],
-        ["Lu", "Lu Lα", 7.655],
-        ["Hf", "Hf Kα", 55.79],
-        ["Hf", "Hf Kβ", 63.244],
-        ["Hf", "Hf Lβ", 9.023],
-        ["Hf", "Hf Lα", 7.899],
-        ["Ta", "Ta Kα", 57.535],
-        ["Ta", "Ta Kβ", 65.222],
-        ["Ta", "Ta Lβ", 9.343],
-        ["Ta", "Ta Lα", 8.146],
-        ["W", "W Kα", 59.318],
-        ["W", "W Kβ", 67.244],
-        ["W", "W Lβ", 9.672],
-        ["W", "W Lα", 8.398],
-        ["Re", "Re Kα", 61.141],
-        ["Re", "Re Kβ", 69.309],
-        ["Re", "Re Lβ", 10.01],
-        ["Re", "Re Lα", 8.652],
-        ["Os", "Os Kα", 63.0],
-        ["Os", "Os Kβ", 71.414],
-        ["Os", "Os Lβ", 10.354],
-        ["Os", "Os Lα", 8.911],
-        ["Ir", "Ir Kα", 64.896],
-        ["Ir", "Ir Kβ", 73.56],
-        ["Ir", "Ir Lβ", 10.708],
-        ["Ir", "Ir Lα", 9.175],
-        ["Pt", "Pt Kα", 66.831],
-        ["Pt", "Pt Kβ", 75.75],
-        ["Pt", "Pt Lβ", 11.071],
-        ["Pt", "Pt Lα", 9.442],
-        ["Au", "Au Kα", 68.806],
-        ["Au", "Au Kβ", 77.982],
-        ["Au", "Au Lβ", 11.443],
-        ["Au", "Au Lα", 9.713],
-        ["Hg", "Hg Kα", 70.818],
-        ["Hg", "Hg Kβ", 80.255],
-        ["Hg", "Hg Lβ", 11.824],
-        ["Hg", "Hg Lα", 9.989],
-        ["Tl", "Tl Kα", 72.872],
-        ["Tl", "Tl Kβ", 82.573],
-        ["Tl", "Tl Lβ", 12.213],
-        ["Tl", "Tl Lα", 10.269],
-        ["Pb", "Pb Kα", 74.97],
-        ["Pb", "Pb Kβ", 84.939],
-        ["Pb", "Pb Lβ", 12.614],
-        ["Pb", "Pb Lα", 10.551],
-        ["Bi", "Bi Kα", 77.107],
-        ["Bi", "Bi Kβ", 87.349],
-        ["Bi", "Bi Lβ", 13.023],
-        ["Bi", "Bi Lα", 10.839],
-        ["Po", "Po Kα", 79.291],
-        ["Po", "Po Kβ", 89.803],
-        ["Po", "Po Lβ", 13.446],
-        ["Po", "Po Lα", 11.131],
-        ["At", "At Kα", 81.516],
-        ["At", "At Kβ", 92.304],
-        ["At", "At Lβ", 13.876],
-        ["At", "At Lα", 11.427],
-        ["Rn", "Rn Kα", 83.785],
-        ["Rn", "Rn Kβ", 94.866],
-        ["Rn", "Rn Lβ", 14.315],
-        ["Rn", "Rn Lα", 11.727],
-        ["Fr", "Fr Kα", 86.106],
-        ["Fr", "Fr Kβ", 97.474],
-        ["Fr", "Fr Lβ", 14.771],
-        ["Fr", "Fr Lα", 12.031],
-        ["Ra", "Ra Kα", 88.478],
-        ["Ra", "Ra Kβ", 100.13],
-        ["Ra", "Ra Lβ", 15.236],
-        ["Ra", "Ra Lα", 12.339],
-        ["Ac", "Ac Kα", 90.884],
-        ["Ac", "Ac Kβ", 102.846],
-        ["Ac", "Ac Lβ", 15.713],
-        ["Ac", "Ac Lα", 12.652],
-        ["Th", "Th Kα", 93.351],
-        ["Th", "Th Kβ", 105.605],
-        ["Th", "Th Lβ", 16.202],
-        ["Th", "Th Lα", 12.968],
-        ["Pa", "Pa Kα", 95.868],
-        ["Pa", "Pa Kβ", 108.427],
-        ["Pa", "Pa Lβ", 16.703],
-        ["Pa", "Pa Lα", 13.291],
-        ["U", "U Kα", 98.44],
-        ["U", "U Kβ", 111.303],
-        ["U", "U Lβ", 17.22],
-        ["U", "U Lα", 13.614],
-        ["Np", "Np Kα", 101.059],
-        ["Np", "Np Kβ", 114.234],
-        ["Np", "Np Lβ", 17.751],
-        ["Np", "Np Lα", 13.946],
-        ["Pu", "Pu Kα", 103.734],
-        ["Pu", "Pu Kβ", 117.228],
-        ["Pu", "Pu Lβ", 18.296],
-        ["Pu", "Pu Lα", 14.282],
-        ["Am", "Am Kα", 106.472],
-        ["Am", "Am Kβ", 120.284],
-        ["Am", "Am Lβ", 18.856],
-        ["Am", "Am Lα", 14.62],
-        ["Cm", "Cm Kα", 109.271],
-        ["Cm", "Cm Kβ", 123.403],
-        ["Cm", "Cm Lβ", 19.427],
-        ["Cm", "Cm Lα", 14.961],
-        ["Bk", "Bk Kα", 112.121],
-        ["Bk", "Bk Kβ", 126.58],
-        ["Bk", "Bk Lβ", 20.018],
-        ["Bk", "Bk Lα", 15.308],
-        ["Cf", "Cf Kα", 115.032],
-        ["Cf", "Cf Kβ", 129.823],
-        ["Cf", "Cf Lβ", 20.624],
-        ["Cf", "Cf Lα", 15.66],
-    ]
     emissionLineElementButtonIDs = []
     emissionLinesElementslist = []
     linecfg_firsttime = True
     editinfo_firsttime = True
+    gerda_debug_firsttime = True
     linecfgwindows = []
+    gerdadebugwindows = []
     editinfo_windows = []
     editinfo_fieldnames = (
         []
@@ -4833,7 +5160,7 @@ if __name__ == "__main__":
 
     # CONNECTION STUFF FOR GeRDA CNC
     gerdaCNC: GerdaCNCController = None
-    gerda_sample_list = None
+    gerda_sample_sequence: GerdaSampleSequence = None
 
     # CONNECTION DETAILS FOR WIFI  (Not Recommended - Also, DHCP will cause IP to change. Port may change as well?) Wifi is unreliable and prone to massive packet loss and delayed commands/info transmit.
     XRF_IP_WIFI = "192.168.153.167"  # '192.168.153.167:55101' found to work for ruffo when on phone hotspot network. both values may change depending on network settings?
@@ -4906,7 +5233,8 @@ if __name__ == "__main__":
     instr_currentphase = 0
     assay_phase_spectrumpacketcounter = 0
     instr_currentphaselength_s = 0
-    instr_approxsingleassaytime = 0
+    instr_estimatedrealisticassaytime = 0
+    gerda_last_executed_thread = None
 
     # set mpl log level to prevent console spam about missing fonts
     logging.getLogger("matplotlib.font_manager").setLevel(logging.ERROR)
@@ -5198,6 +5526,7 @@ if __name__ == "__main__":
     ctrltabview.tab("Assay Controls").grid_columnconfigure(0, weight=1)
     ctrltabview.tab("Instrument").grid_columnconfigure(0, weight=1)
     ctrltabview.tab("Options").grid_columnconfigure(1, weight=1)
+    ctrltabview.tab("GeRDA").grid_columnconfigure([0, 1, 2, 3], weight=1)
     ctrltabview.tab("About").grid_columnconfigure(0, weight=1)
 
     appmethodframe = ctk.CTkFrame(
@@ -5350,41 +5679,130 @@ if __name__ == "__main__":
     customspectrumconfigframe.grid_remove()
 
     # GeRDA Section
-    button_gerda_initialise = ctk.CTkButton(
+
+    button_gerda_debug = ctk.CTkButton(
         ctrltabview.tab("GeRDA"),
-        text="Connect to GeRDA CNC Controller",
-        command=gerdaCNC_InitialiseConnectionIfPossible,
+        text="Debug Controls",
+        command=gerdaDebugClicked,
         font=ctk_jbm12B,
+        image=icon_debug,
+        state="disabled",
     )
-    button_gerda_initialise.grid(
-        row=0, column=0, columnspan=1, padx=4, pady=4, sticky=tk.NSEW
+    button_gerda_debug.grid(
+        row=0, column=2, columnspan=2, padx=4, pady=4, sticky=tk.NSEW
     )
-    button_gerda_home = ctk.CTkButton(
-        ctrltabview.tab("GeRDA"),
-        text="CNC: Home",
-        command=gerdaCNC_Home_clicked,
-        font=ctk_jbm12B,
-    )
-    button_gerda_home.grid(
-        row=1, column=0, columnspan=1, padx=4, pady=4, sticky=tk.NSEW
-    )
-    button_gerda_getcurrentpos = ctk.CTkButton(
-        ctrltabview.tab("GeRDA"),
-        text="CNC: Get Current Position",
-        command=gerdaCNC_GetCurrentPosition_clicked,
-        font=ctk_jbm12B,
-    )
-    button_gerda_getcurrentpos.grid(
-        row=2, column=0, columnspan=1, padx=4, pady=4, sticky=tk.NSEW
-    )
+
     button_gerda_helpme = ctk.CTkButton(
         ctrltabview.tab("GeRDA"),
-        text="HELP",
+        text="Help",
         command=gerdaCNC_HelpMe_clicked,
         font=ctk_jbm12B,
+        image=icon_helpme,
     )
     button_gerda_helpme.grid(
-        row=3, column=0, columnspan=1, padx=4, pady=4, sticky=tk.NSEW
+        row=0, column=0, columnspan=2, padx=4, pady=4, sticky=tk.NSEW
+    )
+    button_gerda_initialise = ctk.CTkButton(
+        ctrltabview.tab("GeRDA"),
+        text="Connect to CNC Controller",
+        command=gerdaCNC_InitialiseConnectionIfPossible,
+        font=ctk_jbm12B,
+        image=icon_usb,
+    )
+    button_gerda_initialise.grid(
+        row=1, column=0, columnspan=4, padx=4, pady=4, sticky=tk.NSEW
+    )
+    button_gerda_loadcsv = ctk.CTkButton(
+        ctrltabview.tab("GeRDA"),
+        text="Load Sample-Sequence CSV File",
+        command=loadGerdaSampleListCSV_clicked,
+        image=icon_open_csv,
+        font=ctk_jbm12B,
+        state="disabled",
+    )
+    button_gerda_loadcsv.grid(
+        row=2, column=0, columnspan=4, padx=4, pady=4, sticky=tk.NSEW
+    )
+    button_gerda_startsampleseq = ctk.CTkButton(
+        ctrltabview.tab("GeRDA"),
+        text="Start",
+        command=gerdaCNC_StartSampleSequence_clicked,
+        image=icon_startassay,
+        fg_color="#33AF56",
+        hover_color="#237A3C",
+        font=ctk_jbm12B,
+        state="disabled",
+    )
+    button_gerda_startsampleseq.grid(
+        row=4, column=0, columnspan=4, padx=4, pady=4, sticky=tk.NSEW
+    )
+
+    progressbar_gerda_sampleseq = ctk.CTkProgressBar(
+        ctrltabview.tab("GeRDA"), width=50, mode="determinate"
+    )
+    progressbar_gerda_sampleseq.grid(
+        row=5, column=0, columnspan=4, padx=4, pady=4, sticky=tk.EW
+    )
+    progressbar_gerda_sampleseq.set(0)
+
+    button_gerda_stopsampleseq_immediate = ctk.CTkButton(
+        ctrltabview.tab("GeRDA"),
+        text="Stop Sequence Immediately",
+        command=gerdaCNC_StopSampleSequenceImmediate_clicked,
+        font=ctk_jbm12B,
+        image=icon_stopassay,
+        fg_color="#D42525",
+        hover_color="#7F1616",
+        state="disabled",
+    )
+    button_gerda_stopsampleseq_immediate.grid(
+        row=6, column=0, columnspan=4, padx=4, pady=4, sticky=tk.NSEW
+    )
+
+    button_gerda_stopsampleseq_afterthis = ctk.CTkButton(
+        ctrltabview.tab("GeRDA"),
+        text="Stop Sequence After Current Assay",
+        command=gerdaCNC_StopSampleSequenceAfterCurrentAssayComplete_clicked,
+        font=ctk_jbm12B,
+        image=icon_stopassay,
+        fg_color="#D42525",
+        hover_color="#7F1616",
+        state="disabled",
+    )
+    button_gerda_stopsampleseq_afterthis.grid(
+        row=7, column=0, columnspan=4, padx=4, pady=4, sticky=tk.NSEW
+    )
+
+    label_gerda_sleep = ctk.CTkLabel(
+        ctrltabview.tab("GeRDA"),
+        text="Sleep time:",
+        anchor="w",
+        font=ctk_jbm12,
+    )
+    label_gerda_sleep.grid(
+        row=8, column=0, columnspan=1, padx=4, pady=0, sticky=tk.NSEW
+    )
+    wait_time_between_samples_intvar = ctk.IntVar(value=5)
+
+    label_gerda_sleeptime = ctk.CTkLabel(
+        ctrltabview.tab("GeRDA"),
+        textvariable=wait_time_between_samples_intvar,
+        anchor="w",
+        font=ctk_jbm12,
+        width=10,
+    )
+    label_gerda_sleeptime.grid(
+        row=8, column=1, columnspan=1, padx=4, pady=0, sticky=tk.NSEW
+    )
+
+    slider_gerda_sleeptimebetweensamples = ctk.CTkSlider(
+        ctrltabview.tab("GeRDA"),
+        variable=wait_time_between_samples_intvar,
+        from_=0,
+        to=60,
+    )
+    slider_gerda_sleeptimebetweensamples.grid(
+        row=8, column=2, columnspan=2, padx=[0, 4], pady=0, sticky=tk.EW
     )
 
     # About Section
@@ -5681,7 +6099,7 @@ if __name__ == "__main__":
     enableautoassayCSV_var = ctk.StringVar(value="off")
     checkbox_enableautoassayCSV = ctk.CTkCheckBox(
         ctrltabview.tab("Options"),
-        text="Auto Save Results to Individual CSVs",
+        text="Auto Save Spectra/Results as CSVs",
         variable=enableautoassayCSV_var,
         onvalue="on",
         offvalue="off",
@@ -5727,9 +6145,10 @@ if __name__ == "__main__":
         offvalue="off",
         font=ctk_jbm12,
     )
-    checkbox_enableendofassaynotifications.grid(
-        row=8, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW
-    )
+    # NOTE 20240212 - temporarily removed this option from the menu to reduce number of options. it wasn't used much anyway
+    # checkbox_enableendofassaynotifications.grid(
+    #     row=8, column=0, padx=4, pady=4, columnspan=2, sticky=tk.NSEW
+    # )
 
     checkbox_enabledarkmode = ctk.CTkCheckBox(
         ctrltabview.tab("Options"),
@@ -5772,6 +6191,7 @@ if __name__ == "__main__":
     logbox.tag_config("ERROR", foreground="#d62d43")
     logbox.tag_config("WARNING", foreground="#e09c26")
     logbox.tag_config("INFO", foreground="#3B8ED0")  # 2783d9
+    logbox.tag_config("GERDA", foreground="#2dd6c0")
     logbox.tag_config("BASIC", foreground=WHITEISH)
     logbox.configure(state="disabled")
     # logbox_xscroll.config(command = logbox.xview)
