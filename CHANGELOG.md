@@ -1,5 +1,11 @@
 # S1Control Changelog 
 
+## v1.0.1 - 2024/02/14
+ - Fixed various bugs left over in v1.0.0:
+    - Attempted Re-initiation of XRF listen loop will no longer prevent the software from closing.
+    - Fixed log files missing the last few lines when backed up prematurely
+    - Adjusted listen loop logic to be more resilient
+
 ## v1.0.0 - 2024/02/13 - MAJOR UPDATE - GeRDA/CNC System Integration
  - Implemented GeRDA / CNC Platform functionality for Sample Sequences, Sampling Jobs, and Calibrations.
     - The GeRDA Controls can now be accessed on the 'GeRDA' tab of the action menu in the top-left of the UI.

@@ -1,6 +1,6 @@
 # S1Control by ZH for PSS
-versionNum = "v1.0.0"  # v0.9.6 was the first GeRDA-control version
-versionDate = "2024/02/13"
+versionNum = "v1.0.1"  # v0.9.6 was the first GeRDA-control version
+versionDate = "2024/02/14"
 
 import os
 import sys
@@ -764,16 +764,22 @@ def xrfListenLoopThread_Start(event):
 
 def xrfListenLoopThread_Check():
     global listen_thread
+    global quit_requested
     if listen_thread.is_alive():
-        gui.after(20, xrfListenLoopThread_Check)
+        gui.after(500, xrfListenLoopThread_Check)
     else:
-        printAndLog("ERROR: XRF listen loop broke. Attempting to Restart...", "ERROR")
-        try:
-            xrfListenLoopThread_Start(None)
-            printAndLog("Listen Loop successfully restarted.")
-        except:
-            printAndLog("Unable to restart listen loop.")
-            # raise SystemExit(0)
+        if not quit_requested:
+            printAndLog(
+                "ERROR: XRF listen loop broke. Attempting to Restart...", "ERROR"
+            )
+            try:
+                xrfListenLoopThread_Start(None)
+                printAndLog("XRF Listen Loop successfully restarted.")
+            except:
+                printAndLog("Unable to restart XRF listen loop.")
+                # raise SystemExit(0)
+        else:
+            onClosing(force=True)
 
 
 # TESTING OUT LISTEN LOOP PROCESS instead of thread
@@ -2051,10 +2057,11 @@ def onInstrDisconnect():
         "Error: Connection to the XRF instrument has been lost. The software will be closed, and a log file will be saved.",
     )
     printAndLog(
-        "Connection to the XRF instrument was unexpectedly lost. Software will shut down and log will be saved.",
+        "Connection to the XRF instrument was unexpectedly lost. Software will shut down and a log will be saved.",
         "ERROR",
     )
-    onClosing()
+    onClosing(force=True)
+    # TODO implement reconnection logic
 
 
 # Functions for Widgets
@@ -3722,22 +3729,30 @@ def setPlotColours():
     spectracanvas.draw_idle()
 
 
-def onClosing():
-    if messagebox.askokcancel("Quit", "Do you want to quit?"):
-        closeAllThreads()
-        if logFileArchivePath is not None:
-            shutil.copyfile(logFilePath, logFileArchivePath)
-            printAndLog(rf"Log File archived to: {logFileArchivePath}")
-            printAndLog("S1Control software Closed.")
-        else:
-            printAndLog(
-                "ERROR: Desired Log file archive path was unable to be found. The Log file has not been archived.",
-                "ERROR",
-            )
-            printAndLog("S1Control software Closed.")
-        raise SystemExit(0)
-        gui.destroy()
-        instrument_Disconnect()
+def onClosing(force: bool = False):
+    global quit_requested
+    if not force:
+        if not messagebox.askyesno("Quit", "Are you sure you want to quit?"):
+            return
+    quit_requested = True
+    if logFileArchivePath is not None:
+        backup_log_bool = True
+        printAndLog(rf"Log File will be archived to: {logFileArchivePath}")
+    else:
+        printAndLog(
+            "ERROR: Desired Log file archive path was unable to be found. The Log file will not be archived.",
+            "ERROR",
+        )
+    printAndLog("S1Control software Closed.")
+    if backup_log_bool:
+        shutil.copyfile(logFilePath, logFileArchivePath)
+    gui.after(100, sysExit)
+    # gui.destroy()
+    # instrument_Disconnect()
+
+
+def sysExit():
+    raise SystemExit(0)
 
 
 def closeAllThreads():
@@ -4764,6 +4779,7 @@ if __name__ == "__main__":
 
     # GUI
     thread_halt = False
+    quit_requested = False
     SERIALNUMBERRECV = False
 
     # Colour Assignments
@@ -4806,10 +4822,15 @@ if __name__ == "__main__":
     # gui.geometry('1380x855')
 
     # APPEARANCE MODE DEFAULT AND STRVAR FOR TOGGLE - THESE TWO MUST MATCH ################################################################################
-    ctk.set_appearance_mode("system")  # Modes: system (default), light, dark
+    if os.name == "nt":
+        ctk.set_appearance_mode("system")  # Modes: system (default), light, dark
+        # The default state of this variable must be changed to match the default setting of ctk appearancemode.
+        colourappearancemode_strvar = tk.StringVar(value="light")  # assume light?
+    else:  # linux, mac, etc should default darkmode
+        ctk.set_appearance_mode("dark")  # Modes: system (default), light, dark
+        # The default state of this variable must be changed to match the default setting of ctk appearancemode.
+        colourappearancemode_strvar = tk.StringVar(value="dark")
     # ctk.deactivate_automatic_dpi_awareness()
-    enabledarkmode = tk.StringVar(value="light")
-    # The default state of this variable must be changed to match the default setting of ctk appearancemode.
 
     ctk.set_default_color_theme("blue")  # Themes: blue (default), dark-blue, green
 
@@ -6153,10 +6174,12 @@ if __name__ == "__main__":
     checkbox_enabledarkmode = ctk.CTkCheckBox(
         ctrltabview.tab("Options"),
         text="Dark Mode UI (Ctrl+Shift+L)",
-        variable=enabledarkmode,
+        variable=colourappearancemode_strvar,
         onvalue="dark",
         offvalue="light",
-        command=lambda: ctk_change_appearance_mode_event(enabledarkmode.get()),
+        command=lambda: ctk_change_appearance_mode_event(
+            colourappearancemode_strvar.get()
+        ),
         font=ctk_jbm12,
     )
     checkbox_enabledarkmode.grid(
