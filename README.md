@@ -6,24 +6,24 @@ Prepackaged portable windows executable can be found in /dist/.
 Tested and working on Windows (7,10,11), and Linux (Ubuntu 23.10, Fedora Workstation 38).
 Install all of the .ttf font files found in the root directory to ensure UI text consistency.
 
-## Screenshots - v0.8.1
+## Screenshots - v1.0.2
 ### Main Screen - Start/Stop Assays, control timings
-![image](https://github.com/zebhall/S1Control/assets/81948605/1713bc9e-455f-433e-be16-9866459e22a8)
+![image](https://github.com/zebhall/S1Control/assets/81948605/85556477-d2ec-451d-9018-8509b6a553ea)
 ### Configure Instrument Settings
-![image](https://github.com/zebhall/S1Control/assets/81948605/35585ce1-ddb3-4c0e-a6ad-22469b4eef88)
+![image](https://github.com/zebhall/S1Control/assets/81948605/d67c18ce-8a53-4a94-9819-8d680d404f0c)
 ### Perform back-to-back repeat assays easily
-![image](https://github.com/zebhall/S1Control/assets/81948605/4e8a0f3b-92cf-4628-bfc6-43264dffa378)
+![image](https://github.com/zebhall/S1Control/assets/81948605/7f681805-7f1f-4f4b-95cc-aba27173c48a)
 ### Modify Result Units, Apply Normalisations to Spectra. Results immediately save to your PC.
-![image](https://github.com/zebhall/S1Control/assets/81948605/6e085548-4e7c-4f07-b0e9-49c115699bce)
+![image](https://github.com/zebhall/S1Control/assets/81948605/167a00d4-3064-4a3c-ae24-316489aa405d)
 ### Hide the results pane for a closer look at spectra. Identify the elements assosciated with peaks.
-![image](https://github.com/zebhall/S1Control/assets/81948605/99d9b392-a4c8-42a7-b53a-023d623f293e)
+![image](https://github.com/zebhall/S1Control/assets/81948605/b2f02c1e-ada4-4a65-8280-1b5262384764)
 ### Overlay Spectra to Compare
-![image](https://github.com/zebhall/S1Control/assets/81948605/277a47bd-eeba-4a80-9689-9a3b92db4af7)
+![image](https://github.com/zebhall/S1Control/assets/81948605/291baea8-8346-4b3e-9a17-86402dbfa007)
 ### Show signature element lines on the plot for quick identification
-![image](https://github.com/zebhall/S1Control/assets/81948605/e0fb2a88-db02-4ff6-b485-e16d3cf71a4c)
-### 'Spectrum Only' mode (now renamed 'Custom Spectrum') allows the configuration of voltage, current, and filters of the x-ray source.
-![image](https://github.com/zebhall/S1Control/assets/81948605/f7434738-3fd9-482a-b982-bfe3ba2f78be)
-
+![image](https://github.com/zebhall/S1Control/assets/81948605/e88e1ce7-755a-43ff-8a21-988b57eb69ef)
+### 'Custom Spectrum' mode allows the configuration of voltage, current, and filters of the x-ray source.
+![image](https://github.com/zebhall/S1Control/assets/81948605/03627a22-fe75-4d5f-87d9-909510abed01)
+### Full Integration with the 'GeRDA' CNC-based automated sampling system. Automatic analysis and QAQC of up to 540 samples.
+![image](https://github.com/zebhall/S1Control/assets/81948605/5db34045-84d1-48c2-a38c-275442f980b9)
 ### Light Mode
-![image](https://github.com/zebhall/S1Control/assets/81948605/bad4cb9e-cd4d-4abb-9dbf-a82dd6a1fb0b)
-
+![image](https://github.com/zebhall/S1Control/assets/81948605/39d8cedd-e49b-42fb-ba36-cc1b22434c33)
