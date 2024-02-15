@@ -1,5 +1,8 @@
 # S1Control Changelog 
 
+## v1.0.2 - 2024/02/15
+ - Implemented increment/decrement buttons for Phase times, long overdue QOL feature.
+
 ## v1.0.1 - 2024/02/14
  - Fixed various bugs left over in v1.0.0:
     - Attempted Re-initiation of XRF listen loop will no longer prevent the software from closing.

@@ -1,6 +1,6 @@
 # S1Control by ZH for PSS
-versionNum = "v1.0.1"  # v0.9.6 was the first GeRDA-control version
-versionDate = "2024/02/14"
+versionNum = "v1.0.2"  # v0.9.6 was the first GeRDA-control version
+versionDate = "2024/02/15"
 
 import os
 import sys
@@ -2634,6 +2634,12 @@ def ui_UpdateCurrentAppAndPhases():  # update application selected and phase tim
     global p1_s
     global p2_s
     global p3_s
+    global p1_increment
+    global p1_decrement
+    global p2_increment
+    global p2_decrement
+    global p3_increment
+    global p3_decrement
     global applyphasetimes
     global customspectrum_filter_dropdown
 
@@ -2711,7 +2717,7 @@ def ui_UpdateCurrentAppAndPhases():  # update application selected and phase tim
             border_width=1,
             font=ctk_jbm12,
         )
-        p1_entry.grid(row=1, column=1, padx=4, pady=4, sticky=tk.EW)
+        p1_entry.grid(row=1, column=2, padx=4, pady=4, sticky=tk.EW)
         p2_entry = ctk.CTkEntry(
             phaseframe,
             width=40,
@@ -2720,7 +2726,7 @@ def ui_UpdateCurrentAppAndPhases():  # update application selected and phase tim
             border_width=1,
             font=ctk_jbm12,
         )
-        p2_entry.grid(row=2, column=1, padx=4, pady=4, sticky=tk.EW)
+        p2_entry.grid(row=2, column=2, padx=4, pady=4, sticky=tk.EW)
         p3_entry = ctk.CTkEntry(
             phaseframe,
             width=40,
@@ -2729,14 +2735,43 @@ def ui_UpdateCurrentAppAndPhases():  # update application selected and phase tim
             border_width=1,
             font=ctk_jbm12,
         )
-        p3_entry.grid(row=3, column=1, padx=4, pady=4, sticky=tk.EW)
+        p3_entry.grid(row=3, column=2, padx=4, pady=4, sticky=tk.EW)
         p1_s = ctk.CTkLabel(phaseframe, width=1, text="s", anchor="w", font=ctk_jbm12)
-        p1_s.grid(row=1, column=2, padx=[0, 8], pady=4, sticky=tk.EW)
+        p1_s.grid(row=1, column=3, padx=[0, 4], pady=4, sticky=tk.EW)
         p2_s = ctk.CTkLabel(phaseframe, width=1, text="s", anchor="w", font=ctk_jbm12)
-        p2_s.grid(row=2, column=2, padx=[0, 8], pady=4, sticky=tk.EW)
+        p2_s.grid(row=2, column=3, padx=[0, 4], pady=4, sticky=tk.EW)
         p3_s = ctk.CTkLabel(phaseframe, width=1, text="s", anchor="w", font=ctk_jbm12)
-        p3_s.grid(row=3, column=2, padx=[0, 8], pady=4, sticky=tk.EW)
-
+        p3_s.grid(row=3, column=3, padx=[0, 4], pady=4, sticky=tk.EW)
+        p1_increment = ctk.CTkLabel(phaseframe, text="", image=icon_increment)
+        p1_increment.bind(
+            "<Button-1>", lambda e: increment_phasetime_clicked(phasetime1_stringvar)
+        )
+        p1_increment.grid(row=1, column=1, padx=[2, 0], pady=4, sticky=tk.EW)
+        p1_decrement = ctk.CTkLabel(phaseframe, text="", image=icon_decrement)
+        p1_decrement.bind(
+            "<Button-1>", lambda e: decrement_phasetime_clicked(phasetime1_stringvar)
+        )
+        p1_decrement.grid(row=1, column=4, padx=[0, 4], pady=4, sticky=tk.EW)
+        p2_increment = ctk.CTkLabel(phaseframe, text="", image=icon_increment)
+        p2_increment.bind(
+            "<Button-1>", lambda e: increment_phasetime_clicked(phasetime2_stringvar)
+        )
+        p2_increment.grid(row=2, column=1, padx=[2, 0], pady=4, sticky=tk.EW)
+        p2_decrement = ctk.CTkLabel(phaseframe, text="", image=icon_decrement)
+        p2_decrement.bind(
+            "<Button-1>", lambda e: decrement_phasetime_clicked(phasetime2_stringvar)
+        )
+        p2_decrement.grid(row=2, column=4, padx=[0, 4], pady=4, sticky=tk.EW)
+        p3_increment = ctk.CTkLabel(phaseframe, text="", image=icon_increment)
+        p3_increment.bind(
+            "<Button-1>", lambda e: increment_phasetime_clicked(phasetime3_stringvar)
+        )
+        p3_increment.grid(row=3, column=1, padx=[2, 0], pady=4, sticky=tk.EW)
+        p3_decrement = ctk.CTkLabel(phaseframe, text="", image=icon_decrement)
+        p3_decrement.bind(
+            "<Button-1>", lambda e: decrement_phasetime_clicked(phasetime3_stringvar)
+        )
+        p3_decrement.grid(row=3, column=4, padx=[0, 4], pady=4, sticky=tk.EW)
         applyphasetimes = ctk.CTkButton(
             phaseframe,
             width=10,
@@ -2749,7 +2784,7 @@ def ui_UpdateCurrentAppAndPhases():  # update application selected and phase tim
         )
         applyphasetimes.grid(
             row=1,
-            column=3,
+            column=5,
             rowspan=phasecount,
             padx=4,
             pady=4,
@@ -2769,6 +2804,12 @@ def ui_UpdateCurrentAppAndPhases():  # update application selected and phase tim
     p1_s.grid_remove()
     p2_s.grid_remove()
     p3_s.grid_remove()
+    p1_increment.grid_remove()
+    p1_decrement.grid_remove()
+    p2_increment.grid_remove()
+    p2_decrement.grid_remove()
+    p3_increment.grid_remove()
+    p3_decrement.grid_remove()
 
     # dropdown_application.configure(values=instr_applicationspresent)
     applicationselected_stringvar.set(instr_currentapplication)
@@ -2789,6 +2830,8 @@ def ui_UpdateCurrentAppAndPhases():  # update application selected and phase tim
         p1_label.grid()
         p1_entry.grid()
         p1_s.grid()
+        p1_increment.grid()
+        p1_decrement.grid()
 
     if phasecount >= 2:
         phasetime2_stringvar.set(instr_currentphases[1][2])
@@ -2799,6 +2842,8 @@ def ui_UpdateCurrentAppAndPhases():  # update application selected and phase tim
         p2_label.grid()
         p2_entry.grid()
         p2_s.grid()
+        p2_increment.grid()
+        p2_decrement.grid()
 
     if phasecount >= 3:
         phasetime3_stringvar.set(instr_currentphases[2][2])
@@ -2809,6 +2854,8 @@ def ui_UpdateCurrentAppAndPhases():  # update application selected and phase tim
         p3_label.grid()
         p3_entry.grid()
         p3_s.grid()
+        p3_increment.grid()
+        p3_decrement.grid()
 
     applyphasetimes.grid_configure(rowspan=phasecount)
 
@@ -2817,6 +2864,21 @@ def ui_UpdateCurrentAppAndPhases():  # update application selected and phase tim
         values=[illum.name for illum in instr_illuminations]
     )
     # gui.update()
+
+
+def increment_phasetime_clicked(phasetime_var: tk.StringVar) -> None:
+    _x = int(phasetime_var.get())
+    _x += 1
+    phasetime_var.set(str(_x))
+
+
+def decrement_phasetime_clicked(phasetime_var: tk.StringVar) -> None:
+    _x = int(phasetime_var.get())
+    _x -= 1
+    # time can't be negative
+    if _x <= 0:
+        _x = 0
+    phasetime_var.set(str(_x))
 
 
 def unselectAllAssays():
@@ -4952,6 +5014,16 @@ if __name__ == "__main__":
     )
     icon_debug = ctk.CTkImage(
         light_image=Image.open(resource_path("icons/bug-play.png")),
+        size=(22, 22),
+    )
+    icon_increment = ctk.CTkImage(
+        light_image=Image.open(resource_path("icons/plus-circle.png")),
+        dark_image=Image.open(resource_path("icons/plus-circle-w.png")),
+        size=(22, 22),
+    )
+    icon_decrement = ctk.CTkImage(
+        light_image=Image.open(resource_path("icons/minus-circle.png")),
+        dark_image=Image.open(resource_path("icons/minus-circle-w.png")),
         size=(22, 22),
     )
     # icon_sendinfofields = ctk.CTkImage(light_image=Image.open(resource_path("icons/install-fill.png")), size=(18, 18))
