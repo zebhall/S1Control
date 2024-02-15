@@ -26,4 +26,5 @@ Install all of the .ttf font files found in the root directory to ensure UI text
 ### Full Integration with the 'GeRDA' CNC-based automated sampling system. Automatic analysis and QAQC of up to 540 samples.
 ![image](https://github.com/zebhall/S1Control/assets/81948605/5db34045-84d1-48c2-a38c-275442f980b9)
 ### Light Mode
-![image](https://github.com/zebhall/S1Control/assets/81948605/39d8cedd-e49b-42fb-ba36-cc1b22434c33)
+![image](https://github.com/zebhall/S1Control/assets/81948605/fecc578a-ab45-4da6-a35b-f72dd1f45c69)
+
