@@ -3008,6 +3008,13 @@ def customSpectrumIlluminationChosen(choice):
             customspectrum_current_entry.insert(0, illum.current)
             customspectrum_filter_dropdown.set(illum.filterposition)
 
+def sensibleToInt(x:str) -> int:
+    """To fix the dumb issue where int('') just errors the fuck out. so stupid."""
+    if x:
+        return int(x)
+    else:
+        return None
+
 
 @dataclass
 class GerdaSample:
@@ -3097,7 +3104,7 @@ class GerdaSampleSequence:
                                     optional_illumination_name=row[
                                         self.colindex_illumination
                                     ],
-                                    optional_time_in_s=int(row[self.colindex_time]),
+                                    optional_time_in_s=sensibleToInt(row[self.colindex_time]),
                                 )
                             )
                             # process each row
@@ -3805,6 +3812,7 @@ def onClosing(force: bool = False):
             "ERROR: Desired Log file archive path was unable to be found. The Log file will not be archived.",
             "ERROR",
         )
+        backup_log_bool = False
     printAndLog("S1Control software Closed.")
     if backup_log_bool:
         shutil.copyfile(logFilePath, logFileArchivePath)
