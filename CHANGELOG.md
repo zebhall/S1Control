@@ -1,5 +1,17 @@
 # S1Control Changelog 
 
+## v1.0.3 - 2024/02/16
+ - Added 'start-at-scan-#' entry box next to Sample Sequence Start button, allowing the sample sequence to be started at any scan.
+ - Implemented GeRDA Event notification functionality for Slack.
+    - Sends messages to a designated slack channel or user workspace on certain attention-worthy GeRDA events (major instrument errors, pre-emptive temperature warnings, sanity check failures, completion of all scans, etc)
+    - include your slack webhook URL in 'slackwebhook.txt' in the same directory as the S1Control executable to use this functionality. (see: https://api.slack.com/apps/)
+ - Fixed issue cased by race condition between CNC order of events and notification normal assay logic. 
+ - Fixed inaccurate error message appearing when CNC attempts first move after Homing had already taken place (homing function was not correctly setting last_moved coords with offsets)
+ - Added 'reason' field to CNC stop command, providing contrast between user-initiated stop and ERROR-stop. (e.g. in the case of a count-rate error)
+ - Fixed some inconsistent logbox message importance colours
+ - Fixed some incoherent onClosing logic
+
+
 ## v1.0.2 - 2024/02/15
  - Implemented increment/decrement buttons for Phase times, long overdue QOL feature.
  - Fixed a bug when omitting scan time in sample-sequence CSVs.

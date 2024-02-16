@@ -1,6 +1,6 @@
 # S1Control by ZH for PSS
-versionNum = "v1.0.2"  # v0.9.6 was the first GeRDA-control version
-versionDate = "2024/02/15"
+versionNum = "v1.0.3"  # v0.9.6 was the first GeRDA-control version
+versionDate = "2024/02/16"
 
 import os
 import sys
@@ -30,6 +30,7 @@ import subprocess
 import ctypes
 import logging
 import serial
+import requests
 from element_string_lists import (
     elementstr_symbolsonly,
     elementstr_namesonly,
@@ -313,7 +314,7 @@ def instrument_AcknowledgeError(TxMsgID):
     sendCommand(xrf, f'<Acknowledge RxMsgID="{TxMsgID}" UserAcked="Yes"></Acknowledge>')
 
 
-def printAndLog(data, logbox_colour_tag="BASIC"):
+def printAndLog(data, logbox_colour_tag: str = "BASIC", notify_slack: bool = False):
     """prints data to UI logbox and txt log file. logbox_colour_tag can be:
 
     'ERROR' (red), 'WARNING' (yellow/orange), 'INFO' (blue), or 'BASIC' (white).
@@ -390,8 +391,52 @@ def printAndLog(data, logbox_colour_tag="BASIC"):
             # logbox.insert("end", "\n")
             logbox.see("end")
             logbox.configure(state="disabled")
+        if notify_slack:
+            notifySlackChannel_OnlyIfGerdaConnected(msg=logbox_msg)
     else:
         print(f"(Logfile/Logbox uninitialised) Tried to print: {data}")
+
+
+def notifySlackChannel_OnlyIfGerdaConnected(msg: str) -> None:
+    """Sends a message to a slack Channel. This was added primarily for GeRDA monitoring purposes.
+    The function looks for the slack webhook URL (see: api.slack.com/apps/)
+    in a text file in the directory of the S1Control executable called 'slackwebhook.txt' (for security purposes).
+    the text file should contain only the webhook url.
+    This function really isn't *vital*, so no stress if it trys and excepts."""
+    global slack_wh_url
+
+    if gerdaCNC == None:
+        # for our purposes, we don't need to be sending slack messages unless the gerda is
+        return
+
+    # only need to get webhook url first time
+    if slack_wh_url == None:
+        try:
+            with open(f"{os.getcwd()}/slackwebhook.txt", "r") as whfile:
+                slack_wh_url = whfile.read().strip()
+                if slack_wh_url.startswith("https://hooks.slack.com/services/"):
+                    printAndLog(f"Slack Webhook set: {slack_wh_url}")
+                else:
+                    slack_wh_url = "INVALID"
+        except FileNotFoundError:
+            slack_wh_url = "INVALID"
+            return
+        except Exception as e:
+            printAndLog(f"Slack Webhook could not be set: {e}")
+            slack_wh_url = "INVALID"
+    # check for previous tests, then okay to try webhook send
+    if (slack_wh_url != None) and (slack_wh_url != "INVALID"):
+
+        msg_data = {"text": msg}
+        try:
+            req = requests.post(
+                slack_wh_url,
+                data=json.dumps(msg_data),
+                headers={"Content-type": "application/json"},
+                timeout=0.6,
+            )
+        except Exception as e:
+            printAndLog(f"Failed to send slack message: {e}")
 
 
 # def printAndLog_OLD(data, logbox_colour_tag="BASIC"):
@@ -773,6 +818,7 @@ def xrfListenLoopThread_Check():
                 "ERROR: XRF listen loop broke. Attempting to Restart...", "ERROR"
             )
             try:
+                time.sleep(2)
                 xrfListenLoopThread_Start(None)
                 printAndLog("XRF Listen Loop successfully restarted.")
             except:
@@ -921,8 +967,8 @@ def xrfListenLoop():
 
                 elif statusparam == "Assay" and statustext == "Complete":
                     assay_end_time = time.time()
-                    instr_assayisrunning = False
-                    xraysonbar.stop()
+                    # instr_assayisrunning = False
+
                     # print(spectra)
                     try:
                         instr_currentassayspectra.append(spectra[-1])
@@ -943,24 +989,29 @@ def xrfListenLoop():
                     temp_msg_colour = "BASIC"  # set as default
                     try:
                         if (
+                            float(instr_currentdettemp) > (-25)
+                            or float(instr_currentdettemp) < (-29)
+                            or float(instr_currentambtemp) > (65)
+                        ):
+                            temp_msg_colour = "ERROR"
+                            printAndLog(
+                                f"ERROR: Instrument Temperatures appear to be FAR outside of the normal range! {assay_finaltemps}",
+                                logbox_colour_tag="ERROR",
+                            )
+
+                        elif (
                             float(instr_currentdettemp) > (-26)
                             or float(instr_currentdettemp) < (-28)
                             or float(instr_currentambtemp) > (55)
                         ):
-                            temp_msg_colour = "WARNING"
                             printAndLog(
-                                "WARNING: Instrument Temperatures appear to be outside of the normal range!",
-                                "WARNING",
+                                f"WARNING: Instrument Temperatures appear to be outside of the normal range! {assay_finaltemps}",
+                                logbox_colour_tag="WARNING",
                             )
-                        if (
-                            float(instr_currentdettemp) > (-25)
-                            or float(instr_currentdettemp) < (-29)
-                            or float(instr_currentambtemp) > (60)
-                        ):
-                            temp_msg_colour = "ERROR"
+                        else:
+                            printAndLog(f"Temps: {assay_finaltemps}", "BASIC")
                     except:  # likely no spectra packets sent
-                        pass
-                    printAndLog(f"Temps: {assay_finaltemps}", temp_msg_colour)
+                        printAndLog(f"Temps: {assay_finaltemps}", temp_msg_colour)
                     # printAndLog(f'Amb Temp F: {instr_currentambtemp_F}°F')
                     # instrument_QueryNoseTemp()
 
@@ -1021,6 +1072,8 @@ def xrfListenLoop():
                             )
                         else:
                             instrument_StartAssay()
+                    instr_assayisrunning = False
+                    xraysonbar.stop()
                     # instr_currentphase = 0
 
                 elif statusparam == "Phase Change":
@@ -1484,7 +1537,11 @@ def xrfListenLoop():
                 ]  # 'Yes' or 'No'
                 infomsg = data["InfoReport"]["#text"]
                 # e.g. "Nose Door Open. Close it to Continue."
-                printAndLog(f"Instrument INFO/WARNING: {infomsg}")
+                printAndLog(
+                    f"Instrument INFO/WARNING: {infomsg}",
+                    logbox_colour_tag="WARNING",
+                    notify_slack=True,
+                )
                 if isuseracknowldegable == "Yes":
                     instrument_AcknowledgeError(TxMsgID)
                     printAndLog(
@@ -1492,14 +1549,19 @@ def xrfListenLoop():
                     )
                 else:
                     printAndLog(
-                        "ERROR: Info/Warning Message Cannot be Acknowledged Remotely. Please evaluate info/warning on instrument."
+                        "WARNING: Info/Warning Message Cannot be Acknowledged Remotely. Please evaluate info/warning on instrument.",
+                        logbox_colour_tag="WARNING",
                     )
                 if "Backscatter Limit Failure::Count Rate too Low" in infomsg:
                     printAndLog(
                         "'Count Rate Too Low' error occurred. Remaining repeat assays will be cancelled.",
-                        "ERROR",
+                        logbox_colour_tag="ERROR",
                     )
                     instr_assayrepeatsleft = 0
+                    if gerdaCNC != None:
+                        gerdaCNC.stop_sample_sequence_immediately(
+                            reason="Count Rate Error"
+                        )
 
             # ERROR HAS OCCURRED
             elif "ErrorReport" in data:
@@ -1510,7 +1572,11 @@ def xrfListenLoop():
                 ]  # 'Yes' or 'No'
                 ErrorMsg = data["ErrorReport"]["#text"]
                 # e.g. "System temperature out of range."
-                printAndLog(f"Instrument ERROR: {ErrorMsg}")
+                printAndLog(
+                    f"Instrument ERROR: {ErrorMsg}",
+                    logbox_colour_tag="ERROR",
+                    notify_slack=True,
+                )
                 if isuseracknowldegable == "Yes":
                     instrument_AcknowledgeError(TxMsgID)
                     printAndLog("Error Acknowledgment Sent. Attempting to resume...")
@@ -1597,7 +1663,7 @@ def xrfListenLoop():
                     instr_assayisrunning = True
                 elif data["Response"]["#text"] == "Assay Stop":
                     printAndLog("Response: Assay Stop")
-                    instr_assayisrunning = False
+                    # instr_assayisrunning = False
 
             # Response Success log in OR already logged in
             elif (
@@ -1966,8 +2032,9 @@ def completeAssay(
             ):
                 any_phases_failed_sanity_check = True
                 printAndLog(
-                    f"SPECTRA SANITY CHECK FAILED: Assay # {assay_catalogue_num}, Phase {i+1}. Check Spectrum for Possible Incorrect Voltage! Note: This function has no way of checking for sum peaks or low-fluorescence samples, so false positives may occur.",
+                    f"SPECTRA SANITY CHECK FAILED: Assay # {assay_catalogue_num}, Phase {i+1}. Check Spectrum for Possible Incorrect Voltage or Zero-peak-only! Note: This function has no way of checking for sum peaks or low-fluorescence samples, so false positives may occur.",
                     "WARNING",
+                    notify_slack=True,
                 )
                 break
         if any_phases_failed_sanity_check:
@@ -2060,7 +2127,7 @@ def onInstrDisconnect():
         "Connection to the XRF instrument was unexpectedly lost. Software will shut down and a log will be saved.",
         "ERROR",
     )
-    onClosing(force=True)
+    onClosing(force=False)
     # TODO implement reconnection logic
 
 
@@ -2607,7 +2674,7 @@ def startAssayClicked():
 
 def endOfAssaysReset():  # Assumes this is called when assay is completed and no repeats remain to be done
     global instr_assayisrunning
-    instr_assayisrunning = False
+    # instr_assayisrunning = False
     if "Stop Assay" in button_assay.cget("text"):
         # button_assay_text.set('\u2BC8 Start Assay')
         button_assay.configure(
@@ -3008,7 +3075,8 @@ def customSpectrumIlluminationChosen(choice):
             customspectrum_current_entry.insert(0, illum.current)
             customspectrum_filter_dropdown.set(illum.filterposition)
 
-def sensibleToInt(x:str) -> int:
+
+def sensibleToInt(x: str) -> int:
     """To fix the dumb issue where int('') just errors the fuck out. so stupid."""
     if x:
         return int(x)
@@ -3104,7 +3172,9 @@ class GerdaSampleSequence:
                                     optional_illumination_name=row[
                                         self.colindex_illumination
                                     ],
-                                    optional_time_in_s=sensibleToInt(row[self.colindex_time]),
+                                    optional_time_in_s=sensibleToInt(
+                                        row[self.colindex_time]
+                                    ),
                                 )
                             )
                             # process each row
@@ -3152,7 +3222,7 @@ class GerdaCNCController:
         # store the last response lines for threaded shit
         self.last_command_response: list = []
         # store the last moved-to position x and y
-        self.instrument_last_moved_to_xyz_position: tuple = (0, 0, 0)
+        self.instrument_last_moved_to_xyz_position: tuple = (5, 5, 5)
         # get serial num letter for determining xyz offsets per instrument
         match instr_model:
             case "Titan":
@@ -3197,7 +3267,7 @@ class GerdaCNCController:
             else:
                 self.cnc_serial.write((command + "\n").encode())
             if not be_quiet:
-                printAndLog(f"Sent CNC Command: '{command}'", "INFO")
+                printAndLog(f"Sent CNC Command: '{command}'", "GERDA")
             # Read all available response lines until completed or error
             response_lines = []
             while True:
@@ -3213,12 +3283,12 @@ class GerdaCNCController:
                     break
                 elif response == "ok":
                     if not be_quiet:
-                        printAndLog(f"CNC Command sent successfully.", "INFO")
+                        printAndLog(f"CNC Command sent successfully.", "GERDA")
                     break
                 elif response and response[0] == "<" and response[-1] == ">":
                     # status / currentpos response!
                     if not be_quiet:
-                        printAndLog(f"CNC Status request sent successfully.", "INFO")
+                        printAndLog(f"CNC Status request sent successfully.", "GERDA")
                     break
                 time.sleep(0.05)
             self.last_command_response = response_lines
@@ -3365,7 +3435,11 @@ class GerdaCNCController:
     def home(self):
         printAndLog("CNC Homing...")
         response = self.send_command("$H")
-        self.instrument_last_moved_to_xyz_position = (0, 0, 0)
+        self.instrument_last_moved_to_xyz_position = (
+            5 + self.instr_offset_x,
+            5 + self.instr_offset_y,
+            5 + self.instr_offset_z,
+        )
         printAndLog("CNC Homing Complete.")
         return response
 
@@ -3377,23 +3451,31 @@ class GerdaCNCController:
             time.sleep(1)
         return
 
-    def stop_sample_sequence_immediately(self):
+    def stop_sample_sequence_immediately(self, reason: str = "Clicked"):
         self.halt_sample_sequence = True
+        self.halt_sample_sequence_reason = reason
         instrument_StopAssay()
-        printAndLog("GeRDA Sample Sequence will halt immediately.")
-
-    def stop_sample_sequence_after_current_assay_complete(self):
-        self.halt_sample_sequence = True
         printAndLog(
-            "GeRDA Sample Sequence will stop after completion of the current assay."
+            f"GeRDA Sample Sequence will halt immediately. (Reason={reason})",
+            logbox_colour_tag="GERDA",
+            notify_slack=True,
         )
 
-    def sample_sequence(
-        self,
-        sample_sequence: GerdaSampleSequence,
+    def stop_sample_sequence_after_current_assay_complete(
+        self, reason: str = "Clicked"
     ):
+        self.halt_sample_sequence = True
+        self.halt_sample_sequence_reason = reason
+        printAndLog(
+            f"GeRDA Sample Sequence will stop after completion of the current assay. (Reason={reason})",
+            logbox_colour_tag="GERDA",
+            notify_slack=True,
+        )
+
+    def sample_sequence(self, sample_sequence: GerdaSampleSequence, start_num: int):
         # disable start sample seq buttons and enable stop buttons
         button_gerda_startsampleseq.configure(state="disabled")
+        entry_gerda_sequencestartat.configure(state="disabled")
         button_gerda_stopsampleseq_immediate.configure(state="normal")
         button_gerda_stopsampleseq_afterthis.configure(state="normal")
         button_gerda_loadcsv.configure(state="disabled")
@@ -3406,11 +3488,33 @@ class GerdaCNCController:
         gerda_sampleseq_scanscompleted: int = 0
         gerda_sampleseq_scanstotal: int = len(sample_sequence.listofsampleobjects)
         progressbar_gerda_sampleseq.set(0)
+        if start_num != 1:
+            # bool var to only skip forward ONCE
+            need_to_skip = True
+        else:
+            need_to_skip = False
+
         for sample_obj in sample_sequence.listofsampleobjects:
+            # logic for skipping to the start num scan
+            if need_to_skip and (sample_obj.scan_number != start_num):
+                # only need to update bar
+                gerda_sampleseq_scanscompleted += 1
+                progress_float = (
+                    gerda_sampleseq_scanscompleted / gerda_sampleseq_scanstotal
+                )
+                if progress_float > 1:
+                    progress_float = 1
+                progressbar_gerda_sampleseq.set(progress_float)
+                # then skip to next sample:
+                continue
+            # once skipped through, can set skip flag false.
+            need_to_skip = False
             # check if halt command has been given
             if self.halt_sample_sequence:
                 printAndLog(
-                    f"CNC Instructed to Stop - Stopped before scanning sample # {sample_obj.scan_number} ({sample_obj.name_or_note})"
+                    f"CNC Instructed to Stop - Stopped before scanning sample # {sample_obj.scan_number} ({sample_obj.name_or_note})",
+                    logbox_colour_tag="GERDA",
+                    notify_slack=True,
                 )
                 break
             # main loop going over samples / scans to complete
@@ -3419,14 +3523,16 @@ class GerdaCNCController:
             # check AGAIN if halt command has been given - in case faulty coordinates are given.
             if self.halt_sample_sequence:
                 printAndLog(
-                    f"CNC Instructed to Stop - Stopped before scanning sample # {sample_obj.scan_number} ({sample_obj.name_or_note})"
+                    f"CNC Instructed to Stop - Stopped before scanning sample # {sample_obj.scan_number} ({sample_obj.name_or_note})",
+                    logbox_colour_tag="GERDA",
+                    notify_slack=True,
                 )
                 break
+
             # set "name" info field to be the name_or_note value from the sampleseq.
             printAndLog(
                 f"GeRDA Setting Instrument Info-fields: Name={sample_obj.name_or_note}, X={sample_obj.x_position}, Y={sample_obj.y_position}"
             )
-
             infofield_msg = f'<Configure parameter="Edit Fields"><FieldList><Field type="Fixed"><Name>GeRDA_Sample_Name</Name><Value>{sample_obj.name_or_note}</Value></Field><Field type="Fixed"><Name>GeRDA_X</Name><Value>{sample_obj.x_position}</Value></Field><Field type="Fixed"><Name>GeRDA_Y</Name><Value>{sample_obj.y_position}</Value></Field></FieldList></Configure>'
             sendCommand(xrf, infofield_msg)
             field1_name_strvar.set("Name")
@@ -3461,7 +3567,9 @@ class GerdaCNCController:
                     )
                 else:
                     printAndLog(
-                        f"Custom Assay skipped due to invalid Illumination Name - '{sample_obj.optional_illumination_name}'"
+                        f"Sample Sequence Custom Assay # {sample_obj.scan_number} ({sample_obj.name_or_note}) was skipped due to invalid Illumination Name - '{sample_obj.optional_illumination_name}'",
+                        logbox_colour_tag="WARNING",
+                        notify_slack=True,
                     )
             # wait for assay complete
             self.wait_for_assay_completion()
@@ -3477,7 +3585,8 @@ class GerdaCNCController:
                 # if scan was not as long as it should have been, throw error.
                 printAndLog(
                     f"WARNING: GeRDA Scan # {sample_obj.scan_number} on Sample: {sample_obj.name_or_note} does not appear to have run for the correct duration. Actual duration={scan_duration_s:.2f}s, should be at least {scan_time_minimum_required}s.",
-                    "WARNING",
+                    logbox_colour_tag="WARNING",
+                    notify_slack=True,
                 )
 
             # get progress
@@ -3495,11 +3604,16 @@ class GerdaCNCController:
         # once all samples scanned,
         # reconfigure relevant buttons now that process has stopped.
         button_gerda_startsampleseq.configure(state="normal")
+        entry_gerda_sequencestartat.configure(state="normal")
         button_gerda_stopsampleseq_immediate.configure(state="disabled")
         button_gerda_stopsampleseq_afterthis.configure(state="disabled")
         button_gerda_loadcsv.configure(state="normal")
         self.home()
-        printAndLog("GeRDA Sample Sequence Finished.")
+        printAndLog(
+            "GeRDA Sample Sequence Finished.",
+            logbox_colour_tag="INFO",
+            notify_slack=True,
+        )
 
 
 def gerdaCNC_InitialiseConnectionIfPossible() -> None:
@@ -3574,6 +3688,7 @@ def loadGerdaSampleListCSV_clicked() -> None:
             )
             # printAndLog(f"Sample List: {gerda_sample_sequence.listofsamplenames}")
             button_gerda_startsampleseq.configure(state="normal")
+            entry_gerda_sequencestartat.configure(state="normal")
             # open edit info window once and then close to initialise notes
             editInfoFieldsClicked()
             gui.after(500, editInfoOnClosing)
@@ -3596,9 +3711,10 @@ def gerdaCNC_StartSampleSequence_clicked() -> None:
         )
         return
     else:
-        printAndLog("Attempting to Start GeRDA Sample Sequence...", "INFO")
+        startat = gerda_sample_seq_start_num_intvar.get()
+        printAndLog(f"Starting GeRDA Sample Sequence at Scan # {startat}", "INFO")
         sample_seq_list = gerda_sample_sequence
-        gerdaRunCommandInThread(gerdaCNC.sample_sequence, sample_seq_list)
+        gerdaRunCommandInThread(gerdaCNC.sample_sequence, sample_seq_list, startat)
 
         # gerdaCNC.sample_sequence(
         #     sample_sequence=gerda_sample_sequence, wait_time_between_samples_s=2
@@ -3614,7 +3730,7 @@ def gerdaCNC_StopSampleSequenceImmediate_clicked() -> None:
         return
     elif gerda_sample_sequence == None:
         printAndLog(
-            "ERROR: GeRDA Sample Sequence CSV has not been loaded, cannot Start.",
+            "ERROR: GeRDA Sample Sequence CSV has not been loaded, cannot Stop Sample Sequence.",
             "ERROR",
         )
         return
@@ -3631,7 +3747,7 @@ def gerdaCNC_StopSampleSequenceAfterCurrentAssayComplete_clicked() -> None:
         return
     elif gerda_sample_sequence == None:
         printAndLog(
-            "ERROR: GeRDA Sample Sequence CSV has not been loaded, cannot Start.",
+            "ERROR: GeRDA Sample Sequence CSV has not been loaded, cannot Stop Sample Sequence.",
             "ERROR",
         )
         return
@@ -3891,7 +4007,7 @@ def gerdaDebugClicked():
             placeholder_text="X",
             border_width=1,
             font=ctk_jbm12,
-            state="disabled",
+            state="normal",
         )
         entry_gerda_moveto_x.grid(
             row=8, column=0, columnspan=1, padx=4, pady=4, sticky=tk.NSEW
@@ -3903,7 +4019,7 @@ def gerdaDebugClicked():
             placeholder_text="Y",
             border_width=1,
             font=ctk_jbm12,
-            state="disabled",
+            state="normal",
         )
         entry_gerda_moveto_y.grid(
             row=8, column=1, columnspan=1, padx=4, pady=4, sticky=tk.NSEW
@@ -3915,7 +4031,7 @@ def gerdaDebugClicked():
             placeholder_text="Z",
             border_width=1,
             font=ctk_jbm12,
-            state="disabled",
+            state="normal",
         )
         entry_gerda_moveto_z.grid(
             row=8, column=2, columnspan=1, padx=4, pady=4, sticky=tk.NSEW
@@ -3927,7 +4043,7 @@ def gerdaDebugClicked():
             command=gerdaCNC_moveto_coords_clicked,
             font=ctk_jbm12B,
             image=icon_3d_axis_move,
-            state="disabled",
+            state="normal",
         )
         button_gerda_moveto_go.grid(
             row=8, column=3, columnspan=1, padx=4, pady=4, sticky=tk.NSEW
@@ -4851,6 +4967,7 @@ if __name__ == "__main__":
     thread_halt = False
     quit_requested = False
     SERIALNUMBERRECV = False
+    slack_wh_url = None
 
     # Colour Assignments
     WHITEISH = "#FAFAFA"
@@ -5835,7 +5952,28 @@ if __name__ == "__main__":
         state="disabled",
     )
     button_gerda_startsampleseq.grid(
-        row=4, column=0, columnspan=4, padx=4, pady=4, sticky=tk.NSEW
+        row=4, column=0, columnspan=3, padx=4, pady=4, sticky=tk.NSEW
+    )
+    # label_gerda_sequencestartat = ctk.CTkLabel(ctrltabview.tab("GeRDA"),
+    #     text="at #",
+    #     anchor="e",
+    #     font=ctk_jbm12,
+    # )
+    # label_gerda_sequencestartat.grid(
+    #     row=4, column=2, columnspan=1, padx=4, pady=4, sticky=tk.NSEW
+    # )
+    gerda_sample_seq_start_num_intvar = ctk.IntVar(value=1)
+    entry_gerda_sequencestartat = ctk.CTkEntry(
+        ctrltabview.tab("GeRDA"),
+        textvariable=gerda_sample_seq_start_num_intvar,
+        width=4,
+        justify="right",
+        border_width=1,
+        font=ctk_jbm12,
+        state="disabled",
+    )
+    entry_gerda_sequencestartat.grid(
+        row=4, column=3, columnspan=1, padx=4, pady=4, sticky=tk.NSEW
     )
 
     progressbar_gerda_sampleseq = ctk.CTkProgressBar(
@@ -5905,6 +6043,9 @@ if __name__ == "__main__":
     slider_gerda_sleeptimebetweensamples.grid(
         row=8, column=2, columnspan=2, padx=[0, 4], pady=0, sticky=tk.EW
     )
+    entry_gerda_moveto_x = None
+    entry_gerda_moveto_y = None
+    entry_gerda_moveto_z = None
 
     # About Section
     about_blurb1 = ctk.CTkLabel(
@@ -6648,6 +6789,9 @@ if __name__ == "__main__":
     instrument_QueryCurrentApplicationPhaseTimes()
 
     gui.protocol("WM_DELETE_WINDOW", onClosing)
+
+    # gerdaCNC = 1
+    # notifySlackChannel_OnlyIfGerdaConnected("this is a test")
 
     gui.mainloop()
 
