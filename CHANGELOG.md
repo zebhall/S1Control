@@ -1,5 +1,10 @@
 # S1Control Changelog 
 
+## v1.0.4 - 2024/02/19
+ - Fixed several bugs related to estimated assay time readouts and progress bar logic that were causing custom spectrum mode assays to not estimate/track time correctly.
+ - Fixed a bug that caused the custom spectrum duration entrybox to duplicate it's contents when an assay was started. No more scanning for 303030303030303030s.
+ - removed a few unnecessary terminal debug printouts.
+
 ## v1.0.3 - 2024/02/16
  - Added 'start-at-scan-#' entry box next to Sample Sequence Start button, allowing the sample sequence to be started at any scan.
  - Implemented GeRDA Event notification functionality for Slack.

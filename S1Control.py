@@ -1,6 +1,6 @@
 # S1Control by ZH for PSS
-versionNum = "v1.0.3"  # v0.9.6 was the first GeRDA-control version
-versionDate = "2024/02/16"
+versionNum = "v1.0.4"  # v0.9.6 was the first GeRDA-control version
+versionDate = "2024/02/19"
 
 import os
 import sys
@@ -164,8 +164,12 @@ def instrument_StartAssay(
     else:
         # if customassay, then make ui follow along.
         applicationselected_stringvar.set("Custom Spectrum")
-        # clear and then fill custom assay duration box with
-        customspectrum_duration_entry.delete(0, -1)
+
+        # clear and then fill custom assay duration box with given time (for gerda customspectra)
+        current_time_set = customspectrum_duration_entry.get()
+        for char in current_time_set:
+            # delete all chars, because providing last_index to the delete method doesn't delete all chars. annoying!
+            customspectrum_duration_entry.delete(0)
         customspectrum_duration_entry.insert(0, str(customassay_duration))
 
         _no = "No"
@@ -944,12 +948,20 @@ def xrfListenLoop():
 
                 if statusparam == "Assay" and statustext == "Start":
                     instr_currentphase = 0
-                    instr_currentphaselength_s = int(phasedurations[instr_currentphase])
                     if instr_currentapplication != "Custom Spectrum":
                         # only need to calculate assay total set time if it ISN'T a custom spectrum assay. if it is, it is set in startAssay()
+                        instr_currentphaselength_s = int(
+                            phasedurations[instr_currentphase]
+                        )
                         assay_time_total_set_seconds = 0
                         for dur in phasedurations:
                             assay_time_total_set_seconds += int(dur)
+                    else:
+                        instr_currentphaselength_s = int(
+                            customspectrum_duration_entry.get()
+                        )
+                        assay_time_total_set_seconds = instr_currentphaselength_s
+                        phasedurations = ["0"]
                     assay_start_time = time.time()
                     instr_assayisrunning = True
                     assay_phase_spectrumpacketcounter = 0
@@ -1114,7 +1126,9 @@ def xrfListenLoop():
                 "Application Selection" in data["Status"]
             ):  # new application selected DOESN"T WORK? only plays if selected on instr screen?
                 printAndLog("New Application Selected.")
-                sendCommand(xrf, bruker_query_currentapplicationinclmethods)
+                # override rechecking these values IF custom selected.
+                if applicationselected_stringvar.get() != "Custom Spectrum":
+                    sendCommand(xrf, bruker_query_currentapplicationinclmethods)
                 # gui.after(200,ui_UpdateCurrentAppAndPhases)
                 # need to find way of queuing app checker
 
@@ -1499,7 +1513,7 @@ def xrfListenLoop():
                 instr_phasecount = len(instr_currentphases)
                 instr_estimatedrealisticassaytime = 0
                 for dur in phasedurations:
-                    # add 4 seconds per phase for general slowness and processing time on S1 titan, Tracer, CTX.
+                    # add ~4 seconds per phase for general slowness and processing time on S1 titan, Tracer, CTX.
                     instr_estimatedrealisticassaytime += int(dur) + 4
 
                 # printAndLog(f'Current Phases: {instr_currentphases}')
@@ -2195,6 +2209,7 @@ def statusUpdateChecker():
 
             # Calculating progress of total assays incl repeats, for progressbar
             num_phases_in_each_assay = len(instr_currentphases)
+
             progress_phases_done = (
                 (
                     num_phases_in_each_assay
@@ -2209,6 +2224,9 @@ def statusUpdateChecker():
 
             # Convert to float of range 0 -> 1
             current_assay_progress = progress_phases_done / progress_phases_amounttotal
+            # print(
+            #     f"debug: {assay_phase_spectrumpacketcounter=},{instr_currentphaselength_s=},{num_phases_in_each_assay=}, ({progress_phases_done=} / {progress_phases_amounttotal=} = {current_assay_progress})"
+            # )
 
             # Sanity check to stop overflowing progress bar when laggy or otherwise weird
             if current_assay_progress > 1:
@@ -2231,6 +2249,10 @@ def statusUpdateChecker():
         # print(f'instr is armed: {instr_isarmed}')
         # print(f'instr is logged in: {instr_isloggedin}')
         # print(f'assay is running: {instr_assayisrunning}')
+        # try:
+        #     print(f"{instr_currentphases=}")
+        # except:
+        #     pass
         time.sleep(0.2)
 
 
@@ -2299,7 +2321,7 @@ def plotSpectrum(spectrum, specenergy, colour, spectrum_legend):
             counts = spectrum["normalised_data"]
             spectra_ax.set_ylabel("Normalised Counts (%)")
         except:
-            print("Normalised data not found, using raw data instead")
+            printAndLog("Normalised data not found, using raw data instead")
             counts = spectrum["data"]
             spectra_ax.set_ylabel("Counts (Total)")
     else:
@@ -2628,6 +2650,10 @@ def startAssayClicked():
     global instr_assayrepeatsleft
     global instr_assayrepeatschosenforcurrentrun
     global button_assay
+    global instr_currentphaselength_s
+    global instr_phasecount
+    global instr_currentphases
+    global instr_estimatedrealisticassaytime
     instr_assayrepeatsleft = instr_assayrepeatsselected
     instr_assayrepeatschosenforcurrentrun = instr_assayrepeatsselected
     if instr_assayisrunning:
@@ -2646,6 +2672,12 @@ def startAssayClicked():
                 f"Starting Assays - {instr_assayrepeatsselected} consecutive selected."
             )
         if applicationselected_stringvar.get() == "Custom Spectrum":
+            instr_currentphaselength_s = int(customspectrum_duration_entry.get())
+            instr_phasecount = 1
+            instr_estimatedrealisticassaytime = instr_currentphaselength_s + 2
+            instr_currentphases = [
+                ("0", "Custom Spectrum", f"{instr_currentphaselength_s}")
+            ]
             instrument_StartAssay(
                 customassay=True,
                 customassay_filter=customspectrum_filter_dropdown.get(),
@@ -3178,7 +3210,7 @@ class GerdaSampleSequence:
                                 )
                             )
                             # process each row
-                            print(row)
+                            # print(row)
 
                     printAndLog(f"Sample List CSV File successfully processed.", "INFO")
                     # self.estimated_total_duration_s = 0
