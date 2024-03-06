@@ -1,6 +1,4 @@
 # S1Control by ZH for PSS
-versionNum = "v1.0.4"  # v0.9.6 was the first GeRDA-control version
-versionDate = "2024/02/19"
 
 import os
 import sys
@@ -20,14 +18,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 from dataclasses import dataclass
 from matplotlib.figure import Figure
-from matplotlib import style
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from PIL import Image
 import csv
 from decimal import Decimal
 from plyer import notification as plyer_notification
 import subprocess
-import ctypes
 import logging
 import serial
 import requests
@@ -37,6 +33,9 @@ from element_string_lists import (
     elementstr_symbolswithzinbrackets,
     all_xray_lines,
 )
+
+versionNum = "v1.0.5"  # v0.9.6 was the first GeRDA-control version
+versionDate = "2024/03/06"
 
 
 @dataclass
@@ -83,13 +82,13 @@ def instrument_Connect(instant_connect: bool = False):
         ping_result = universalPing(XRF_IP_USB, 1)
     # print(f'ping = {ping}')
     # xrf.connect((XRF_IP_USB, XRF_PORT_USB))
-    if ping_result == False:
+    if not ping_result:
         if messagebox.askyesno(
             f"Connection Problem - S1Control {versionNum}",
             f"S1Control has not recieved a response from the instrument at {XRF_IP_USB}, and is unable to connect. Would you like to continue trying to connect?",
         ):
             connection_attempt_count = 0
-            while ping_result == False:
+            while not ping_result:
                 # ping will only equal 0 if there are no errors or timeouts
                 ping_result = universalPing(XRF_IP_USB, 1)
                 # os.system('ping -n 1 -w 40 '+XRF_IP_USB)
@@ -113,9 +112,9 @@ def instrument_Connect(instant_connect: bool = False):
 
     try:
         xrf.connect((XRF_IP_USB, XRF_PORT_USB))
-    except:
+    except Exception as e:
         print(
-            "Connection Error. Check instrument has booted to login screen and is properly connected before restarting the program."
+            f"Connection Error. Check instrument has booted to login screen and is properly connected before restarting the program. ({repr(e)})"
         )
 
 
@@ -258,9 +257,9 @@ def instrument_ConfigureProximityDisable():
 
 
 def instrument_toggleProximity(prox_button_bool: bool):
-    if prox_button_bool == True:
+    if prox_button_bool:
         instrument_ConfigureProximityEnable()
-    elif prox_button_bool == False:
+    elif not prox_button_bool:
         instrument_ConfigureProximityDisable()
     else:
         printAndLog("ERROR: Cannot toggle proximity. Toggle value invalid.")
@@ -275,9 +274,9 @@ def instrument_ConfigureStoreResultsDisable():
 
 
 def instrument_toggleStoreResultFiles(store_results_button_bool: bool):
-    if store_results_button_bool == True:
+    if store_results_button_bool:
         instrument_ConfigureStoreResultsEnable()
-    elif store_results_button_bool == False:
+    elif not store_results_button_bool:
         instrument_ConfigureStoreResultsDisable()
     else:
         printAndLog("ERROR: Cannot toggle store-results. Toggle value invalid.")
@@ -292,9 +291,9 @@ def instrument_ConfigureStoreSpectraDisable():
 
 
 def instrument_toggleStoreSpectraFiles(store_spectra_button_bool: bool):
-    if store_spectra_button_bool == True:
+    if store_spectra_button_bool:
         instrument_ConfigureStoreSpectraEnable()
-    elif store_spectra_button_bool == False:
+    elif not store_spectra_button_bool:
         instrument_ConfigureStoreSpectraDisable()
     else:
         printAndLog("ERROR: Cannot toggle store-spectra. Toggle value invalid.")
@@ -321,7 +320,7 @@ def instrument_AcknowledgeError(TxMsgID):
 def printAndLog(data, logbox_colour_tag: str = "BASIC", notify_slack: bool = False):
     """prints data to UI logbox and txt log file. logbox_colour_tag can be:
 
-    'ERROR' (red), 'WARNING' (yellow/orange), 'INFO' (blue), or 'BASIC' (white).
+    'ERROR' (red), 'WARNING' (yellow/orange), 'INFO' (blue), 'GERDA' (l.blue/green) or 'BASIC' (white).
 
     This colour selection may be overidden if the message contains 'ERROR' or 'WARNING'
     """
@@ -337,10 +336,10 @@ def printAndLog(data, logbox_colour_tag: str = "BASIC", notify_slack: bool = Fal
             # logbox.configure(state="normal")
             logFile.write(time.strftime("%H:%M:%S", time.localtime()))
             logFile.write("\t")
-            if type(data) is dict:
+            if isinstance(data, dict):
                 logFile.write(json.dumps(data))
                 logbox_msg += json.dumps(data)
-            elif type(data) is str:
+            elif isinstance(data, str):
                 logFile.write(data)
                 if (
                     "GERDA" in data.upper()
@@ -353,7 +352,7 @@ def printAndLog(data, logbox_colour_tag: str = "BASIC", notify_slack: bool = Fal
                 elif "ERROR" in data and logbox_colour_tag == "BASIC":
                     logbox_colour_tag = "ERROR"
                 logbox_msg += data
-            elif type(data) is pd.DataFrame:
+            elif isinstance(data, pd.DataFrame):
                 # Because results are printed normally to resultsbox, this should now print results table to log but NOT console.
                 logFile.write(data.to_string(index=False).replace("\n", "\n\t\t"))
                 # logbox.insert('end', data.to_string(index = False))
@@ -366,7 +365,7 @@ def printAndLog(data, logbox_colour_tag: str = "BASIC", notify_slack: bool = Fal
                     logbox_colour_tag = "INFO"
                 else:  # Else, df is probably results, so don't print to logbox.
                     logbox_msg += "Assay Results written to log file."
-            elif type(data) is list:
+            elif isinstance(data, list):
                 listastext = ", ".join(str(e) for e in data)
                 logFile.write(f"[{listastext}]")
                 logbox_msg += f"[{listastext}]"
@@ -383,7 +382,7 @@ def printAndLog(data, logbox_colour_tag: str = "BASIC", notify_slack: bool = Fal
                     logbox.insert(
                         "end",
                         (
-                            f"ERROR: Data type {type(data)} unable to be written to log box. ({e})"
+                            f"ERROR: Data type {type(data)} unable to be written to log box. ({repr(e)})"
                         ),
                         "ERROR",
                     )
@@ -409,12 +408,12 @@ def notifySlackChannel_OnlyIfGerdaConnected(msg: str) -> None:
     This function really isn't *vital*, so no stress if it trys and excepts."""
     global slack_wh_url
 
-    if gerdaCNC == None:
+    if gerdaCNC is None:
         # for our purposes, we don't need to be sending slack messages unless the gerda is
         return
 
     # only need to get webhook url first time
-    if slack_wh_url == None:
+    if slack_wh_url is None:
         try:
             with open(f"{os.getcwd()}/slackwebhook.txt", "r") as whfile:
                 slack_wh_url = whfile.read().strip()
@@ -429,94 +428,18 @@ def notifySlackChannel_OnlyIfGerdaConnected(msg: str) -> None:
             printAndLog(f"Slack Webhook could not be set: {e}")
             slack_wh_url = "INVALID"
     # check for previous tests, then okay to try webhook send
-    if (slack_wh_url != None) and (slack_wh_url != "INVALID"):
-
+    if (slack_wh_url is not None) and (slack_wh_url != "INVALID"):
         msg_data = {"text": msg}
         try:
-            req = requests.post(
+            _req = requests.post(
                 slack_wh_url,
                 data=json.dumps(msg_data),
                 headers={"Content-type": "application/json"},
                 timeout=0.6,
             )
+            # print(f"slack wh sent: {req}")
         except Exception as e:
             printAndLog(f"Failed to send slack message: {e}")
-
-
-# def printAndLog_OLD(data, logbox_colour_tag="BASIC"):
-#     """prints data to UI logbox and txt log file. logbox_colour_tag can be:
-
-#     'ERROR' (red), 'WARNING' (yellow/orange), 'INFO' (blue), or 'BASIC' (white).
-
-#     This colour selection may be overidden if the message contains 'ERROR' or 'WARNING'
-#     """
-
-#     if logFileName != "":
-#         # print(data)
-#         # Check for validity of logbox colour tag value. if invalid, set to default.
-#         if logbox_colour_tag not in ["ERROR", "WARNING", "INFO", "BASIC", "GERDA"]:
-#             logbox_colour_tag = "BASIC"
-#         with open(logFilePath, "a", encoding="utf-16") as logFile:
-#             logbox.configure(state="normal")
-#             logFile.write(time.strftime("%H:%M:%S", time.localtime()))
-#             logFile.write("\t")
-#             if type(data) is dict:
-#                 logFile.write(json.dumps(data))
-#                 logbox.insert("end", json.dumps(data), logbox_colour_tag)
-#             elif type(data) is str:
-#                 logFile.write(data)
-#                 if "ERROR" in data:
-#                     logbox_colour_tag = "ERROR"
-#                 elif "WARNING" in data:
-#                     logbox_colour_tag = "WARNING"
-#                 elif (
-#                     "GERDA" in data.upper()
-#                     or "CNC " in data.upper()
-#                     or "CNC:" in data.upper()
-#                 ):
-#                     logbox_colour_tag = "GERDA"
-#                 logbox.insert("end", data, logbox_colour_tag)
-#             elif type(data) is pd.DataFrame:
-#                 # Because results are printed normally to resultsbox, this should now print results table to log but NOT console.
-#                 logFile.write(data.to_string(index=False).replace("\n", "\n\t\t"))
-#                 # logbox.insert('end', data.to_string(index = False))
-#                 if "Energy (keV)" in data.columns:
-#                     # If df contains energy column (i.e. is from peak ID, not results), then print to logbox.
-#                     logbox.insert("end", data.to_string(index=False), "INFO")
-#                 elif "Grade" in data.columns:  # grade library results (*alloys etc*)
-#                     logbox.insert("end", data.to_string(index=False), "INFO")
-#                 else:  # Else, df is probably results, so don't print to logbox.
-#                     logbox.insert(
-#                         "end", "Assay Results written to log file.", logbox_colour_tag
-#                     )
-#             elif type(data) is list:
-#                 listastext = ", ".join(str(e) for e in data)
-#                 logFile.write(f"[{listastext}]")
-#                 logbox.insert("end", (f"[{listastext}]"), logbox_colour_tag)
-#             else:
-#                 try:
-#                     logFile.write(data)
-#                 except Exception as e:
-#                     logFile.write(
-#                         f"ERROR: Data type {type(data)} unable to be written to log file. ({e})"
-#                     )
-#                 try:
-#                     logbox.insert("end", data, logbox_colour_tag)
-#                 except Exception as e:
-#                     logbox.insert(
-#                         "end",
-#                         (
-#                             f"ERROR: Data type {type(data)} unable to be written to log box. ({e})"
-#                         ),
-#                         "ERROR",
-#                     )
-#                     print(f"(Unabled to be written to log box): {data}")
-#             logFile.write("\n")
-#             logbox.insert("end", "\n")
-#             logbox.see("end")
-#             logbox.configure(state="disabled")
-#     else:
-#         print(f"(Logfile/Logbox uninitialised) Tried to print: {data}")
 
 
 def sendCommand(s, command):
@@ -525,7 +448,7 @@ def sendCommand(s, command):
         b"\x03\x02\x00\x00\x17\x80"
         + len(msg).to_bytes(4, "little")
         + msg.encode("utf-8")
-        + b"\x06\x2A\xFF\xFF"
+        + b"\x06\x2a\xff\xff"
     )
     sent = s.sendall(msgData)
     if sent == 0:
@@ -548,7 +471,7 @@ def recvData(s):
     header = recvChunks(s, 10)
     data_size = int.from_bytes(header[6:10], "little")
     data = recvChunks(s, data_size)
-    footer = recvChunks(s, 4)
+    _footer = recvChunks(s, 4)
 
     if header[4:6] == b"\x17\x80":  # 5 - XML PACKET (Usually results?)
         datatype = XML_PACKET
@@ -607,7 +530,7 @@ def recvData(s):
     # 0 - UNKNOWN DATA
     else:
         datatype = UNKNOWN_DATA
-        printAndLog(f"****debug: unknown datatype. header = {header}, data = {data}")
+        printAndLog(f"****debug: unknown datatype. {header=}, {data=}")
         return data, datatype
 
 
@@ -643,7 +566,7 @@ def elementSymboltoName(sym: str):
         try:
             i = elementstr_symbolsonly.index(sym)
             return elementstr_namesonly[i]
-        except:
+        except ValueError:
             print("Element symbol unrecognised")
     else:
         return "Error: Symbol too long"
@@ -699,11 +622,10 @@ def notifyAllAssaysComplete(number_completed: int):
                 app_icon=iconpath,
                 timeout=10,
             )
-        except:
-            pass
-            # printAndLog(
-            #     "Minor UI Error: Assays complete notification was unable to execute. This is likely due to plyer/windows jank."
-            # )
+        except Exception as e:
+            print(
+                f"Assays complete notification was unable to execute. This is likely due to plyer/windows jank. ({repr(e)})"
+            )
 
 
 def initialiseLogFile():
@@ -718,7 +640,8 @@ def initialiseLogFile():
     try:
         pc_user = os.getlogin()
         pc_device = os.environ["COMPUTERNAME"]
-    except:
+    except Exception as e:
+        print(f"Error getting user and device IDs for log. ({repr(e)})")
         pc_user = "Unkown User"
         pc_device = "Unknown Device"
 
@@ -742,7 +665,7 @@ def initialiseLogFile():
 
     # Check for slightly renamed folder for this instrument in drive e.g. '800N8573 Ruffo' to use preferably
     foundAlternateFolderName = False
-    if driveArchiveLoc != None:
+    if driveArchiveLoc is not None:
         for subdir, dirs, files in os.walk(driveArchiveLoc):
             for dir in dirs:
                 # print(os.path.join(subdir, dir))
@@ -752,7 +675,7 @@ def initialiseLogFile():
                     break
 
     # Use just serial num if no renamed folder exists
-    if foundAlternateFolderName == False:
+    if foundAlternateFolderName is False:
         driveFolderStr = instr_serialnumber
 
     # Make folder in drive archive if doesn't already exist
@@ -825,8 +748,8 @@ def xrfListenLoopThread_Check():
                 time.sleep(2)
                 xrfListenLoopThread_Start(None)
                 printAndLog("XRF Listen Loop successfully restarted.")
-            except:
-                printAndLog("Unable to restart XRF listen loop.")
+            except Exception as e:
+                print(f"Unable to restart XRF listen loop. ({repr(e)})")
                 # raise SystemExit(0)
         else:
             onClosing(force=True)
@@ -904,7 +827,8 @@ def xrfListenLoop():
     while True:
         try:
             data, datatype = recvData(xrf)
-        except:
+        except Exception as e:
+            printAndLog(repr(e))
             printAndLog("XRF CONNECTION LOST", "ERROR")
             onInstrDisconnect()
 
@@ -951,10 +875,10 @@ def xrfListenLoop():
                     if instr_currentapplication != "Custom Spectrum":
                         # only need to calculate assay total set time if it ISN'T a custom spectrum assay. if it is, it is set in startAssay()
                         instr_currentphaselength_s = int(
-                            phasedurations[instr_currentphase]
+                            phasedurations[instr_currentphase]  # noqa: F821
                         )
                         assay_time_total_set_seconds = 0
-                        for dur in phasedurations:
+                        for dur in phasedurations:  # noqa: F821
                             assay_time_total_set_seconds += int(dur)
                     else:
                         instr_currentphaselength_s = int(
@@ -984,14 +908,14 @@ def xrfListenLoop():
                     # print(spectra)
                     try:
                         instr_currentassayspectra.append(spectra[-1])
-                        instr_currentassayspecenergies.append(specenergies[-1])
+                        instr_currentassayspecenergies.append(specenergies[-1])  # noqa: F823
                         # legend = f"Phase {instr_currentphase+1}: {txt['sngHVADC']}kV, {round(float(txt['sngCurADC']),2)}\u03bcA"
-                        legend = f"Phase {instr_currentphase+1}({instr_currentphaselength_s}s): {txt['sngHVADC']}kV, {round(float(txt['sngCurADC']),2)}\u03bcA {txt['fltDescription']}"
+                        legend = f"Phase {instr_currentphase+1}({instr_currentphaselength_s}s): {txt['sngHVADC']}kV, {round(float(txt['sngCurADC']),2)}\u03bcA {txt['fltDescription']}"  # noqa: F821
                         instr_currentassaylegends.append(legend)
                         # plotSpectrum(spectra[-1], specenergies[-1], plotphasecolours[instr_currentphase],legend)
-                    except:
+                    except Exception as e:
                         printAndLog(
-                            "Issue with Spectra experienced after completion of Assay.",
+                            f"Issue with Spectra experienced after completion of Assay. {(repr(e))}",
                             "WARNING",
                         )
 
@@ -1022,7 +946,10 @@ def xrfListenLoop():
                             )
                         else:
                             printAndLog(f"Temps: {assay_finaltemps}", "BASIC")
-                    except:  # likely no spectra packets sent
+                    except Exception as e:  # likely no spectra packets sent
+                        print(
+                            f"Temps check failed, likely due to no spectra packets sent. ({repr(e)})"
+                        )
                         printAndLog(f"Temps: {assay_finaltemps}", temp_msg_colour)
                     # printAndLog(f'Amb Temp F: {instr_currentambtemp_F}°F')
                     # instrument_QueryNoseTemp()
@@ -1099,7 +1026,7 @@ def xrfListenLoop():
                     )
                     instr_currentassayspectra.append(spectra[-1])
                     instr_currentassayspecenergies.append(specenergies[-1])
-                    legend = f"Phase {instr_currentphase+1}({instr_currentphaselength_s}s): {txt['sngHVADC']}kV, {round(float(txt['sngCurADC']),2)}\u03bcA {txt['fltDescription']}"
+                    legend = f"Phase {instr_currentphase+1}({instr_currentphaselength_s}s): {txt['sngHVADC']}kV, {round(float(txt['sngCurADC']),2)}\u03bcA {txt['fltDescription']}"  # noqa: F821
                     # legend = f"Phase {instr_currentphase+1}: {txt['sngHVADC']}kV, {round(float(txt['sngCurADC']),2)}\u03bcA"
                     instr_currentassaylegends.append(legend)
 
@@ -1324,8 +1251,11 @@ def xrfListenLoop():
 
                 try:
                     instr_sourcespotsize = idf["SpotSize"]["Size"] + "mm"
-                except:
+                except Exception as e:
                     instr_sourcespotsize = "N/A"
+                    print(
+                        f"Could not retrieve instrument spot size from IDF. ({repr(e)})"
+                    )
 
                 instr_sourcehaschangeablecollimator = idf.get(
                     "HasChangeableCollimator", "N/A"
@@ -1335,25 +1265,38 @@ def xrfListenLoop():
                 for filterdesc_dict in idf["Filter"]["FilterPosition"]:
                     try:
                         instr_filterspresent.append(filterdesc_dict["#text"])
-                    except:
+                    except Exception as e:
+                        print(f"Could not get filter description from IDF. ({repr(e)})")
                         instr_filterspresent.append("")
 
                 try:
                     instr_firmwareSUPversion = idf["SUP"]["FirmwareVersion"]
-                except:
+                except Exception as e:
                     instr_firmwareSUPversion = "N/A"
+                    print(
+                        f"Could not retrieve instrument SuP version from IDF. ({repr(e)})"
+                    )
                 try:
                     instr_firmwareUUPversion = idf["UUP"]["FirmwareVersion"]
-                except:
+                except Exception as e:
                     instr_firmwareUUPversion = "N/A"
+                    print(
+                        f"Could not retrieve instrument UuP version from IDF. ({repr(e)})"
+                    )
                 try:
                     instr_firmwareXILINXversion = idf["DPP"]["XilinxFirmwareVersion"]
-                except:
+                except Exception as e:
                     instr_firmwareXILINXversion = "N/A"
+                    print(
+                        f"Could not retrieve instrument Xilinx version from IDF. ({repr(e)})"
+                    )
                 try:
                     instr_firmwareOMAPkernelversion = idf["OMAP"]["KernelVersion"]
-                except:
+                except Exception as e:
                     instr_firmwareOMAPkernelversion = "N/A"
+                    print(
+                        f"Could not retrieve instrument OMAP kernel version from IDF. ({repr(e)})"
+                    )
 
                 # a = globals()
                 # for i in a:
@@ -1365,8 +1308,10 @@ def xrfListenLoop():
                 printAndLog(f"Build Number: {instr_buildnumber}")
                 try:
                     printAndLog(f"Software: S1 Version {instr_softwareS1version}")
-                except:
-                    pass  # This is in case the ver isn't retrieved or reported early enough. lazy, but oh well. It stops it failing or doublereporting
+                except Exception as e:
+                    # This is in case the ver isn't retrieved or reported early enough. lazy, but oh well. It stops it failing or doublereporting
+                    print(f"S1 Software version has not been checked yet. ({repr(e)})")
+
                 printAndLog(
                     f"Firmware: SuP {instr_firmwareSUPversion}, UuP {instr_firmwareUUPversion}"
                 )
@@ -1386,7 +1331,7 @@ def xrfListenLoop():
                     f"Source Current Range: {instr_sourceminI} - {instr_sourcemaxI}"
                 )
 
-            elif ("Data" in data) and (data["Data"]["Elements"] == None):
+            elif ("Data" in data) and (data["Data"]["Elements"] is None):
                 printAndLog(
                     "WARNING: Calculation Error has occurred, no results provided by instrument. If this is unexpected, try Rebooting.",
                     "WARNING",
@@ -1504,7 +1449,8 @@ def xrfListenLoop():
                         phasenums.append(phase["@number"])
                         phasenames.append(phase["Name"])
                         phasedurations.append(phase["Duration"])
-                except:
+                except Exception as e:
+                    print(f"Phase duration processing loop failed. ({repr(e)})")
                     phasenums.append(phaselist["@number"])
                     phasenames.append(phaselist["Name"])
                     phasedurations.append(phaselist["Duration"])
@@ -1529,16 +1475,16 @@ def xrfListenLoop():
                     instr_editfielddata = data["Response"]["EditFieldList"]
                 except KeyError:
                     instr_editfielddata = None
-                printAndLog(f"Info-Fields Data Retrieved.")
-                if instr_editfielddata == None:
+                printAndLog("Info-Fields Data Retrieved.")
+                if instr_editfielddata is None:
                     printAndLog(
                         "NOTE: The Bruker OEM Protocol does not allow info-fields with blank values to be communicated over the protocol. If you cannot retrieve your info-fields properly, try filling the fields with some text on the instrument, then try retrieving it again.",
                         "INFO",
                     )
                 else:
-                    if type(instr_editfielddata["EditField"]) is list:
+                    if isinstance(instr_editfielddata["EditField"], list):
                         instr_editfielddata = instr_editfielddata["EditField"]
-                    elif type(instr_editfielddata["EditField"]) is dict:
+                    elif isinstance(instr_editfielddata["EditField"], dict):
                         instr_editfielddata = [instr_editfielddata["EditField"]]
                     fillEditInfoFields(instr_editfielddata)
 
@@ -1567,15 +1513,22 @@ def xrfListenLoop():
                         logbox_colour_tag="WARNING",
                     )
                 if "Backscatter Limit Failure::Count Rate too Low" in infomsg:
-                    printAndLog(
-                        "'Count Rate Too Low' error occurred. Remaining repeat assays will be cancelled.",
-                        logbox_colour_tag="ERROR",
-                    )
-                    instr_assayrepeatsleft = 0
-                    if gerdaCNC != None:
+                    # cancel repeat assays? 20240227 nat has expressed preference for this to NOT happen, so will be commented until it can be turned into a toggle!
+                    # instr_assayrepeatsleft = 0
+                    if gerdaCNC is not None:
+                        printAndLog(
+                            "'Count Rate Too Low' error occurred. Remaining GeRDA sample assays will be cancelled.",
+                            logbox_colour_tag="ERROR",
+                        )
                         gerdaCNC.stop_sample_sequence_immediately(
                             reason="Count Rate Error"
                         )
+                    # else:
+                    #     printAndLog(
+                    #         "'Count Rate Too Low' error occurred. Remaining repeat assays will NOT be cancelled.",
+                    #         logbox_colour_tag="ERROR",
+                    #     )
+                    #     # i.e. GeRDA is not being used
 
             # ERROR HAS OCCURRED
             elif "ErrorReport" in data:
@@ -1642,8 +1595,10 @@ def xrfListenLoop():
                     s = data["Response"]["#text"].split("::")[-1]
                     # gets app name from #text string like 'Configure:Application successfully set to::Geo'
                     printAndLog(f"Application Changed to '{s}'")
-                except:
-                    pass
+                except Exception as e:
+                    print(
+                        f"Application set response message parsing failed. ({repr(e)})"
+                    )
                 sendCommand(xrf, bruker_query_currentapplicationinclmethods)
                 instrument_QueryCurrentApplicationPhaseTimes()
                 # ui_UpdateCurrentAppAndPhases()
@@ -1663,9 +1618,10 @@ def xrfListenLoop():
             ):
                 try:
                     instr_softwareS1version = data["Response"]["#text"]
-                except:
+                except Exception as e:
+                    print(f"s1 version message parsing failed ({repr(e)})")
                     instr_softwareS1version = "UNKNOWN"
-                if s1vermanuallyrequested == True:
+                if s1vermanuallyrequested:
                     printAndLog(f"Software: S1 Version {instr_softwareS1version}")
 
             # Secondary Response for Assay Start and Stop for some instruments??? Idk why, should NOT RELY ON
@@ -1775,9 +1731,9 @@ def xrfListenLoop():
                 if isinstance(instr_applicationspresent, str):
                     instr_applicationspresent = [instr_applicationspresent]
                 printAndLog(f"Applications Available: {instr_applicationspresent}")
-            except:
-                printAndLog(
-                    f"Applications Available: Error: Not Found - Was the instrument busy when it was connected?"
+            except Exception as e:
+                print(
+                    f"Applications Available Error: Not Found - Was the instrument busy when it was connected? ({repr(e)})"
                 )
 
         # 5c - XML PACKET, Active Application and Methods present response
@@ -1785,8 +1741,9 @@ def xrfListenLoop():
             try:
                 instr_currentapplication = data["Response"]["Application"]
                 printAndLog(f"Current Application: {instr_currentapplication}")
-            except:
-                printAndLog(f"Current Application: Not Found / Spectrometer Mode")
+            except Exception as e:
+                print(f"Current application could not be found. ({repr(e)})")
+                printAndLog("Current Application: Not Found / Spectrometer Mode")
             try:
                 instr_methodsforcurrentapplication = data["Response"]["MethodList"][
                     "Method"
@@ -1796,28 +1753,31 @@ def xrfListenLoop():
                         instr_methodsforcurrentapplication
                     ]
                 printAndLog(f"Methods Available: {instr_methodsforcurrentapplication}")
-            except:
+            except Exception as e:
                 instr_methodsforcurrentapplication = [""]
-                printAndLog(f"Methods Available: Not Found / Spectrometer Mode")
+                print(
+                    f"Methods for current application could not be found. ({repr(e)})"
+                )
+                printAndLog("Methods Available: Not Found / Spectrometer Mode")
             try:
                 instr_currentmethod = data["Response"]["ActiveMethod"]
                 printAndLog(f"Current Method: {instr_currentmethod}")
-            except:
+            except Exception as e:
                 instr_currentmethod = ""
-                printAndLog(f"Current Method: Not Found / Spectrometer Mode")
+                print(f"Current method could not be found. ({repr(e)})")
+                printAndLog("Current Method: Not Found / Spectrometer Mode")
             try:
                 methodselected_stringvar.set(instr_currentmethod)
                 dropdown_method.configure(values=instr_methodsforcurrentapplication)
-            except:
-                print("error updating method dropdown")
+            except Exception as e:
+                print(f"Error updating method dropdown. ({repr(e)})")
 
         # 7 - SPECTRUM ENERGY PACKET, contains the SpecEnergy structure, cal info (The instrument will transmit a SPECTRUM_ENERGY packet inmmediately before transmitting it’s associated COOKED_SPECTRUM packet. The SpecEnergy iPacketCount member contains an integer that associates the SpecEnergy values with the corresponding COOKED_SPECTRUM packet via the iPacket_Cnt member of the s1_cooked_header structure.)
         elif datatype == SPECTRUM_ENERGY_PACKET:
-            specenergies = setSpecEnergy(data)
-            pass
+            specenergies = setSpecEnergy(data)  # noqa: F841
 
         else:
-            if data != None and datatype != None:
+            if (data is not None) and (datatype is not None):
                 printAndLog(data)
 
         # statusUpdateCheck()
@@ -1975,13 +1935,15 @@ def updateCurrentVitalsDisplay(spectra=None, override=None):
             instr_countrate_stringvar.set(
                 f"{int((instantaneous_iRaw_Cnts / instantaneous_iADur) * 1000)}cps"
             )
-        except:
+        except Exception as e:
+            print(f"Count rate stringvar could not be calculated. ({repr(e)})")
             instr_countrate_stringvar.set("0cps")
         try:
             instr_deadtime_stringvar.set(
                 f"{(((instantaneous_iRaw_Cnts - instantaneous_iValid_Cnts) / instantaneous_iRaw_Cnts) * 100):6.2f}%dead"
             )
-        except:
+        except Exception as e:
+            print(f"Dead time % stringvar could not be calculated. ({repr(e)})")
             instr_deadtime_stringvar.set("0%dead")
 
         instr_tubevoltagecurrent_stringvar.set(
@@ -1990,7 +1952,7 @@ def updateCurrentVitalsDisplay(spectra=None, override=None):
     else:
         instr_countrate_stringvar.set("0cps")
         instr_deadtime_stringvar.set("0%dead")
-        instr_tubevoltagecurrent_stringvar.set(f"0kV / 0\u03bcA")
+        instr_tubevoltagecurrent_stringvar.set("0kV / 0\u03bcA")
         # update current values if tube is off to 0/0
 
 
@@ -2036,13 +1998,10 @@ def completeAssay(
             _energies = spec_channels * _evperchannel
             _energies = _energies + _evchannelstart
             _energies = _energies / 1000  # TO GET keV instead of eV
-            if (
-                sanityCheckSpectrum_SumMethod(
-                    spectrum_counts=_counts,
-                    spectrum_energies=_energies,
-                    source_voltage_in_kV=_sourcevoltage,
-                )
-                == False
+            if not sanityCheckSpectrum_SumMethod(
+                spectrum_counts=_counts,
+                spectrum_energies=_energies,
+                source_voltage_in_kV=_sourcevoltage,
             ):
                 any_phases_failed_sanity_check = True
                 printAndLog(
@@ -2177,7 +2136,7 @@ def statusUpdateChecker():
         if thread_halt:
             break
 
-        if instr_isloggedin == False:
+        if not instr_isloggedin:
             instr_DANGER_stringvar.set("Not Logged In!")
             status_label.configure(text_color=WHITEISH, fg_color=("#939BA2", "#454D50"))
             # Def background colour: '#3A3A3A'
@@ -2188,7 +2147,7 @@ def statusUpdateChecker():
 
             updateCurrentVitalsDisplay(override=True)
 
-        elif instr_isarmed == False:
+        elif not instr_isarmed:
             instr_DANGER_stringvar.set("Not Armed!")
             status_label.configure(text_color=WHITEISH, fg_color=("#939BA2", "#454D50"))
             statusframe.configure(fg_color=("#939BA2", "#454D50"))
@@ -2198,7 +2157,7 @@ def statusUpdateChecker():
 
             updateCurrentVitalsDisplay(override=True)
 
-        elif instr_assayisrunning == True:
+        elif instr_assayisrunning:
             instr_DANGER_stringvar.set("WARNING: X-RAYS")
             status_label.configure(text_color=WHITEISH, fg_color="#D42525")
             # X-RAY WARNING YELLOW = '#FFCC00', NICE RED = '#D42525'
@@ -2320,7 +2279,8 @@ def plotSpectrum(spectrum, specenergy, colour, spectrum_legend):
         try:
             counts = spectrum["normalised_data"]
             spectra_ax.set_ylabel("Normalised Counts (%)")
-        except:
+        except Exception as e:
+            print(f"Normalised Data could not be found. ({repr(e)})")
             printAndLog("Normalised data not found, using raw data instead")
             counts = spectrum["data"]
             spectra_ax.set_ylabel("Counts (Total)")
@@ -2362,10 +2322,11 @@ def clearCurrentSpectra():
     for plottedspectrum in plottedspectra:
         # plotref = plottedspectrum.pop(0)    # removes from list
         spectra_ax.lines[0].remove()
-    try:
-        spectra_ax.get_legend().remove()
-    except:
-        pass
+    if spectra_ax.get_legend() is not None:
+        try:
+            spectra_ax.get_legend().remove()
+        except Exception as e:
+            print(f"Spectra plot legend could not be removed. ({repr(e)})")
     # WAS THIS IN MATPLOTLIB 3.6.3
     # for plottedspectrum in plottedspectra:
     #     plotref = plottedspectrum.pop(0)    # removes from list
@@ -2467,11 +2428,13 @@ def plotAssay(assay: Assay, clean_plot: bool = True):
         colouridx = 0
 
     for (
-        s,
-        e,
-        l,
+        spect,
+        energ,
+        legen,
     ) in zip(assay.spectra, assay.specenergies, assay.legends):
-        plotSpectrum(s, e, plotphasecolours[colouridx], f"{assay.index}. {l}")
+        plotSpectrum(
+            spect, energ, plotphasecolours[colouridx], f"{assay.index}. {legen}"
+        )
         colouridx += 1
         # print(f'colouridx={colouridx}')
 
@@ -2513,8 +2476,8 @@ def getNearbyEnergies(energy, qty):
     closest = energies_df.iloc[(energies_df["Energy"] - energy).abs().argsort()[:qty]]
 
     closest["Element"] = closest["Element"].apply(elementSymboltoName)
-    closest["Line"] = closest["Line"].str.replace("a", "\u03B1")  # replace a with alpha
-    closest["Line"] = closest["Line"].str.replace("b", "\u03B2")  # replace b with beta
+    closest["Line"] = closest["Line"].str.replace("a", "\u03b1")  # replace a with alpha
+    closest["Line"] = closest["Line"].str.replace("b", "\u03b2")  # replace b with beta
     closest.rename(columns={"Energy": "Energy (keV)"}, inplace=True)
     printAndLog(f"Peak Identification: {round(energy, 4)}keV", "INFO")
     printAndLog(f"The {qty} closest possibilities are:", "INFO")
@@ -3027,7 +2990,7 @@ def repeatsChoiceMade(val):
     global instr_assayrepeatsselected
     printAndLog(f"Consecutive Tests Selected: {val}")
     instr_assayrepeatsselected = int(val)
-    if instr_assayisrunning == False:
+    if not instr_assayisrunning:
         button_assay.configure(
             text=getAssayPlurality("start"),
             image=icon_startassay,
@@ -3138,12 +3101,12 @@ class GerdaSample:
             self.optional_illumination_name = None
         if self.optional_time_in_s == "":
             self.optional_time_in_s = None
-        if (self.optional_illumination_name != None) and (
-            self.optional_time_in_s == None
+        if (self.optional_illumination_name is not None) and (
+            self.optional_time_in_s is None
         ):
             # Time (s) (optional, IF COLUMN E SPECIFIES ILLUMINATION NAME IT WILL DEFAULT TO 60s.)
             self.optional_time_in_s = 60
-        if (self.optional_illumination_name != None) and (
+        if (self.optional_illumination_name is not None) and (
             self.optional_illumination_name
             not in [illum.name for illum in instr_illuminations]
         ):
@@ -3212,7 +3175,7 @@ class GerdaSampleSequence:
                             # process each row
                             # print(row)
 
-                    printAndLog(f"Sample List CSV File successfully processed.", "INFO")
+                    printAndLog("Sample List CSV File successfully processed.", "INFO")
                     # self.estimated_total_duration_s = 0
                     # for sample in self.listofsampleobjects:
                     #     self.estimated_total_duration_s +=
@@ -3292,7 +3255,7 @@ class GerdaCNCController:
         Note: This function will return immediately upon CNC acknowledging understanding of the command, or reporting an error in the command. It doesn't wait for the command to ACTUALLY complete.
         `be_quiet=True` suppresses unimportant print messages.
         """
-        if self.cnc_serial != None:
+        if self.cnc_serial is not None:
             if command == "?":
                 # ? command doesn't need newline?
                 self.cnc_serial.write((command).encode())
@@ -3315,12 +3278,12 @@ class GerdaCNCController:
                     break
                 elif response == "ok":
                     if not be_quiet:
-                        printAndLog(f"CNC Command sent successfully.", "GERDA")
+                        printAndLog("CNC Command sent successfully.", "GERDA")
                     break
                 elif response and response[0] == "<" and response[-1] == ">":
                     # status / currentpos response!
                     if not be_quiet:
-                        printAndLog(f"CNC Status request sent successfully.", "GERDA")
+                        printAndLog("CNC Status request sent successfully.", "GERDA")
                     break
                 time.sleep(0.05)
             self.last_command_response = response_lines
@@ -3429,13 +3392,13 @@ class GerdaCNCController:
         printAndLog(
             f"CNC Moving safely to new sample {sample.name_or_note} @ {sample_x, sample_y, sample_z}, from {self.instrument_last_moved_to_xyz_position}"
         )
-        printAndLog(f"CNC Z moving up")
+        printAndLog("CNC Z moving up")
         self.move_instrument_to_xyz(z=(sample_z - 50), speed=800)
         self.wait_for_cnc_idle()
-        printAndLog(f"CNC XY moving over new sample")
+        printAndLog("CNC XY moving over new sample")
         self.move_instrument_to_xyz(x=sample_x, y=sample_y, rapid_mode=True)
         self.wait_for_cnc_idle()
-        printAndLog(f"CNC Z moving down onto sample")
+        printAndLog("CNC Z moving down onto sample")
         self.move_instrument_to_xyz(z=sample_z, speed=800)
         self.wait_for_cnc_idle()
         return
@@ -3541,6 +3504,8 @@ class GerdaCNCController:
                 continue
             # once skipped through, can set skip flag false.
             need_to_skip = False
+            # set startat entry box var so that if stopped, can pick up at that point
+            gerda_sample_seq_start_num_intvar.set(sample_obj.scan_number)
             # check if halt command has been given
             if self.halt_sample_sequence:
                 printAndLog(
@@ -3580,7 +3545,7 @@ class GerdaCNCController:
             )
             # get start time to compare later if scan completed fully.
             scan_start_time = time.time()
-            if sample_obj.optional_illumination_name == None:
+            if sample_obj.optional_illumination_name is None:
                 # if no illumination specified, use whatever application is selected and whatever phase timings are selected
                 instrument_StartAssay()
             else:
@@ -3589,7 +3554,7 @@ class GerdaCNCController:
                 illumination_obj = getIlluminationFromName(
                     sample_obj.optional_illumination_name
                 )
-                if illumination_obj != None:
+                if illumination_obj is not None:
                     instrument_StartAssay(
                         customassay=True,
                         customassay_voltage=illumination_obj.voltage,
@@ -3609,7 +3574,7 @@ class GerdaCNCController:
             # after assay completed, compare elapsed time to sum of phase times OR custom spectrum set time to ensure completion.
             scan_completion_time = time.time()
             scan_duration_s = scan_completion_time - scan_start_time
-            if sample_obj.optional_illumination_name == None:
+            if sample_obj.optional_illumination_name is None:
                 scan_time_minimum_required = assay_time_total_set_seconds
             else:
                 scan_time_minimum_required = sample_obj.optional_time_in_s
@@ -3651,7 +3616,7 @@ class GerdaCNCController:
 def gerdaCNC_InitialiseConnectionIfPossible() -> None:
     """Initialises the gerda CNC serial connection if possible / if it is connected"""
     global gerdaCNC
-    if gerdaCNC == None:
+    if gerdaCNC is None:
         # gerdaCNC = None is set near top of main(). if it equals None, it means it still hasn't been initialised.
         gerdaCNC = GerdaCNCController()
         # enable relevant ui buttons
@@ -3660,7 +3625,7 @@ def gerdaCNC_InitialiseConnectionIfPossible() -> None:
     else:
         if messagebox.askyesno(
             title="Reconnect to GeRDA CNC",
-            message=f"Are you sure you would like to reinitialise the GeRDA CNC connection? This functionality has not been fully tested and may lead to strange behaviour. Restarting S1Control from scratch is highly reccommended.",
+            message="Are you sure you would like to reinitialise the GeRDA CNC connection? This functionality has not been fully tested and may lead to strange behaviour. Restarting S1Control from scratch is highly reccommended.",
         ):
             gerdaCNC = GerdaCNCController()
         # already connected
@@ -3668,7 +3633,7 @@ def gerdaCNC_InitialiseConnectionIfPossible() -> None:
 
 def gerdaCNC_Home_clicked() -> None:
     """on click function for home button for gerda ui"""
-    if gerdaCNC != None:
+    if gerdaCNC is not None:
         gerdaRunCommandInThread(gerdaCNC.home)
     else:
         printAndLog(
@@ -3679,7 +3644,7 @@ def gerdaCNC_Home_clicked() -> None:
 
 def gerdaCNC_GetCurrentPosition_clicked() -> None:
     """on click function for get pos for gerda ui"""
-    if gerdaCNC != None:
+    if gerdaCNC is not None:
         status, x, y, z = gerdaCNC.get_current_status_and_position()
         printAndLog(f"CNC Status: {status}, {x=} {y=} {z=}")
         # printAndLog(position_response_list)  # TODO fix this for actual coords.
@@ -3699,8 +3664,8 @@ def gerdaCNC_HelpMe_clicked() -> None:
     try:
         gerdaCNC.send_command("$$")
         gerdaCNC.send_command("$#")
-    except:
-        pass
+    except Exception as e:
+        print(f"GeRDA CNC command sending failed for helpme function. ({repr(e)})")
 
 
 def loadGerdaSampleListCSV_clicked() -> None:
@@ -3730,13 +3695,13 @@ def loadGerdaSampleListCSV_clicked() -> None:
 
 def gerdaCNC_StartSampleSequence_clicked() -> None:
     global gerda_sample_sequence
-    if gerdaCNC == None:
+    if gerdaCNC is None:
         printAndLog(
             "ERROR: GeRDA CNC Serial Connection has not been initialised, cannot Start Sample Sequence.",
             "ERROR",
         )
         return
-    elif gerda_sample_sequence == None:
+    elif gerda_sample_sequence is None:
         printAndLog(
             "ERROR: GeRDA Sample Sequence CSV has not been loaded, cannot Start.",
             "ERROR",
@@ -3754,13 +3719,13 @@ def gerdaCNC_StartSampleSequence_clicked() -> None:
 
 
 def gerdaCNC_StopSampleSequenceImmediate_clicked() -> None:
-    if gerdaCNC == None:
+    if gerdaCNC is None:
         printAndLog(
             "ERROR: GeRDA CNC Serial Connection has not been initialised, cannot Stop Sample Sequence.",
             "ERROR",
         )
         return
-    elif gerda_sample_sequence == None:
+    elif gerda_sample_sequence is None:
         printAndLog(
             "ERROR: GeRDA Sample Sequence CSV has not been loaded, cannot Stop Sample Sequence.",
             "ERROR",
@@ -3771,13 +3736,13 @@ def gerdaCNC_StopSampleSequenceImmediate_clicked() -> None:
 
 
 def gerdaCNC_StopSampleSequenceAfterCurrentAssayComplete_clicked() -> None:
-    if gerdaCNC == None:
+    if gerdaCNC is None:
         printAndLog(
             "ERROR: GeRDA CNC Serial Connection has not been initialised, cannot Stop Sample Sequence.",
             "ERROR",
         )
         return
-    elif gerda_sample_sequence == None:
+    elif gerda_sample_sequence is None:
         printAndLog(
             "ERROR: GeRDA Sample Sequence CSV has not been loaded, cannot Stop Sample Sequence.",
             "ERROR",
@@ -3802,9 +3767,14 @@ def gerdaRunCommandInThread(gerda_function, *args):
 
 
 def gerdaCNC_moveto_coords_clicked() -> None:
+    global entry_gerda_moveto_x
+    global entry_gerda_moveto_y
+    global entry_gerda_moveto_z
+    global gerda_moveto_speed_intvar
     x = entry_gerda_moveto_x.get()
     y = entry_gerda_moveto_y.get()
     z = entry_gerda_moveto_z.get()
+    speed_in_mm_per_min = int(gerda_moveto_speed_intvar.get())
     if x == "":
         x = None
     else:
@@ -3818,7 +3788,9 @@ def gerdaCNC_moveto_coords_clicked() -> None:
     else:
         z = int(z)
     printAndLog("CNC Moving to")
-    gerdaRunCommandInThread(gerdaCNC.move_instrument_to_xyz, x, y, z)
+    gerdaRunCommandInThread(
+        gerdaCNC.move_instrument_to_xyz, x, y, z, False, speed_in_mm_per_min
+    )
 
 
 # def gerdaCommandMonitorThread(event):
@@ -3981,6 +3953,10 @@ def closeAllThreads():
 def gerdaDebugClicked():
     global gerda_debug_firsttime
     global gerdadebugwindows
+    global entry_gerda_moveto_x
+    global entry_gerda_moveto_y
+    global entry_gerda_moveto_z
+    global gerda_moveto_speed_intvar
     if gerda_debug_firsttime:
         gerda_debug_firsttime = False
         gerda_debug_window = ctk.CTkToplevel()
@@ -4042,7 +4018,7 @@ def gerdaDebugClicked():
             state="normal",
         )
         entry_gerda_moveto_x.grid(
-            row=8, column=0, columnspan=1, padx=4, pady=4, sticky=tk.NSEW
+            row=3, column=0, columnspan=1, padx=4, pady=4, sticky=tk.NSEW
         )
         entry_gerda_moveto_y = ctk.CTkEntry(
             gerda_debug_controls_frame,
@@ -4054,7 +4030,7 @@ def gerdaDebugClicked():
             state="normal",
         )
         entry_gerda_moveto_y.grid(
-            row=8, column=1, columnspan=1, padx=4, pady=4, sticky=tk.NSEW
+            row=3, column=1, columnspan=1, padx=4, pady=4, sticky=tk.NSEW
         )
         entry_gerda_moveto_z = ctk.CTkEntry(
             gerda_debug_controls_frame,
@@ -4066,7 +4042,7 @@ def gerdaDebugClicked():
             state="normal",
         )
         entry_gerda_moveto_z.grid(
-            row=8, column=2, columnspan=1, padx=4, pady=4, sticky=tk.NSEW
+            row=3, column=2, columnspan=1, padx=4, pady=4, sticky=tk.NSEW
         )
 
         button_gerda_moveto_go = ctk.CTkButton(
@@ -4078,7 +4054,28 @@ def gerdaDebugClicked():
             state="normal",
         )
         button_gerda_moveto_go.grid(
-            row=8, column=3, columnspan=1, padx=4, pady=4, sticky=tk.NSEW
+            row=3, column=3, columnspan=1, padx=4, pady=4, sticky=tk.NSEW
+        )
+        gerda_moveto_speed_intvar = ctk.IntVar(value=2000)
+        slider_gerda_moveto_speed = ctk.CTkSlider(
+            gerda_debug_controls_frame,
+            variable=gerda_moveto_speed_intvar,
+            from_=100,
+            to=2000,
+            state="normal",
+        )
+        slider_gerda_moveto_speed.grid(
+            row=4, column=2, columnspan=2, padx=4, pady=4, sticky=tk.NSEW
+        )
+        label_gerda_moveto_speed_currentval = ctk.CTkLabel(
+            gerda_debug_controls_frame,
+            textvariable=gerda_moveto_speed_intvar,
+            anchor="w",
+            font=ctk_jbm12,
+            width=5,
+        )
+        label_gerda_moveto_speed_currentval.grid(
+            row=4, column=1, columnspan=1, padx=4, pady=4, sticky=tk.NSEW
         )
 
         gerda_debug_window.protocol("WM_DELETE_WINDOW", gerdaDebugOnClosing)
@@ -4369,7 +4366,7 @@ def addAssayToResultsCSV(assay: Assay):
 
     resultsFileName = f"Results_{datetimeString}_{instr_serialnumber}.csv"
     resultsFolderPath = rf"{os.getcwd()}/Results"
-    resultsFilePath = rf"{resultsFolderPath}/{resultsFileName}"
+    _resultsFilePath = rf"{resultsFolderPath}/{resultsFileName}"
     # create /Results folder in local dir if not there already
     if not os.path.exists(resultsFolderPath):
         os.makedirs(resultsFolderPath)
@@ -4848,9 +4845,9 @@ def instrument_ApplyInfoFields():
     global editinfo_validcounterfieldsused
     proceedwithapplying = True
     for i in range(6):
-        if editinfo_fieldcounters[i].get() == True:
+        if editinfo_fieldcounters[i].get():
             editinfo_validcounterfieldsused = True
-            if editinfo_fieldvalues[i].get().isdigit() == False:
+            if not editinfo_fieldvalues[i].get().isdigit():
                 proceedwithapplying = False
                 editinfo_validcounterfieldsused = (
                     False  # set this here so that we don't increment flawed fields
@@ -4869,7 +4866,7 @@ def instrument_ApplyInfoFields():
             namemsgsegment = f"<Name>{editinfo_fieldnames[i].get()}</Name>"
             valuemsgsegment = f"<Value>{editinfo_fieldvalues[i].get()}</Value>"
             fieldtype = "Fixed"
-            if editinfo_fieldcounters[i].get() == True:
+            if editinfo_fieldcounters[i].get():
                 fieldtype = "Counter"
             if editinfo_fieldnames[i].get() == "":
                 # Use XML tag for null if value is null
@@ -4924,7 +4921,7 @@ def incrementInfoFieldCounterValues():
     """This will only update the values that have been marked as counters, and ONLY IN THE UI. not on the instrument. it checks editinfo_counterfieldsused == True to check that counter fields are valid and are being used"""
     if editinfo_validcounterfieldsused:
         for i in range(len(editinfo_fieldcounters)):
-            if editinfo_fieldcounters[i].get() == True:
+            if editinfo_fieldcounters[i].get():
                 # increment only counter fields, the same way the instrument would.
                 editinfo_fieldvalues[i].set(int(editinfo_fieldvalues[i].get()) + 1)
 
@@ -5321,15 +5318,9 @@ if __name__ == "__main__":
     linecfgwindows = []
     gerdadebugwindows = []
     editinfo_windows = []
-    editinfo_fieldnames = (
-        []
-    )  # Stores entrybox strvar objects for editinfo window field names for ref elsewhere
-    editinfo_fieldvalues = (
-        []
-    )  # Stores entrybox strvar objects for editinfo window field vals for ref elsewhere
-    editinfo_fieldcounters = (
-        []
-    )  # Stores checkbox boolvar objects for editinfo window counter checkbox for ref elsewhere
+    editinfo_fieldnames = []  # Stores entrybox strvar objects for editinfo window field names for ref elsewhere
+    editinfo_fieldvalues = []  # Stores entrybox strvar objects for editinfo window field vals for ref elsewhere
+    editinfo_fieldcounters = []  # Stores checkbox boolvar objects for editinfo window counter checkbox for ref elsewhere
     editinfo_validcounterfieldsused = False
 
     phasetimelabels = []
@@ -6075,9 +6066,6 @@ if __name__ == "__main__":
     slider_gerda_sleeptimebetweensamples.grid(
         row=8, column=2, columnspan=2, padx=[0, 4], pady=0, sticky=tk.EW
     )
-    entry_gerda_moveto_x = None
-    entry_gerda_moveto_y = None
-    entry_gerda_moveto_z = None
 
     # About Section
     about_blurb1 = ctk.CTkLabel(
@@ -6743,7 +6731,7 @@ if __name__ == "__main__":
     )
     resultsTable.heading(
         "results_Concentration",
-        text=f"Concentration",
+        text="Concentration",
         anchor=tk.W,
         command=lambda _col="results_Concentration": treeview_sort_column(
             resultsTable, _col, False
@@ -6751,7 +6739,7 @@ if __name__ == "__main__":
     )
     resultsTable.heading(
         "results_Error",
-        text="Error (1\u03C3)",
+        text="Error (1\u03c3)",
         anchor=tk.W,
         command=lambda _col="results_Error": treeview_sort_column(
             resultsTable, _col, False
@@ -6808,11 +6796,11 @@ if __name__ == "__main__":
 
     try:
         gui.title(f"S1Control - {driveFolderStr}")
-    except:
-        print("Unable To Set Window Title Using driveFolderStr")
+    except Exception as e:
+        print(f"Unable To Set Window Title Using driveFolderStr. ({repr(e)})")
         pass
 
-    if instr_isloggedin == False:
+    if not instr_isloggedin:
         instrument_Login()
 
     time.sleep(0.05)
