@@ -1,5 +1,10 @@
 # S1Control Changelog 
 
+## v1.0.5 - 2024/03/18
+ - Exception handling improved.
+ - Tweaks made to timing for gerda sample sequences and info-fields to improve consistency
+ - "Results_" prefix for csv results output changed to "S1Control_Results_" to be consistent with log files. 
+
 ## v1.0.4 - 2024/02/19
  - Fixed several bugs related to estimated assay time readouts and progress bar logic that were causing custom spectrum mode assays to not estimate/track time correctly.
  - Fixed a bug that caused the custom spectrum duration entrybox to duplicate it's contents when an assay was started. No more scanning for 303030303030303030s.

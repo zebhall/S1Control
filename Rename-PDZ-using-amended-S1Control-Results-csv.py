@@ -31,13 +31,13 @@ if __name__ == "__main__":
     csv_files = [
         filename
         for filename in os.listdir()
-        if filename.startswith("Results_") and filename.endswith(".csv")
+        if filename.startswith("S1Control_Results_") and filename.endswith(".csv")
     ]
     if len(csv_files) == 0:
-        print("No CSV file starting with 'Results_' found in the current directory.")
+        print("No CSV file starting with 'S1Control_Results_' found in the current directory.")
     elif len(csv_files) > 1:
         print(
-            "Multiple CSV files starting with 'Results_' found in the current directory. Please ensure only one such file exists."
+            "Multiple CSV files starting with 'S1Control_Results_' found in the current directory. Please ensure only one such file exists."
         )
     else:
         rename_files(csv_files[0])

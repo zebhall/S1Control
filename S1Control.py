@@ -35,7 +35,7 @@ from element_string_lists import (
 )
 
 versionNum = "v1.0.5"  # v0.9.6 was the first GeRDA-control version
-versionDate = "2024/03/06"
+versionDate = "2024/03/18"
 
 
 @dataclass
@@ -1769,7 +1769,7 @@ def xrfListenLoop():
             try:
                 methodselected_stringvar.set(instr_currentmethod)
                 dropdown_method.configure(values=instr_methodsforcurrentapplication)
-            except Exception as e:
+            except NameError as e:
                 print(f"Error updating method dropdown. ({repr(e)})")
 
         # 7 - SPECTRUM ENERGY PACKET, contains the SpecEnergy structure, cal info (The instrument will transmit a SPECTRUM_ENERGY packet inmmediately before transmitting it’s associated COOKED_SPECTRUM packet. The SpecEnergy iPacketCount member contains an integer that associates the SpecEnergy values with the corresponding COOKED_SPECTRUM packet via the iPacket_Cnt member of the s1_cooked_header structure.)
@@ -3539,7 +3539,7 @@ class GerdaCNCController:
             field3_name_strvar.set("Y")
             field3_val_strvar.set(sample_obj.y_position)
             # give it a sec to process?
-            time.sleep(0.2)
+            time.sleep(1)
             printAndLog(
                 f"Starting GeRDA Scan # {sample_obj.scan_number} ({gerda_sampleseq_scanscompleted+1}/{gerda_sampleseq_scanstotal})"
             )
@@ -4364,7 +4364,7 @@ def addAssayToResultsCSV(assay: Assay):
     """given an Assay object, add the results of that assay to the results CSV file. designed to mimic results CSV output of instrument."""
     global current_session_results_df
 
-    resultsFileName = f"Results_{datetimeString}_{instr_serialnumber}.csv"
+    resultsFileName = f"S1Control_Results_{datetimeString}_{instr_serialnumber}.csv"
     resultsFolderPath = rf"{os.getcwd()}/Results"
     _resultsFilePath = rf"{resultsFolderPath}/{resultsFileName}"
     # create /Results folder in local dir if not there already
