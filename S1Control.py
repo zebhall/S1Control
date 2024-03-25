@@ -34,8 +34,8 @@ from element_string_lists import (
     all_xray_lines,
 )
 
-versionNum = "v1.0.5"  # v0.9.6 was the first GeRDA-control version
-versionDate = "2024/03/18"
+versionNum = "v1.0.6"  # v0.9.6 was the first GeRDA-control version
+versionDate = "2024/03/25"
 
 
 @dataclass
@@ -649,12 +649,12 @@ def initialiseLogFile():
     driveFolderStr = ""
     logFileArchivePath = None
 
-    # Check for GDrive Paths to save backup of Log file
+    # Check for PSS Drive Paths to save backup of Log file
     if os.path.exists(
-        R"G:/.shortcut-targets-by-id/1w2nUsja1tidZ-QYTuemO6DzCaclAmIlm/PXRFS/13. Service/Automatic Instrument Logs"
+        R"Y:/Service/pXRF/Automatic Instrument Logs (S1Control)"
     ):
         # use gdrive path if available
-        driveArchiveLoc = R"G:/.shortcut-targets-by-id/1w2nUsja1tidZ-QYTuemO6DzCaclAmIlm/PXRFS/13. Service/Automatic Instrument Logs"
+        driveArchiveLoc = R"Y:/Service/pXRF/Automatic Instrument Logs (S1Control)"
 
     if instr_serialnumber == "UNKNOWN":
         messagebox.showwarning(
@@ -1771,6 +1771,8 @@ def xrfListenLoop():
                 dropdown_method.configure(values=instr_methodsforcurrentapplication)
             except NameError as e:
                 print(f"Error updating method dropdown. ({repr(e)})")
+            except RuntimeError as e:
+                print(f"Error: tried to set method stringvar too early. resuming... ({repr(e)})")
 
         # 7 - SPECTRUM ENERGY PACKET, contains the SpecEnergy structure, cal info (The instrument will transmit a SPECTRUM_ENERGY packet inmmediately before transmitting it’s associated COOKED_SPECTRUM packet. The SpecEnergy iPacketCount member contains an integer that associates the SpecEnergy values with the corresponding COOKED_SPECTRUM packet via the iPacket_Cnt member of the s1_cooked_header structure.)
         elif datatype == SPECTRUM_ENERGY_PACKET:
@@ -3229,9 +3231,9 @@ class GerdaCNCController:
                     f"CNC Co-ordinate offsets set for instrument type: {instr_model} (x={self.instr_offset_x},y={self.instr_offset_y},z={self.instr_offset_x})"
                 )
             case "Tracer":
-                # TODO: set ACTUAL tracer xyz offsets
-                self.instr_offset_x: int = 39
-                self.instr_offset_y: int = 75
+                # TODO: set ACTUAL tracer xyz offsets (was 39 75 60)
+                self.instr_offset_x: int = 37
+                self.instr_offset_y: int = 70
                 self.instr_offset_z: int = 60
                 printAndLog(
                     f"CNC Co-ordinate offsets set for instrument type: {instr_model} (x={self.instr_offset_x},y={self.instr_offset_y},z={self.instr_offset_x})"

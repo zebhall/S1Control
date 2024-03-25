@@ -1,5 +1,10 @@
 # S1Control Changelog 
 
+## v1.0.6 - 2024/03/25
+ - Log backup location switched to PSS NAS (Y:\Service\pXRF\Automatic Instrument Logs (S1Control)) for PSS local network users (internal) (was previously GDrive)
+ - Added catch for RuntimeError caused by UI Race condition on startup
+ - Implemented correct Tracer 5 XYZ offsets for GeRDA.
+
 ## v1.0.5 - 2024/03/18
  - Exception handling improved.
  - Tweaks made to timing for gerda sample sequences and info-fields to improve consistency
