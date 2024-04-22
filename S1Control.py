@@ -3257,7 +3257,7 @@ class GerdaCNCController:
             case "XMS":
                 self.instr_offset_x: int = 37
                 self.instr_offset_y: int = 65
-                self.instr_offset_z: int = 60
+                self.instr_offset_z: int = 45
                 printAndLog(
                     f"CNC Co-ordinate offsets set for instrument type: {instr_model} (x={self.instr_offset_x},y={self.instr_offset_y},z={self.instr_offset_x})"
                 )
