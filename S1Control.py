@@ -34,8 +34,8 @@ from element_string_lists import (
     all_xray_lines,
 )
 
-versionNum = "v1.0.6"  # v0.9.6 was the first GeRDA-control version
-versionDate = "2024/03/25"
+versionNum = "v1.0.7"  # v0.9.6 was the first GeRDA-control version
+versionDate = "2024/04/22"
 
 
 @dataclass
@@ -395,51 +395,67 @@ def printAndLog(data, logbox_colour_tag: str = "BASIC", notify_slack: bool = Fal
             logbox.see("end")
             logbox.configure(state="disabled")
         if notify_slack:
-            notifySlackChannel_OnlyIfGerdaConnected(msg=logbox_msg)
+            notifyChannelViaWebhook_OnlyIfGerdaConnected(msg=logbox_msg)
     else:
         print(f"(Logfile/Logbox uninitialised) Tried to print: {data}")
 
 
-def notifySlackChannel_OnlyIfGerdaConnected(msg: str) -> None:
-    """Sends a message to a slack Channel. This was added primarily for GeRDA monitoring purposes.
-    The function looks for the slack webhook URL (see: api.slack.com/apps/)
+def notifyChannelViaWebhook_OnlyIfGerdaConnected(msg: str) -> None:
+    """Sends a message to a teams or slack Channel. This was added primarily for GeRDA monitoring purposes.
+    The function looks for a teams or slack webhook URL (see: https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook and https://api.slack.com/apps/)
     in a text file in the directory of the S1Control executable called 'slackwebhook.txt' (for security purposes).
     the text file should contain only the webhook url.
     This function really isn't *vital*, so no stress if it trys and excepts."""
-    global slack_wh_url
+    global notification_webhook_url
 
     if gerdaCNC is None:
-        # for our purposes, we don't need to be sending slack messages unless the gerda is
+        # for our purposes, we don't need to be sending notif messages unless the gerda is
         return
 
     # only need to get webhook url first time
-    if slack_wh_url is None:
+    if notification_webhook_url is None:
         try:
-            with open(f"{os.getcwd()}/slackwebhook.txt", "r") as whfile:
-                slack_wh_url = whfile.read().strip()
-                if slack_wh_url.startswith("https://hooks.slack.com/services/"):
-                    printAndLog(f"Slack Webhook set: {slack_wh_url}")
+            with open(f"{os.getcwd()}/notification-channel-webhook.txt", "r") as whfile:
+                notification_webhook_url = whfile.read().strip()
+                if "hooks.slack.com" in notification_webhook_url:
+                    printAndLog(
+                        f"Slack Notification Webhook set successfully: {notification_webhook_url}"
+                    )
+                elif "webhook.office.com" in notification_webhook_url:
+                    printAndLog(
+                        f"Teams Notification Webhook set successfully: {notification_webhook_url}"
+                    )
                 else:
-                    slack_wh_url = "INVALID"
+                    notification_webhook_url = "INVALID"
+                    printAndLog(
+                        "WARNING: The provided GeRDA Notification Webhook text file appears to not contain a compatible webhook. See the readme for further info."
+                    )
         except FileNotFoundError:
-            slack_wh_url = "INVALID"
+            notification_webhook_url = "INVALID"
+            printAndLog(
+                "Note: A GeRDA Notification Webhook text file was not found. For instructions on how to set one up, see the readme."
+            )
             return
         except Exception as e:
-            printAndLog(f"Slack Webhook could not be set: {e}")
-            slack_wh_url = "INVALID"
+            notification_webhook_url = "INVALID"
+            printAndLog(
+                f"WARNING: The GeRDA Notification Webhook could not be set: {e}"
+            )
     # check for previous tests, then okay to try webhook send
-    if (slack_wh_url is not None) and (slack_wh_url != "INVALID"):
+    if (notification_webhook_url is not None) and (
+        notification_webhook_url != "INVALID"
+    ):
         msg_data = {"text": msg}
         try:
             _req = requests.post(
-                slack_wh_url,
+                notification_webhook_url,
                 data=json.dumps(msg_data),
                 headers={"Content-type": "application/json"},
                 timeout=0.6,
             )
             # print(f"slack wh sent: {req}")
         except Exception as e:
-            printAndLog(f"Failed to send slack message: {e}")
+            printAndLog(f"May have Failed to send GeRDA Notification Webhook: {e}")
 
 
 def sendCommand(s, command):
@@ -650,9 +666,7 @@ def initialiseLogFile():
     logFileArchivePath = None
 
     # Check for PSS Drive Paths to save backup of Log file
-    if os.path.exists(
-        R"Y:/Service/pXRF/Automatic Instrument Logs (S1Control)"
-    ):
+    if os.path.exists(R"Y:/Service/pXRF/Automatic Instrument Logs (S1Control)"):
         # use gdrive path if available
         driveArchiveLoc = R"Y:/Service/pXRF/Automatic Instrument Logs (S1Control)"
 
@@ -1772,7 +1786,9 @@ def xrfListenLoop():
             except NameError as e:
                 print(f"Error updating method dropdown. ({repr(e)})")
             except RuntimeError as e:
-                print(f"Error: tried to set method stringvar too early. resuming... ({repr(e)})")
+                print(
+                    f"Error: tried to set method stringvar too early. resuming... ({repr(e)})"
+                )
 
         # 7 - SPECTRUM ENERGY PACKET, contains the SpecEnergy structure, cal info (The instrument will transmit a SPECTRUM_ENERGY packet inmmediately before transmitting it’s associated COOKED_SPECTRUM packet. The SpecEnergy iPacketCount member contains an integer that associates the SpecEnergy values with the corresponding COOKED_SPECTRUM packet via the iPacket_Cnt member of the s1_cooked_header structure.)
         elif datatype == SPECTRUM_ENERGY_PACKET:
@@ -3234,6 +3250,13 @@ class GerdaCNCController:
                 # TODO: set ACTUAL tracer xyz offsets (was 39 75 60)
                 self.instr_offset_x: int = 37
                 self.instr_offset_y: int = 70
+                self.instr_offset_z: int = 60
+                printAndLog(
+                    f"CNC Co-ordinate offsets set for instrument type: {instr_model} (x={self.instr_offset_x},y={self.instr_offset_y},z={self.instr_offset_x})"
+                )
+            case "XMS":
+                self.instr_offset_x: int = 37
+                self.instr_offset_y: int = 65
                 self.instr_offset_z: int = 60
                 printAndLog(
                     f"CNC Co-ordinate offsets set for instrument type: {instr_model} (x={self.instr_offset_x},y={self.instr_offset_y},z={self.instr_offset_x})"
@@ -4998,7 +5021,7 @@ if __name__ == "__main__":
     thread_halt = False
     quit_requested = False
     SERIALNUMBERRECV = False
-    slack_wh_url = None
+    notification_webhook_url = None
 
     # Colour Assignments
     WHITEISH = "#FAFAFA"
@@ -5037,7 +5060,7 @@ if __name__ == "__main__":
     #     ctypes.windll.user32.SetProcessDPIAware()
     #     gui.tk.call("tk", "scaling", ctk.ScalingTracker.get_window_scaling(gui))
 
-    # gui.geometry('1380x855')
+    # gui.geometry('1432x866+5+5')
 
     # APPEARANCE MODE DEFAULT AND STRVAR FOR TOGGLE - THESE TWO MUST MATCH ################################################################################
     if os.name == "nt":
@@ -6590,7 +6613,7 @@ if __name__ == "__main__":
 
     plot_coords_strvar = ctk.StringVar(value="")
     label_plot_coords = ctk.CTkLabel(
-        spectraframe, textvariable=plot_coords_strvar, font=ctk_jbm12
+        spectraframe, textvariable=plot_coords_strvar, font=ctk_jbm10
     )
     label_plot_coords.pack(side=tk.LEFT, fill=None, padx=8, pady=[0, 8], ipadx=0)
 
@@ -6813,7 +6836,7 @@ if __name__ == "__main__":
     gui.protocol("WM_DELETE_WINDOW", onClosing)
 
     # gerdaCNC = 1
-    # notifySlackChannel_OnlyIfGerdaConnected("this is a test")
+    # gui.after(1000,notifyChannelViaWebhook_OnlyIfGerdaConnected,"this is a test")
 
     gui.mainloop()
 

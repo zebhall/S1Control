@@ -1,5 +1,10 @@
 # S1Control Changelog 
 
+## v1.0.7 - 2024/04/22
+ - Implemented correct XMS instrument offsets for GeRDA usage.
+ - Modified webhook notification behaviour to allow for usage of Teams webhooks, not just Slack. txt file containing webhook should now be named `notification-channel-webhook.txt`.
+ - Minor adjustments to UI geometry to account for alternate scaling factors <100%
+
 ## v1.0.6 - 2024/03/25
  - Log backup location switched to PSS NAS (Y:\Service\pXRF\Automatic Instrument Logs (S1Control)) for PSS local network users (internal) (was previously GDrive)
  - Added catch for RuntimeError caused by UI Race condition on startup
