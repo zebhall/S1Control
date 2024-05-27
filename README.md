@@ -1,6 +1,6 @@
 
 # S1Control
-S1Control is remote-control software for Bruker pXRF Instruments - works with the S1 TITAN, TRACER 5i/5g, CTX, and XMS.
+S1Control is remote-control software for [Bruker pXRF Instruments](https://www.bruker.com/en/products-and-solutions/elemental-analyzers/handheld-xrf-spectrometers.html) - works with the S1 TITAN, TRACER 5i/5g, CTX, and XMS.
 It can also be used as a drop-in replacement for the default system software for the [*GeRDA*](https://meffalab.com/gerda/), a CNC-based automated sampling platform originally created by MeffaLab.
 
 Prepackaged binaries for windows can be found in /dist/. Make sure to install all of the .ttf font files found in the root directory to ensure UI text consistency.
@@ -8,7 +8,7 @@ Prepackaged binaries for windows can be found in /dist/. Make sure to install al
 Tested and working on Windows (7,10,11), and Linux (Ubuntu 23.10, Fedora Workstation 38).
 
 
-## Screenshots - v1.0.2
+## Feature Screenshots
 ### Main Screen - Start/Stop Assays, control timings
 ![image](https://github.com/zebhall/S1Control/assets/81948605/85556477-d2ec-451d-9018-8509b6a553ea)
 ### Configure Instrument Settings
