@@ -5,3 +5,5 @@ Results/
 Logs/
 build/
 slackwebhook.txt
+notification-channel-webhook.txt
+notification-channel-webhook-OLD.txt

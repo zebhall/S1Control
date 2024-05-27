@@ -2269,7 +2269,7 @@ def assaySelected(event):
         return
     # print(f'selected_assay_catalogue_num={selected_assay_catalogue_num}')
     # selected_assay_application = selection['values'][2]
-    
+
     # get assay(s) in case of multiselect
     assays_to_plot = [
         assay_catalogue[int(assay_num) - 1]
@@ -5020,10 +5020,10 @@ if __name__ == "__main__":
             lightweight_mode_requested = True
 
     # GUI
-    thread_halt = False
-    quit_requested = False
-    SERIALNUMBERRECV = False
-    notification_webhook_url = None
+    thread_halt: bool = False
+    quit_requested: bool = False
+    SERIALNUMBERRECV: bool = False
+    notification_webhook_url: str = None
 
     # Colour Assignments
     WHITEISH = "#FAFAFA"
