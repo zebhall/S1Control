@@ -7,3 +7,4 @@ build/
 slackwebhook.txt
 notification-channel-webhook.txt
 notification-channel-webhook-OLD.txt
+__pycache__/element_string_lists.cpython-312.pyc
