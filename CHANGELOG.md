@@ -1,5 +1,9 @@
 # S1Control Changelog 
 
+## v1.0.8 - 2024/06/10
+ - Fixed a memory leak caused by matplotlib spectra plotting implementation when using the **automatically plot spectra** option.
+	 - Memory leak still occurs when repeatedly adding and removing *many* elemental indicator lines to the plot. This is a fringe case and will be fixed soon.
+
 ## v1.0.7 - 2024/04/22
  - Implemented correct XMS instrument offsets for GeRDA usage.
  - Modified webhook notification behaviour to allow for usage of Teams webhooks, not just Slack. txt file containing webhook should now be named `notification-channel-webhook.txt`.

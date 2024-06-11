@@ -34,8 +34,8 @@ from element_string_lists import (
     all_xray_lines,
 )
 
-versionNum = "v1.0.7"  # v0.9.6 was the first GeRDA-control version
-versionDate = "2024/04/22"
+versionNum = "v1.0.8"  # v0.9.6 was the first GeRDA-control version
+versionDate = "2024/06/10"
 
 
 @dataclass
@@ -1799,6 +1799,10 @@ def xrfListenLoop():
                 printAndLog(data)
 
         # statusUpdateCheck()
+        # try:
+        #     print(f"{sys. getsizeof(assay_catalogue)=}")
+        # except:
+        #     pass
         time.sleep(0.1)
 
 
@@ -2316,7 +2320,7 @@ def plotSpectrum(spectrum, specenergy, colour, spectrum_legend):
     bins = bins + ev_channel_start
     bins = bins / 1000  # TO GET keV instead of eV
 
-    plottedspectrum = spectra_ax.plot(
+    (plottedspectrum,) = spectra_ax.plot(
         bins, counts, color=colour, linewidth=1, label=spectrum_legend
     )
     leg = spectra_ax.legend()
@@ -2338,10 +2342,12 @@ def clearCurrentSpectra():
     global plottedspectra
     global colouridx
     colouridx = 0
-    # spectra_ax.cla()   #clears all plots from ax
-    for plottedspectrum in plottedspectra:
-        # plotref = plottedspectrum.pop(0)    # removes from list
-        spectra_ax.lines[0].remove()
+    resetPlotAxes()
+    # clears all plots from ax
+    for plottedspectrum in spectra_ax.get_lines():
+        plottedspectrum.remove()  # removes from list
+        # print(f"{plottedspectrum} popped and removed")
+        # spectra_ax.lines[0].remove()
     if spectra_ax.get_legend() is not None:
         try:
             spectra_ax.get_legend().remove()
@@ -2354,6 +2360,9 @@ def clearCurrentSpectra():
     # try: spectra_ax.get_legend().remove()
     # except: pass
     plottedspectra = []  # clears this list which is now probably full of empty refs?
+    # plt.clf()
+    # plt.close()
+    # spectra_ax.cla()
     spectratoolbar.update()
     spectracanvas.draw_idle()
 
@@ -2392,13 +2401,13 @@ def plotEmissionLines():
         plottedemissionlineslist.append(plottedemissionline)
         # extraticks.append(energy)
         # extraticklabels.append(linelabel)
-    # spectra_ax.set_xticks(ticks = list(spectra_ax.get_xticks()).extend(extraticks), labels = (spectra_ax.get_xticklabels()).extend(extraticklabels))
+        # spectra_ax.set_xticks(ticks = list(spectra_ax.get_xticks()).extend(extraticks), labels = (spectra_ax.get_xticklabels()).extend(extraticklabels))
 
-    # labelLines(plottedemissionlineslist, align=True, yoffsets=1)
+        # labelLines(plottedemissionlineslist, align=True, yoffsets=1)
 
-    leg = spectra_ax.legend()
-    for line, text in zip(leg.get_lines(), leg.get_texts()):
-        text.set_color(plottextColour)
+        leg = spectra_ax.legend()
+        for line, text in zip(leg.get_lines(), leg.get_texts()):
+            text.set_color(plottextColour)
     spectratoolbar.update()
     spectracanvas.draw_idle()
 
@@ -2425,9 +2434,9 @@ def clearCurrentEmissionLines():
     plottedemissionlineslist = []
     emissionLinesElementslist = []
 
-    leg = spectra_ax.legend()
-    for line, text in zip(leg.get_lines(), leg.get_texts()):
-        text.set_color(plottextColour)
+    # leg = spectra_ax.legend()
+    # for line, text in zip(leg.get_lines(), leg.get_texts()):
+    #     text.set_color(plottextColour)
     spectratoolbar.update()
     spectracanvas.draw_idle()
 
@@ -3837,6 +3846,25 @@ def getIlluminationFromName(illumination_name: str) -> Illumination:
             f"ERROR: Illumination '{illumination_name}' was not found on the instrument."
         )
         return None
+
+
+def resetPlotAxes():
+    global spectra_ax
+    spectra_ax.cla()
+    spectra_ax.set_xlabel("Energy (keV)")
+    if doNormaliseSpectra_var.get():
+        spectra_ax.set_ylabel("Normalised Counts (%)")
+    else:
+        spectra_ax.set_ylabel("Counts (Total)")
+
+    spectra_ax.format_coord = lambda x, y: "{:.4f} keV / {:.0f} Counts".format(x, y)
+    spectra_ax.set_xlim(xmin=0, xmax=40)
+    spectra_ax.set_ylim(ymin=0, ymax=10000)
+    # spectra_ax.autoscale_view()
+    spectra_ax.autoscale(enable=True, tight=False)
+    spectra_ax.locator_params(axis="x", nbins=23)
+    spectra_ax.locator_params(axis="y", nbins=10)
+    spectra_ax.margins(y=0.05, x=0.05)
 
 
 # CTK appearance mode switcher
