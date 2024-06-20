@@ -1,5 +1,15 @@
 # S1Control Changelog 
 
+## v1.1.0 - 2024/06/20
+ - Massive refactor complete!
+ - Improved data structures to improve readability and maintainability, and make flet rewrite easier.
+	 - All specific instrument information variables are now attributes of the BrukerInstrument class.
+	 - Streamlined TCP connection logic to improve startup speed
+	 - Cleared up some fringe variable type issues and improved typing and docstrings.
+	 - Improved some unclear variable names (still need to do more of this) 
+	 - Removed unnecessary global variables
+ - Fixed a UI colour scheme bug introduced in v1.0.8 that resulted in white text on a light grey background on the spectra plot.
+
 ## v1.0.8 - 2024/06/10
  - Fixed a memory leak caused by matplotlib spectra plotting implementation when using the **automatically plot spectra** option.
 	 - Memory leak still occurs when repeatedly adding and removing *many* elemental indicator lines to the plot. This is a fringe case and will be fixed soon.

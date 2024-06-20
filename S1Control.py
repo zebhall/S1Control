@@ -34,8 +34,332 @@ from element_string_lists import (
     all_xray_lines,
 )
 
-versionNum = "v1.0.8"  # v0.9.6 was the first GeRDA-control version
-versionDate = "2024/06/10"
+versionNum = "v1.1.0"  # v0.9.6 was the first GeRDA-control version
+versionDate = "2024/06/20"
+
+
+class BrukerInstrument:
+    def __init__(self):
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.ip = "192.168.137.139"
+        self.port = 55204  # 55204
+        # CONNECTION DETAILS FOR WIFI  (Not Recommended - Also, DHCP will cause IP to change. Port may change as well?) Wifi is unreliable and prone to massive packet loss and delayed commands/info transmit.
+        # XRF_IP_WIFI = "192.168.153.167"  # '192.168.153.167:55101' found to work for ruffo when on phone hotspot network. both values may change depending on network settings?
+        # XRF_PORT_WIFI = 55101
+        # XRF_IP_USB_ALTERNATE = "190.168.137.139"  # In some VERY UNUSUAL cases, I have seen instuments come back from Bruker servicing with this IP changed to 190 instead of 192. Worth checking if it breaks.
+
+        # vars
+        self.instr_currentapplication = None
+        self.instr_currentmethod = None
+        self.instr_methodsforcurrentapplication = []
+        self.instr_model = None
+        self.instr_serialnumber = "UNKNOWN"
+        self.instr_buildnumber = None
+        self.instr_detectormodel = None
+        self.instr_detectortype = None
+        self.instr_detectorresolution = None
+        self.instr_detectormaxTemp = None
+        self.instr_detectorminTemp = None
+        self.instr_detectorwindowtype = None
+        self.instr_detectorwindowthickness = None
+        self.instr_sourcemanufacturer = None
+        self.instr_sourcetargetZ = None
+        self.instr_sourcetargetSymbol = None
+        self.instr_sourcetargetName = None
+        self.instr_sourcemaxV = None
+        self.instr_sourceminV = None
+        self.instr_sourcemaxI = None
+        self.instr_sourceminI = None
+        self.instr_sourcemaxP = None
+        self.instr_sourcespotsize = None
+        self.instr_sourcehaschangeablecollimator = None
+        self.instr_firmwareSUPversion = None
+        self.instr_firmwareUUPversion = None
+        self.instr_firmwareXILINXversion = None
+        self.instr_firmwareOMAPkernelversion = None
+        self.instr_softwareS1version = None
+        self.instr_isarmed: bool = False
+        self.instr_isloggedin: bool = False
+        self.instr_currentphases: list = []
+        self.instr_currentphase: int = 0
+        self.instr_phasecount: int = 1
+        self.instr_currentphaselength_s = 1
+        self.instr_assayrepeatsselected: int = 1
+        self.instr_assayrepeatsleft: int = 1
+        self.instr_assayrepeatschosenforcurrentrun: int = 1
+        self.instr_estimatedrealisticassaytime: int = 60
+        self.instr_applicationspresent: list = []
+        self.instr_filterspresent = []
+        self.instr_illuminations: list[Illumination] = []
+        self.instr_currentassayspectra = []
+        self.instr_currentassayspecenergies = []
+        self.instr_currentassaylegends = []
+        self.instr_currentassayresults: pd.DataFrame = None
+        self.instr_assayisrunning: bool = False
+        self.instr_currentnosetemp = None
+        self.instr_currentnosepressure = None
+        self.s1vermanuallyrequested = False
+        self.assay_start_time = None
+        self.assay_end_time = None
+        self.assay_time_total_set_seconds: int = 0
+        self.assay_phase_spectrumpacketcounter: int = 0
+        self.current_working_spectra = []
+        self.current_working_specenergies = []
+        self.assay_catalogue = []
+        self.assay_catalogue_num = 1
+        self.instr_currentambtemp: str = ""
+        self.instr_currentambtemp_F: str = ""
+        self.instr_currentdettemp: str = ""
+        self.instr_totalspecchannels = 2048
+        self.specchannelsarray = np.array(list(range(0, self.instr_totalspecchannels)))
+
+        self.open_tcp_connection(self.ip, self.port, instant_connect=True)
+
+    def open_tcp_connection(
+        self, connection_ip: str, connection_port: int, instant_connect: bool = False
+    ):
+        # try:
+        #     ping_result = os.system("ping -n 1 -w 40 " + XRF_IP_USB)
+        #     print('normal ping failed')
+        if instant_connect:
+            ping_result = True
+        else:
+            ping_result = universalPing(connection_ip, 1)
+        # print(f'ping = {ping}')
+        # xrf.connect((XRF_IP_USB, XRF_PORT_USB))
+        if not ping_result:
+            if messagebox.askyesno(
+                f"Connection Problem - S1Control {versionNum}",
+                f"S1Control has not recieved a response from the instrument at {connection_ip}, and is unable to connect. Would you like to continue trying to connect?",
+            ):
+                connection_attempt_count = 0
+                while not ping_result:
+                    # ping will only equal 0 if there are no errors or timeouts
+                    ping_result = universalPing(connection_ip, 1)
+                    # os.system('ping -n 1 -w 40 '+XRF_IP_USB)
+                    time.sleep(0.1)
+                    # print(f'ping = {universalPing}')
+                    connection_attempt_count += 1
+                    if connection_attempt_count >= 5:
+                        if messagebox.askyesno(
+                            f"Connection Problem - S1Control {versionNum}",
+                            f"S1Control has still not recieved a response from the instrument at {connection_ip}, and is still unable to connect. Would you like to continue trying to connect?",
+                        ):
+                            connection_attempt_count = 0
+                        else:
+                            raise SystemExit(0)
+                            closeAllThreads()
+                            gui.destroy()
+            else:
+                raise SystemExit(0)
+                closeAllThreads()
+                gui.destroy()
+
+        try:
+            self.socket.connect((connection_ip, connection_port))
+        except Exception as e:
+            print(
+                f"Connection Error. Check instrument has booted to login screen and is properly connected before restarting the program. ({repr(e)})"
+            )
+
+    def close_tcp_connection(self):
+        self.socket.close()
+        printAndLog("Instrument Connection Closed.", "WARNING")
+
+    def receive_chunks(self, expected_len) -> bytes:
+        """intermediate function used by receive_data"""
+        chunks = []
+        recv_len = 0
+        while recv_len < expected_len:
+            chunk = self.socket.recv(expected_len - recv_len)
+            if chunk == b"":
+                raise Exception("XRF Socket connection broken")
+            chunks.append(chunk)
+            recv_len = recv_len + len(chunk)
+        return b"".join(chunks)
+
+    def receive_data(self) -> tuple[dict, str]:
+        """Receives data waiting in buffer from the connected instrument.
+        structure is handled via indicator bytes in header.
+        Returns tuple of the receieved data (as an OrderedDict), and the datatype code (see constants)"""
+        _header = self.receive_chunks(10)
+        _data_size = int.from_bytes(_header[6:10], "little")
+        _data = self.receive_chunks(_data_size)
+        _footer = self.receive_chunks(4)
+
+        if _header[4:6] == b"\x17\x80":  # 5 - XML PACKET (Usually results?)
+            _datatype = XML_PACKET
+            _data = _data.decode("utf-8")
+            # print(data)
+            _data = xmltodict.parse(_data)
+            if (
+                ("Response" in _data)
+                and ("@status" in _data["Response"])
+                and ("#text" in _data["Response"])
+            ):  # and ('ogged in ' in data['Response']['#text']):
+                _datatype = XML_SUCCESS_RESPONSE  # 5a - XML PACKET, 'success, assay start' 'success, Logged in' etc response
+            elif (
+                ("Response" in _data)
+                and ("@parameter" in _data["Response"])
+                and (_data["Response"]["@parameter"] == "applications")
+            ):
+                _datatype = XML_APPS_PRESENT_RESPONSE  # 5b - XML PACKET, Applications present response
+            elif (
+                ("Response" in _data)
+                and ("@parameter" in _data["Response"])
+                and (_data["Response"]["@parameter"] == "activeapplication")
+            ):
+                _datatype = XML_ACTIVE_APP_RESPONSE  # 5c - XML PACKET, Active Application and Methods present response
+
+            return _data, _datatype
+
+        # 1 - COOKED SPECTRUM
+        elif _header[4:6] == b"\x01\x80":
+            _datatype = COOKED_SPECTRUM
+            return _data, _datatype
+        # 2 - RESULTS SET (don't really know when this is used?)    // Deprecated?
+        elif _header[4:6] == b"\x02\x80":
+            _datatype = RESULTS_SET
+            return _data, _datatype
+        # 3 - RAW SPECTRUM  // Deprecated?
+        elif _header[4:6] == b"\x03\x80":
+            _datatype = RAW_SPECTRUM
+            return _data, _datatype
+        # 4 - PDZ FILENAME // Deprecated, no longer works :(
+        elif _header[4:6] == b"\x04\x80":
+            _datatype = PDZ_FILENAME
+            return _data, _datatype
+        # 6 - STATUS CHANGE     (i.e. trigger pulled/released, assay start/stop/complete, phase change, etc.)
+        elif _header[4:6] == b"\x18\x80":
+            _datatype = STATUS_CHANGE
+            _data = (
+                _data.decode("utf-8")
+                .replace("\n", "")
+                .replace("\r", "")
+                .replace("\t", "")
+            )
+            _data = xmltodict.parse(_data)
+            return _data, _datatype
+        # 7 - SPECTRUM ENERGY PACKET
+        elif _header[4:6] == b"\x0b\x80":
+            _datatype = SPECTRUM_ENERGY_PACKET
+            return _data, _datatype
+        # 0 - UNKNOWN DATA
+        else:
+            _datatype = UNKNOWN_DATA
+            printAndLog(f"****debug: unknown datatype. {_header=}, {_data=}")
+            return _data, _datatype
+
+    def send_command(self, command: str):
+        _msg = '<?xml version="1.0" encoding="utf-8"?>' + command
+        _msg_data = (
+            b"\x03\x02\x00\x00\x17\x80"
+            + len(_msg).to_bytes(4, "little")
+            + _msg.encode("utf-8")
+            + b"\x06\x2a\xff\xff"
+        )
+        sent = self.socket.sendall(_msg_data)
+        if sent == 0:
+            raise Exception("XRF Socket connection broken")
+
+    # Commands
+    def command_login(self):
+        self.send_command("<Command>Login</Command>")
+
+    def command_assay_start(self):
+        self.send_command('<Command parameter="Assay">Start</Command>')
+
+    def command_assay_stop(self):
+        self.send_command('<Command parameter="Assay">Stop</Command>')
+
+    def acknowledge_error(self, TxMsgID):
+        self.send_command(
+            f'<Acknowledge RxMsgID="{TxMsgID}" UserAcked="Yes"></Acknowledge>'
+        )
+
+    # Queries
+    def query_login_state(self):
+        self.send_command('<Query parameter="Login State"/>')
+
+    def query_armed_state(self):
+        self.send_command('<Query parameter="Armed State"/>')
+
+    def query_instrument_definition(self):
+        self.send_command('<Query parameter="Instrument Definition"/>')
+
+    def query_all_applications(self):
+        self.send_command('<Query parameter="Applications"/>')
+
+    def query_current_application_incl_methods(self):
+        self.send_command(
+            '<Query parameter="ActiveApplication">Include Methods</Query>'
+        )
+
+    def query_methods_for_current_application(self):
+        self.send_command('<Query parameter="Method"></Query>')
+
+    def query_current_application_prefs(self):
+        self.send_command('<Query parameter="User Preferences"></Query>')
+
+    def query_current_application_phase_times(self):
+        self.send_command('<Query parameter="Phase Times"/>')
+
+    def query_software_version(self):
+        self.send_command('<Query parameter="Version"/>')
+
+    def query_nose_temp(self):
+        self.send_command('<Query parameter="Nose Temperature"/>')
+
+    def query_nose_pressure(self):
+        self.send_command('<Query parameter="Nose Pressure"/>')
+
+    def query_edit_fields(self):
+        self.send_command('<Query parameter="Edit Fields"/>')
+
+    def query_proximity_required(self):
+        self.send_command('<Query parameter="Proximity Required"/>')
+
+    def query_store_results(self):
+        self.send_command('<Query parameter="Store Results"/>')
+
+    def query_store_spectra(self):
+        self.send_command('<Query parameter="Store Spectra"/>')
+
+    # Configuration commands
+    def configure_transmit_elemental_results_enable(self):
+        self.send_command(
+            '<Configure parameter="Transmit Results" grades="Yes" elements="Yes">Yes</Configure>'
+        )
+
+    def configure_transmit_spectra_enable(self):
+        self.send_command('<Configure parameter="Transmit Spectra">Yes</Configure>')
+
+    def configure_transmit_spectra_disable(self):
+        self.send_command('<Configure parameter="Transmit Spectra">No</Configure>')
+
+    def configure_transmit_status_messages_enable(self):
+        self.send_command('<Configure parameter="Transmit Statusmsg">Yes</Configure>')
+
+    def configure_proximity_enable(self):
+        self.send_command('<Configure parameter="Proximity Required">Yes</Configure>')
+
+    def configure_proximity_disable(self):
+        self.send_command('<Configure parameter="Proximity Required">No</Configure>')
+
+    def configure_store_results_enable(self):
+        self.send_command('<Configure parameter="Store Results">Yes</Configure>')
+
+    def configure_store_results_disable(self):
+        self.send_command('<Configure parameter="Store Results">No</Configure>')
+
+    def configure_store_spectra_enable(self):
+        self.send_command('<Configure parameter="Store Spectra">Yes</Configure>')
+
+    def configure_store_spectra_disable(self):
+        self.send_command('<Configure parameter="Store Spectra">No</Configure>')
+
+    def configure_reset_info_fields(self):
+        self.send_command('<Configure parameter="Edit Fields">Reset</Configure>')
 
 
 @dataclass
@@ -71,59 +395,6 @@ class Illumination:
     actualcounts: int  # actual tuned counts value at specififed current
 
 
-def instrument_Connect(instant_connect: bool = False):
-    global xrf
-    # try:
-    #     ping_result = os.system("ping -n 1 -w 40 " + XRF_IP_USB)
-    #     print('normal ping failed')
-    if instant_connect:
-        ping_result = True
-    else:
-        ping_result = universalPing(XRF_IP_USB, 1)
-    # print(f'ping = {ping}')
-    # xrf.connect((XRF_IP_USB, XRF_PORT_USB))
-    if not ping_result:
-        if messagebox.askyesno(
-            f"Connection Problem - S1Control {versionNum}",
-            f"S1Control has not recieved a response from the instrument at {XRF_IP_USB}, and is unable to connect. Would you like to continue trying to connect?",
-        ):
-            connection_attempt_count = 0
-            while not ping_result:
-                # ping will only equal 0 if there are no errors or timeouts
-                ping_result = universalPing(XRF_IP_USB, 1)
-                # os.system('ping -n 1 -w 40 '+XRF_IP_USB)
-                time.sleep(0.1)
-                # print(f'ping = {universalPing}')
-                connection_attempt_count += 1
-                if connection_attempt_count >= 5:
-                    if messagebox.askyesno(
-                        f"Connection Problem - S1Control {versionNum}",
-                        f"S1Control has still not recieved a response from the instrument at {XRF_IP_USB}, and is still unable to connect. Would you like to continue trying to connect?",
-                    ):
-                        connection_attempt_count = 0
-                    else:
-                        raise SystemExit(0)
-                        closeAllThreads()
-                        gui.destroy()
-        else:
-            raise SystemExit(0)
-            closeAllThreads()
-            gui.destroy()
-
-    try:
-        xrf.connect((XRF_IP_USB, XRF_PORT_USB))
-    except Exception as e:
-        print(
-            f"Connection Error. Check instrument has booted to login screen and is properly connected before restarting the program. ({repr(e)})"
-        )
-
-
-def instrument_Disconnect():
-    global xrf
-    xrf.close()
-    printAndLog("Instrument Connection Closed.", "WARNING")
-
-
 def universalPing(host, num_tries):
     """
     Returns True if host (str) responds to a ping request.
@@ -144,21 +415,17 @@ def instrument_StartAssay(
     customassay_current: float = None,
     customassay_duration: int = None,
 ):
-    global spectra
-    global assay_catalogue_num
-    global assay_time_total_set_seconds
-    global instr_assayisrunning
-    instr_assayisrunning = True
-    printAndLog(f"Starting Assay # {str(assay_catalogue_num).zfill(4)}", "INFO")
+    pxrf.instr_assayisrunning = True
+    printAndLog(f"Starting Assay # {str(pxrf.assay_catalogue_num).zfill(4)}", "INFO")
     unselectAllAssays()
     clearCurrentSpectra()
     clearResultsfromTable()
 
-    spectra = []
+    pxrf.current_working_spectra = []
 
     if not customassay:
         # if just starting a normal (non-spectrum-only) assay
-        sendCommand(xrf, bruker_command_assaystart)
+        pxrf.command_assay_start()
 
     else:
         # if customassay, then make ui follow along.
@@ -172,149 +439,72 @@ def instrument_StartAssay(
         customspectrum_duration_entry.insert(0, str(customassay_duration))
 
         _no = "No"
+        # custom spectrum assay start, with params. assuming:
+        _customassay_backscatterlimit: int = 0
+        # backscatter: 0 = disabled, -1 = intelligent algorithm, >1 = raw counts per second limit
+        _customassay_rejectpackets: int = 1
+
+        # set phase time for estimate
+        pxrf.assay_time_total_set_seconds = customassay_duration
+
+        # fix formatting of values
+        _customassay_command = f'<Command parameter="Assay"><StartParameters><Filter>{customassay_filter}</Filter><HighVoltage>{customassay_voltage:.1f}</HighVoltage><AnodeCurrent>{customassay_current:.1f}</AnodeCurrent><AssayDuration>{customassay_duration}</AssayDuration><BackScatterLimit>{_customassay_backscatterlimit}</BackScatterLimit><RejectPackets>{_customassay_rejectpackets}</RejectPackets></StartParameters></Command>'
+
+        pxrf.send_command(_customassay_command)
+
         printAndLog(
             f"Spectrum-Only Assay Started: ({customassay_voltage:.1f}kV {customassay_current:.1f}uA, {customassay_filter if customassay_filter else _no} Filter)"
         )
-        # custom spectrum assay start, with params. assuming:
-        customassay_backscatterlimit: int = 0
-        # backscatter: 0 = disabled, -1 = intelligent algorithm, >1 = raw counts per second limit
-        customassay_rejectpackets: int = 1
-
-        # set phase time for estimate
-        assay_time_total_set_seconds = customassay_duration
-
-        # fix formatting of values
-        customassay_command = f'<Command parameter="Assay"><StartParameters><Filter>{customassay_filter}</Filter><HighVoltage>{customassay_voltage:.1f}</HighVoltage><AnodeCurrent>{customassay_current:.1f}</AnodeCurrent><AssayDuration>{customassay_duration}</AssayDuration><BackScatterLimit>{customassay_backscatterlimit}</BackScatterLimit><RejectPackets>{customassay_rejectpackets}</RejectPackets></StartParameters></Command>'
-
-        sendCommand(xrf, customassay_command)
 
 
 def instrument_StopAssay():
-    global instr_assayrepeatsleft
-    global instr_assayisrunning
-    instr_assayrepeatsleft = 0
-    instr_assayisrunning = False
-    sendCommand(xrf, bruker_command_assaystop)
-
-
-def instrument_Login():
-    sendCommand(xrf, bruker_command_login)
-
-
-def instrument_QueryLoginState():
-    sendCommand(xrf, bruker_query_loginstate)
-
-
-def instrument_QueryArmedState():
-    sendCommand(xrf, bruker_query_armedstate)
-
-
-def instrument_QueryCurrentApplicationPreferences():
-    sendCommand(xrf, bruker_query_currentapplicationprefs)
-
-
-def instrument_QueryCurrentApplicationPhaseTimes():
-    sendCommand(xrf, bruker_query_currentapplicationphasetimes)
-
-
-def instrument_QuerySoftwareVersion():
-    sendCommand(xrf, bruker_query_softwareversion)
-
-
-def instrument_QueryNoseTemp():
-    sendCommand(xrf, bruker_query_nosetemp)
-
-
-def instrument_QueryNosePressure():
-    sendCommand(xrf, bruker_query_nosepressure)
-
-
-def instrument_QueryEditFields():
-    sendCommand(xrf, bruker_query_editfields)
+    pxrf.instr_assayrepeatsleft = 0
+    pxrf.instr_assayisrunning = False
+    pxrf.command_assay_stop()
 
 
 def instrument_ConfigureSystemTime():
-    currenttime = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+    _currenttime = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     # time should be format 2015-11-02 09:02:35
-    set_time_command = f'<Configure parameter="System Time">{currenttime}</Configure>'
-    sendCommand(xrf, set_time_command)
-
-
-def instrument_ConfigureTransmitSpectraEnable():
-    sendCommand(xrf, bruker_configure_transmitspectraenable)
-
-
-def instrument_ConfigureTransmitSpectraDisable():
-    sendCommand(xrf, bruker_configure_transmitspectradisable)
-
-
-def instrument_ConfigureProximityEnable():
-    sendCommand(xrf, bruker_configure_proximityenable)
-
-
-def instrument_ConfigureProximityDisable():
-    sendCommand(xrf, bruker_configure_proximitydisable)
+    _set_time_command = f'<Configure parameter="System Time">{_currenttime}</Configure>'
+    pxrf.send_command(_set_time_command)
 
 
 def instrument_toggleProximity(prox_button_bool: bool):
     if prox_button_bool:
-        instrument_ConfigureProximityEnable()
+        pxrf.configure_proximity_enable()
     elif not prox_button_bool:
-        instrument_ConfigureProximityDisable()
+        pxrf.configure_proximity_disable()
     else:
         printAndLog("ERROR: Cannot toggle proximity. Toggle value invalid.")
 
 
-def instrument_ConfigureStoreResultsEnable():
-    sendCommand(xrf, bruker_configure_storeresultsenable)
-
-
-def instrument_ConfigureStoreResultsDisable():
-    sendCommand(xrf, bruker_configure_storeresultsdisable)
-
-
 def instrument_toggleStoreResultFiles(store_results_button_bool: bool):
     if store_results_button_bool:
-        instrument_ConfigureStoreResultsEnable()
+        pxrf.configure_store_results_enable()
     elif not store_results_button_bool:
-        instrument_ConfigureStoreResultsDisable()
+        pxrf.configure_store_results_disable()
     else:
         printAndLog("ERROR: Cannot toggle store-results. Toggle value invalid.")
 
 
-def instrument_ConfigureStoreSpectraEnable():
-    sendCommand(xrf, bruker_configure_storespectraenable)
-
-
-def instrument_ConfigureStoreSpectraDisable():
-    sendCommand(xrf, bruker_configure_storespectradisable)
-
-
 def instrument_toggleStoreSpectraFiles(store_spectra_button_bool: bool):
     if store_spectra_button_bool:
-        instrument_ConfigureStoreSpectraEnable()
+        pxrf.configure_store_spectra_enable()
     elif not store_spectra_button_bool:
-        instrument_ConfigureStoreSpectraDisable()
+        pxrf.configure_store_spectra_disable()
     else:
         printAndLog("ERROR: Cannot toggle store-spectra. Toggle value invalid.")
 
 
-def instrument_ResetInfoFields():
-    sendCommand(xrf, bruker_configure_resetinfofields)
-
-
 def instrument_SetImportantStartupConfigurables():
     # enable transmission of trigger pull, assay complete messages, etc. necessary for basic function.
-    sendCommand(xrf, bruker_configure_transmitstatusmessagesenable)
+    pxrf.configure_transmit_status_messages_enable()
     # Enable transmission of elemental results, disables transmission of grade ID / passfail results
-    sendCommand(xrf, bruker_configure_transmitelementalresultsenable)
+    pxrf.configure_transmit_elemental_results_enable
     # Enable transmission of trigger pull/release and assay start/stop status messages
-    instrument_ConfigureTransmitSpectraEnable()
+    pxrf.configure_transmit_spectra_enable()
     # printAndLog('Instrument Transmit settings have been configured automatically to allow program functionality.')
-
-
-def instrument_AcknowledgeError(TxMsgID):
-    sendCommand(xrf, f'<Acknowledge RxMsgID="{TxMsgID}" UserAcked="Yes"></Acknowledge>')
 
 
 def printAndLog(data, logbox_colour_tag: str = "BASIC", notify_slack: bool = False):
@@ -458,98 +648,6 @@ def notifyChannelViaWebhook_OnlyIfGerdaConnected(msg: str) -> None:
             printAndLog(f"May have Failed to send GeRDA Notification Webhook: {e}")
 
 
-def sendCommand(s, command):
-    msg = '<?xml version="1.0" encoding="utf-8"?>' + command
-    msgData = (
-        b"\x03\x02\x00\x00\x17\x80"
-        + len(msg).to_bytes(4, "little")
-        + msg.encode("utf-8")
-        + b"\x06\x2a\xff\xff"
-    )
-    sent = s.sendall(msgData)
-    if sent == 0:
-        raise Exception("XRF Socket connection broken")
-
-
-def recvChunks(s, expected_len):
-    chunks = []
-    recv_len = 0
-    while recv_len < expected_len:
-        chunk = s.recv(expected_len - recv_len)
-        if chunk == b"":
-            raise Exception("XRF Socket connection broken")
-        chunks.append(chunk)
-        recv_len = recv_len + len(chunk)
-    return b"".join(chunks)
-
-
-def recvData(s):
-    header = recvChunks(s, 10)
-    data_size = int.from_bytes(header[6:10], "little")
-    data = recvChunks(s, data_size)
-    _footer = recvChunks(s, 4)
-
-    if header[4:6] == b"\x17\x80":  # 5 - XML PACKET (Usually results?)
-        datatype = XML_PACKET
-        data = data.decode("utf-8")
-        # print(data)
-        data = xmltodict.parse(data)
-        if (
-            ("Response" in data)
-            and ("@status" in data["Response"])
-            and ("#text" in data["Response"])
-        ):  # and ('ogged in ' in data['Response']['#text']):
-            datatype = XML_SUCCESS_RESPONSE  # 5a - XML PACKET, 'success, assay start' 'success, Logged in' etc response
-        elif (
-            ("Response" in data)
-            and ("@parameter" in data["Response"])
-            and (data["Response"]["@parameter"] == "applications")
-        ):
-            datatype = XML_APPS_PRESENT_RESPONSE  # 5b - XML PACKET, Applications present response
-        elif (
-            ("Response" in data)
-            and ("@parameter" in data["Response"])
-            and (data["Response"]["@parameter"] == "activeapplication")
-        ):
-            datatype = XML_ACTIVE_APP_RESPONSE  # 5c - XML PACKET, Active Application and Methods present response
-
-        return data, datatype
-
-    # 1 - COOKED SPECTRUM
-    elif header[4:6] == b"\x01\x80":
-        datatype = COOKED_SPECTRUM
-        return data, datatype
-    # 2 - RESULTS SET (don't really know when this is used?)    // Deprecated?
-    elif header[4:6] == b"\x02\x80":
-        datatype = RESULTS_SET
-        return data, datatype
-    # 3 - RAW SPECTRUM  // Deprecated?
-    elif header[4:6] == b"\x03\x80":
-        datatype = RAW_SPECTRUM
-        return data, datatype
-    # 4 - PDZ FILENAME // Deprecated, no longer works :(
-    elif header[4:6] == b"\x04\x80":
-        datatype = PDZ_FILENAME
-        return data, datatype
-    # 6 - STATUS CHANGE     (i.e. trigger pulled/released, assay start/stop/complete, phase change, etc.)
-    elif header[4:6] == b"\x18\x80":
-        datatype = STATUS_CHANGE
-        data = (
-            data.decode("utf-8").replace("\n", "").replace("\r", "").replace("\t", "")
-        )
-        data = xmltodict.parse(data)
-        return data, datatype
-    # 7 - SPECTRUM ENERGY PACKET
-    elif header[4:6] == b"\x0b\x80":
-        datatype = SPECTRUM_ENERGY_PACKET
-        return data, datatype
-    # 0 - UNKNOWN DATA
-    else:
-        datatype = UNKNOWN_DATA
-        printAndLog(f"****debug: unknown datatype. {header=}, {data=}")
-        return data, datatype
-
-
 def elementZtoSymbol(Z):
     """Returns 1-2 character Element symbol as a string"""
     if Z == 0:
@@ -589,24 +687,28 @@ def elementSymboltoName(sym: str):
 
 
 def instrument_GetInfo():
-    sendCommand(xrf, bruker_query_instdef)
-    sendCommand(xrf, bruker_query_allapplications)
-    sendCommand(xrf, bruker_query_currentapplicationinclmethods)
-    instrument_QuerySoftwareVersion()
+    pxrf.query_instrument_definition()
+    pxrf.query_all_applications()
+    pxrf.query_current_application_incl_methods()
+    pxrf.query_software_version()
 
 
 def printInstrumentInfo():
-    printAndLog(f"Model: {instr_model}")
-    printAndLog(f"Serial Number: {instr_serialnumber}")
-    printAndLog(f"Build Number: {instr_buildnumber}")
-    printAndLog(f"Detector: {instr_detectormodel}")
+    printAndLog(f"Model: {pxrf.instr_model}")
+    printAndLog(f"Serial Number: {pxrf.instr_serialnumber}")
+    printAndLog(f"Build Number: {pxrf.instr_buildnumber}")
+    printAndLog(f"Detector: {pxrf.instr_detectormodel}")
     printAndLog(
-        f"Detector Specs: {instr_detectortype} - {instr_detectorwindowthickness} {instr_detectorwindowtype} window, {instr_detectorresolution} resolution, operating temps {instr_detectormaxTemp} - {instr_detectorminTemp}"
+        f"Detector Specs: {pxrf.instr_detectortype} - {pxrf.instr_detectorwindowthickness} {pxrf.instr_detectorwindowtype} window, {pxrf.instr_detectorresolution} resolution, operating temps {pxrf.instr_detectormaxTemp} - {pxrf.instr_detectorminTemp}"
     )
-    printAndLog(f"Source: {instr_sourcemanufacturer} {instr_sourcemaxP}")
-    printAndLog(f"Source Target: {instr_sourcetargetName}")
-    printAndLog(f"Source Voltage Range: {instr_sourceminV} - {instr_sourcemaxV}")
-    printAndLog(f"Source Current Range: {instr_sourceminI} - {instr_sourcemaxI}")
+    printAndLog(f"Source: {pxrf.instr_sourcemanufacturer} {pxrf.instr_sourcemaxP}")
+    printAndLog(f"Source Target: {pxrf.instr_sourcetargetName}")
+    printAndLog(
+        f"Source Voltage Range: {pxrf.instr_sourceminV} - {pxrf.instr_sourcemaxV}"
+    )
+    printAndLog(
+        f"Source Current Range: {pxrf.instr_sourceminI} - {pxrf.instr_sourcemaxI}"
+    )
 
 
 def resource_path(relative_path):
@@ -650,7 +752,6 @@ def initialiseLogFile():
     global logFileName
     global logFilePath
     global driveFolderStr
-    global instr_serialnumber
     global datetimeString
     # Set PC user and name for log file
     try:
@@ -670,7 +771,7 @@ def initialiseLogFile():
         # use gdrive path if available
         driveArchiveLoc = R"Y:/Service/pXRF/Automatic Instrument Logs (S1Control)"
 
-    if instr_serialnumber == "UNKNOWN":
+    if pxrf.instr_serialnumber == "UNKNOWN":
         messagebox.showwarning(
             "SerialNumber Error",
             "Warning: The instrument's serial number was not retrieved in time to use it in the initialisation of the log file for this session. For this reason, the log file will likely display 'UNKNOWN' as the serial number in the filename.",
@@ -683,20 +784,20 @@ def initialiseLogFile():
         for subdir, dirs, files in os.walk(driveArchiveLoc):
             for dir in dirs:
                 # print(os.path.join(subdir, dir))
-                if instr_serialnumber in dir:
+                if pxrf.instr_serialnumber in dir:
                     driveFolderStr = dir
                     foundAlternateFolderName = True
                     break
 
     # Use just serial num if no renamed folder exists
     if foundAlternateFolderName is False:
-        driveFolderStr = instr_serialnumber
+        driveFolderStr = pxrf.instr_serialnumber
 
     # Make folder in drive archive if doesn't already exist
     if (driveArchiveLoc is not None) and not os.path.exists(
         driveArchiveLoc + rf"/{driveFolderStr}"
     ):
-        os.makedirs(driveArchiveLoc + rf"/{instr_serialnumber}")
+        os.makedirs(driveArchiveLoc + rf"/{pxrf.instr_serialnumber}")
 
     # Standard log file location in dir of program
     if not os.path.exists(rf"{os.getcwd()}/Logs"):
@@ -705,7 +806,7 @@ def initialiseLogFile():
         # Create Log file using time/date/XRFserial
 
     datetimeString = time.strftime("%Y%m%d-%H%M%S", time.localtime())
-    logFileName = f"S1Control_Log_{datetimeString}_{instr_serialnumber}.txt"
+    logFileName = f"S1Control_Log_{datetimeString}_{pxrf.instr_serialnumber}.txt"
     logFilePath = rf"{os.getcwd()}/Logs/{logFileName}"
     if driveArchiveLoc is not None:
         logFileArchivePath = rf"{driveArchiveLoc}/{driveFolderStr}/{logFileName}"
@@ -720,21 +821,17 @@ def initialiseLogFile():
             "--------------------------------------------------------------------------------------------------------------------------------------------\n"
         )
 
-    #     # CLosing **** around idf, app, method info
-    # with open(logFilePath, "a", encoding= 'utf-16') as logFile:
-    #     logFile.write('--------------------------------------------------------------------------------------------------------------------------------------------\n')
-
 
 def instrument_GetStates():
-    instrument_QueryLoginState()
-    instrument_QueryArmedState()
+    pxrf.query_login_state()
+    pxrf.query_armed_state()
     gui.after(800, getOtherStates)
 
 
 def getOtherStates():
-    sendCommand(xrf, bruker_query_proximityrequired)
-    sendCommand(xrf, bruker_query_storeresults)
-    sendCommand(xrf, bruker_query_storespectra)
+    pxrf.query_proximity_required()
+    pxrf.query_store_results()
+    pxrf.query_store_spectra()
 
 
 # XRF Listen Loop Functions
@@ -749,127 +846,33 @@ def xrfListenLoopThread_Start(event):
 
 
 def xrfListenLoopThread_Check():
-    global listen_thread
     global quit_requested
+    global listen_thread
     if listen_thread.is_alive():
         gui.after(500, xrfListenLoopThread_Check)
     else:
         if not quit_requested:
-            printAndLog(
-                "ERROR: XRF listen loop broke. Attempting to Restart...", "ERROR"
-            )
-            try:
-                time.sleep(2)
-                xrfListenLoopThread_Start(None)
-                printAndLog("XRF Listen Loop successfully restarted.")
-            except Exception as e:
-                print(f"Unable to restart XRF listen loop. ({repr(e)})")
-                # raise SystemExit(0)
+            printAndLog("ERROR: XRF listen loop broke", "ERROR")
+            # try:
+            #     time.sleep(2)
+            #     xrfListenLoopThread_Start(None)
+            #     printAndLog("XRF Listen Loop successfully restarted.")
+            # except Exception as e:
+            #     print(f"Unable to restart XRF listen loop. ({repr(e)})")
+            #     # raise SystemExit(0)
         else:
             onClosing(force=True)
 
 
-# TESTING OUT LISTEN LOOP PROCESS instead of thread
-# def xrfListenLoopProcess_Start():
-#     global listen_process
-#     listen_process = Process(target=xrfListenLoop)
-#     listen_process.start()
-
-
 def xrfListenLoop():
-    # I know this many globals is disgusting but it just devolved into this
-    # and I haven't had time to fix it yet I'M SORRY FUTURE ZEB
-    global instr_currentapplication
-    global instr_currentmethod
-    global instr_methodsforcurrentapplication
-    global instr_model
-    global instr_serialnumber
-    global instr_buildnumber
-    global instr_detectormodel
-    global instr_detectortype
-    global instr_detectorresolution
-    global instr_detectormaxTemp
-    global instr_detectorminTemp
-    global instr_detectorwindowtype
-    global instr_detectorwindowthickness
-    global instr_sourcemanufacturer
-    global instr_sourcetargetZ
-    global instr_sourcetargetSymbol
-    global instr_sourcetargetName
-    global instr_sourcemaxV
-    global instr_sourceminV
-    global instr_sourcemaxI
-    global instr_sourceminI
-    global instr_sourcemaxP
-    global instr_sourcespotsize
-    global instr_sourcehaschangeablecollimator
-    global instr_firmwareSUPversion
-    global instr_firmwareUUPversion
-    global instr_firmwareXILINXversion
-    global instr_firmwareOMAPkernelversion
-    global instr_softwareS1version
-    global instr_isarmed
-    global instr_isloggedin
-    global instr_currentphases
-    global instr_currentphase
-    global instr_phasecount
-    global instr_currentphaselength_s
-    global instr_assayrepeatsleft
-    global instr_assayrepeatschosenforcurrentrun
-    global instr_estimatedrealisticassaytime
-    global instr_applicationspresent
-    global instr_filterspresent
-    global instr_illuminations
-    global instr_currentassayspectra
-    global instr_currentassayspecenergies
-    global instr_currentassaylegends
-    global instr_currentassayresults
-    global instr_DANGER_stringvar
-    global instr_assayisrunning
-    global instr_currentnosetemp
-    global instr_currentnosepressure
-    global s1vermanuallyrequested
-    global assay_start_time
-    global assay_end_time
-    global assay_time_total_set_seconds
-    global xraysonbar
-    global assay_phase_spectrumpacketcounter
-    global proximitysensor_var
-    global storeresultsoninstrument_var
-    global storespectraoninstrument_var
-
+    """main listen and action loop for responding to data from instrument in realtime. to be run in own thread."""
     while True:
         try:
-            data, datatype = recvData(xrf)
+            data, datatype = pxrf.receive_data()
         except Exception as e:
             printAndLog(repr(e))
             printAndLog("XRF CONNECTION LOST", "ERROR")
             onInstrDisconnect()
-
-            # data = None
-            # datatype = None
-            # time.sleep(1)
-            # instrument_Connect(instant_connect=True)
-
-            # printAndLog(
-            #     "XRF CONNECTION LOST, ATTEMPTING TO RE-ESTABLISH...",
-            #     logbox_colour_tag="ERROR",
-            # )
-            # try:
-            #     instrument_Connect()
-            #     time.sleep(5)
-            #     # if connection lost, try reconnecting and then waiting 1s before recv again
-            #     data, datatype = recvData(xrf)
-            #     printAndLog(
-            #         "XRF CONNECTION RE-ESTABLISHED!",
-            #         logbox_colour_tag="WARNING",
-            #     )
-            # except:
-            #     printAndLog(
-            #         "XRF CONNECTION COULD NOT BE RE-ESTABLISHED, SHUTTING DOWN.",
-            #         logbox_colour_tag="ERROR",
-            #     )
-            #     onInstrDisconnect()
 
         if thread_halt:
             break
@@ -885,30 +888,32 @@ def xrfListenLoop():
                 printAndLog(f"Status Change: {statusparam} {statustext}")
 
                 if statusparam == "Assay" and statustext == "Start":
-                    instr_currentphase = 0
-                    if instr_currentapplication != "Custom Spectrum":
+                    pxrf.instr_currentphase = 0
+                    if pxrf.instr_currentapplication != "Custom Spectrum":
                         # only need to calculate assay total set time if it ISN'T a custom spectrum assay. if it is, it is set in startAssay()
-                        instr_currentphaselength_s = int(
-                            phasedurations[instr_currentphase]  # noqa: F821
+                        pxrf.instr_currentphaselength_s = int(
+                            phasedurations[pxrf.instr_currentphase]  # noqa: F821
                         )
-                        assay_time_total_set_seconds = 0
+                        pxrf.assay_time_total_set_seconds = 0
                         for dur in phasedurations:  # noqa: F821
-                            assay_time_total_set_seconds += int(dur)
+                            pxrf.assay_time_total_set_seconds += int(dur)
                     else:
-                        instr_currentphaselength_s = int(
+                        pxrf.instr_currentphaselength_s = int(
                             customspectrum_duration_entry.get()
                         )
-                        assay_time_total_set_seconds = instr_currentphaselength_s
+                        pxrf.assay_time_total_set_seconds = (
+                            pxrf.instr_currentphaselength_s
+                        )
                         phasedurations = ["0"]
-                    assay_start_time = time.time()
-                    instr_assayisrunning = True
-                    assay_phase_spectrumpacketcounter = 0
+                    pxrf.assay_start_time = time.time()
+                    pxrf.instr_assayisrunning = True
+                    pxrf.assay_phase_spectrumpacketcounter = 0
 
                     # set variables for assay
-                    instr_currentassayspectra = []
-                    instr_currentassayspecenergies = []
-                    instr_currentassaylegends = []
-                    instr_currentassayresults = default_assay_results_df
+                    pxrf.instr_currentassayspectra = []
+                    pxrf.instr_currentassayspecenergies = []
+                    pxrf.instr_currentassaylegends = []
+                    pxrf.instr_currentassayresults = default_assay_results_df
 
                     xraysonbar.start()
 
@@ -916,16 +921,20 @@ def xrfListenLoop():
                         clearCurrentSpectra()
 
                 elif statusparam == "Assay" and statustext == "Complete":
-                    assay_end_time = time.time()
+                    pxrf.assay_end_time = time.time()
                     # instr_assayisrunning = False
 
                     # print(spectra)
                     try:
-                        instr_currentassayspectra.append(spectra[-1])
-                        instr_currentassayspecenergies.append(specenergies[-1])  # noqa: F823
+                        pxrf.instr_currentassayspectra.append(
+                            pxrf.current_working_spectra[-1]
+                        )
+                        pxrf.instr_currentassayspecenergies.append(
+                            pxrf.current_working_specenergies[-1]
+                        )  # noqa: F823
                         # legend = f"Phase {instr_currentphase+1}: {txt['sngHVADC']}kV, {round(float(txt['sngCurADC']),2)}\u03bcA"
-                        legend = f"Phase {instr_currentphase+1}({instr_currentphaselength_s}s): {txt['sngHVADC']}kV, {round(float(txt['sngCurADC']),2)}\u03bcA {txt['fltDescription']}"  # noqa: F821
-                        instr_currentassaylegends.append(legend)
+                        legend = f"Phase {pxrf.instr_currentphase+1}({pxrf.instr_currentphaselength_s}s): {txt['sngHVADC']}kV, {round(float(txt['sngCurADC']),2)}\u03bcA {txt['fltDescription']}"  # noqa: F821
+                        pxrf.instr_currentassaylegends.append(legend)
                         # plotSpectrum(spectra[-1], specenergies[-1], plotphasecolours[instr_currentphase],legend)
                     except Exception as e:
                         printAndLog(
@@ -934,14 +943,14 @@ def xrfListenLoop():
                         )
 
                     # REPORT TEMPS EACH ASSAY COMPLETE
-                    assay_finaltemps = f"Detector {instr_currentdettemp}°C, Ambient {instr_currentambtemp}°C"
+                    assay_finaltemps = f"Detector {pxrf.instr_currentdettemp}°C, Ambient {pxrf.instr_currentambtemp}°C"
                     # if detector temp or ambient temp are out of range, change colour of message.
                     temp_msg_colour = "BASIC"  # set as default
                     try:
                         if (
-                            float(instr_currentdettemp) > (-25)
-                            or float(instr_currentdettemp) < (-29)
-                            or float(instr_currentambtemp) > (65)
+                            float(pxrf.instr_currentdettemp) > (-25)
+                            or float(pxrf.instr_currentdettemp) < (-29)
+                            or float(pxrf.instr_currentambtemp) > (65)
                         ):
                             temp_msg_colour = "ERROR"
                             printAndLog(
@@ -950,9 +959,9 @@ def xrfListenLoop():
                             )
 
                         elif (
-                            float(instr_currentdettemp) > (-26)
-                            or float(instr_currentdettemp) < (-28)
-                            or float(instr_currentambtemp) > (55)
+                            float(pxrf.instr_currentdettemp) > (-26)
+                            or float(pxrf.instr_currentdettemp) < (-28)
+                            or float(pxrf.instr_currentambtemp) > (55)
                         ):
                             printAndLog(
                                 f"WARNING: Instrument Temperatures appear to be outside of the normal range! {assay_finaltemps}",
@@ -969,44 +978,45 @@ def xrfListenLoop():
                     # instrument_QueryNoseTemp()
 
                     # add full assay with all phases to table and catalogue. this 'assay complete' response is usually recieved at very end of assay, when all other values are in place.
-                    if instr_currentassayresults.equals(default_assay_results_df):
+                    if pxrf.instr_currentassayresults.equals(default_assay_results_df):
                         completeAssay(
-                            instr_currentapplication,
-                            instr_currentmethod,
-                            assay_time_total_set_seconds,
+                            pxrf.instr_currentapplication,
+                            pxrf.instr_currentmethod,
+                            pxrf.assay_time_total_set_seconds,
                             default_assay_results_df,
-                            instr_currentassayspectra,
-                            instr_currentassayspecenergies,
-                            instr_currentassaylegends,
+                            pxrf.instr_currentassayspectra,
+                            pxrf.instr_currentassayspecenergies,
+                            pxrf.instr_currentassaylegends,
                             assay_finaltemps,
                         )
                     else:
                         completeAssay(
-                            instr_currentapplication,
-                            instr_currentmethod,
-                            assay_time_total_set_seconds,
-                            instr_currentassayresults,
-                            instr_currentassayspectra,
-                            instr_currentassayspecenergies,
-                            instr_currentassaylegends,
+                            pxrf.instr_currentapplication,
+                            pxrf.instr_currentmethod,
+                            pxrf.assay_time_total_set_seconds,
+                            pxrf.instr_currentassayresults,
+                            pxrf.instr_currentassayspectra,
+                            pxrf.instr_currentassayspecenergies,
+                            pxrf.instr_currentassaylegends,
                             assay_finaltemps,
                         )
 
                     # reset variables for next assay
-                    instr_currentassayspectra = []
-                    instr_currentassayspecenergies = []
-                    instr_currentassaylegends = []
-                    instr_currentassayresults = default_assay_results_df
-
-                    instr_assayrepeatsleft -= 1
-                    if instr_assayrepeatsleft <= 0:
+                    pxrf.instr_currentassayspectra = []
+                    pxrf.instr_currentassayspecenergies = []
+                    pxrf.instr_currentassaylegends = []
+                    pxrf.instr_currentassayresults = default_assay_results_df
+                    pxrf.instr_assayrepeatsleft -= 1
+                    if pxrf.instr_assayrepeatsleft <= 0:
                         printAndLog("All Assays complete.")
-                        notifyAllAssaysComplete(instr_assayrepeatschosenforcurrentrun)
+                        notifyAllAssaysComplete(
+                            pxrf.instr_assayrepeatschosenforcurrentrun
+                        )
                         assayprogressbar.set(1)
-                        endOfAssaysReset()
-                    elif instr_assayrepeatsleft > 0:
+                        ui_EndOfAssaysReset()
+                    elif pxrf.instr_assayrepeatsleft > 0:
                         printAndLog(
-                            f"Consecutive Assays remaining: {instr_assayrepeatsleft} more."
+                            f"Consecutive Assays remaining: {pxrf.instr_assayrepeatsleft} more."
                         )
                         # if custom spectrum is selected, need to re-provide the parameters, as it is not an actual application on the instrument.
                         if applicationselected_stringvar.get() == "Custom Spectrum":
@@ -1025,43 +1035,54 @@ def xrfListenLoop():
                             )
                         else:
                             instrument_StartAssay()
-                    instr_assayisrunning = False
+                    pxrf.instr_assayisrunning = False
                     xraysonbar.stop()
                     # instr_currentphase = 0
 
                 elif statusparam == "Phase Change":
-                    instr_assayisrunning = True
+                    pxrf.instr_assayisrunning = True
                     # print(f'spec packets this phase: {assay_phase_spectrumpacketcounter}')
-                    assay_phase_spectrumpacketcounter = 0
-                    instr_currentphaselength_s = int(phasedurations[instr_currentphase])
-                    # try:
-                    spectra[-1]["normalised_data"] = normaliseSpectrum(
-                        spectra[-1]["data"], spectra[-1]["fTDur"]
+                    pxrf.assay_phase_spectrumpacketcounter = 0
+                    pxrf.instr_currentphaselength_s = int(
+                        phasedurations[pxrf.instr_currentphase]
                     )
-                    instr_currentassayspectra.append(spectra[-1])
-                    instr_currentassayspecenergies.append(specenergies[-1])
-                    legend = f"Phase {instr_currentphase+1}({instr_currentphaselength_s}s): {txt['sngHVADC']}kV, {round(float(txt['sngCurADC']),2)}\u03bcA {txt['fltDescription']}"  # noqa: F821
+                    # try:
+                    pxrf.current_working_spectra[-1]["normalised_data"] = (
+                        normaliseSpectrum(
+                            pxrf.current_working_spectra[-1]["data"],
+                            pxrf.current_working_spectra[-1]["fTDur"],
+                        )
+                    )
+                    pxrf.instr_currentassayspectra.append(
+                        pxrf.current_working_spectra[-1]
+                    )
+                    pxrf.instr_currentassayspecenergies.append(
+                        pxrf.current_working_specenergies[-1]
+                    )
+                    legend = f"Phase {pxrf.instr_currentphase+1}({pxrf.instr_currentphaselength_s}s): {txt['sngHVADC']}kV, {round(float(txt['sngCurADC']),2)}\u03bcA {txt['fltDescription']}"  # noqa: F821
                     # legend = f"Phase {instr_currentphase+1}: {txt['sngHVADC']}kV, {round(float(txt['sngCurADC']),2)}\u03bcA"
-                    instr_currentassaylegends.append(legend)
+                    pxrf.instr_currentassaylegends.append(legend)
 
                     # printAndLog(f'Temps: Detector {instr_currentdettemp}°C, Ambient {instr_currentambtemp}°F')
 
                     if doAutoPlotSpectra_var.get():
                         plotSpectrum(
-                            spectra[-1],
-                            specenergies[-1],
-                            plotphasecolours[instr_currentphase],
+                            pxrf.current_working_spectra[-1],
+                            pxrf.current_working_specenergies[-1],
+                            plotphasecolours[pxrf.instr_currentphase],
                             legend,
                         )
                     # except: printAndLog('Issue with Spectra experienced after completion of Phase.')
-                    instr_currentphase += 1
-                    instr_currentphaselength_s = int(phasedurations[instr_currentphase])
+                    pxrf.instr_currentphase += 1
+                    pxrf.instr_currentphaselength_s = int(
+                        phasedurations[pxrf.instr_currentphase]
+                    )
 
                 elif statusparam == "Armed" and statustext == "No":
-                    instr_isarmed = False
+                    pxrf.instr_isarmed = False
                 elif statusparam == "Armed" and statustext == "Yes":
-                    instr_isarmed = True
-                    instr_isloggedin = True
+                    pxrf.instr_isarmed = True
+                    pxrf.instr_isloggedin = True
 
             elif (
                 "Application Selection" in data["Status"]
@@ -1069,21 +1090,22 @@ def xrfListenLoop():
                 printAndLog("New Application Selected.")
                 # override rechecking these values IF custom selected.
                 if applicationselected_stringvar.get() != "Custom Spectrum":
-                    sendCommand(xrf, bruker_query_currentapplicationinclmethods)
+                    # sendCommand(xrf, bruker_query_currentapplicationinclmethods)
+                    pxrf.query_current_application_incl_methods()
                 # gui.after(200,ui_UpdateCurrentAppAndPhases)
                 # need to find way of queuing app checker
 
             # printAndLog(data)
 
         elif datatype == COOKED_SPECTRUM:  # COOKED SPECTRUM
-            txt, spectra = setSpectrum(data)
-            assay_phase_spectrumpacketcounter += 1
+            txt, pxrf.current_working_spectra = setSpectrum(data)
+            pxrf.assay_phase_spectrumpacketcounter += 1
             # printAndLog(f'New cooked Spectrum Info: {txt}')
             # printAndLog(f"New cooked Spectrum")
 
             if doDisplayVitals_var.get():
                 # if option box is checked for 'Display Count Rate and Dead Time %', and if so, update relevant display widget
-                updateCurrentVitalsDisplay(spectra)
+                updateCurrentVitalsDisplay(pxrf.current_working_spectra)
 
         elif datatype == PDZ_FILENAME:  # PDZ FILENAME // Deprecated, no longer works :(
             printAndLog(f"New PDZ: {data}")
@@ -1097,7 +1119,7 @@ def xrfListenLoop():
         elif datatype == RAW_SPECTRUM:  # RAW SPECTRA
             # data = hashlib.md5(data).hexdigest()
             printAndLog("Raw spectrum!")
-            txt, spectra = setSpectrum(data)
+            txt, pxrf.current_working_spectra = setSpectrum(data)
             # printAndLog(data)
 
         # 5 - XML PACKET
@@ -1114,45 +1136,47 @@ def xrfListenLoop():
                 # pprint(idf)
 
                 # Broken Down:
-                instr_model = idf.get("Model", "N/A")
-                instr_serialnumber = idf.get("SerialNumber", "N/A")
-                instr_buildnumber = idf.get("BuildNumber", "N/A")
-                instr_detectortype = instr_buildnumber[0:3]
+                pxrf.instr_model = idf.get("Model", "N/A")
+                pxrf.instr_serialnumber = idf.get("SerialNumber", "N/A")
+                pxrf.instr_buildnumber = idf.get("BuildNumber", "N/A")
+                pxrf.instr_detectortype = pxrf.instr_buildnumber[0:3]
 
                 instr_detector = idf.get("Detector", "N/A")
 
                 if instr_detector != "N/A":
-                    instr_detectormodel = instr_detector.get("DetectorModel", "N/A")
-                    if instr_detectortype[1] in "PMK":
+                    pxrf.instr_detectormodel = instr_detector.get(
+                        "DetectorModel", "N/A"
+                    )
+                    if pxrf.instr_detectortype[1] in "PMK":
                         # Older detectors with Beryllium windows. eg SPX, SMA, SK6, etc
-                        instr_detectorwindowtype = "Beryllium"
-                        instr_detectorwindowthickness = (
+                        pxrf.instr_detectorwindowtype = "Beryllium"
+                        pxrf.instr_detectorwindowthickness = (
                             instr_detector.get("BerylliumWindowThicknessInuM", "?")
                             + "\u03bcM"
                         )
-                    elif instr_detectortype[1] in "G":
-                        instr_detectorwindowtype = "Graphene"
-                        instr_detectorwindowthickness = (
+                    elif pxrf.instr_detectortype[1] in "G":
+                        pxrf.instr_detectorwindowtype = "Graphene"
+                        pxrf.instr_detectorwindowthickness = (
                             instr_detector.get("GrapheneWindowThicknessInuM", "?")
                             + "\u03bcM"
                         )
                         # In case instrument def is wrong (eg. Martin has graphene det, but only beryllium thickness listed)
-                    instr_detectorresolution = (
+                    pxrf.instr_detectorresolution = (
                         instr_detector.get("TypicalResolutionIneV", "?") + "eV"
                     )
-                    instr_detectormaxTemp = (
+                    pxrf.instr_detectormaxTemp = (
                         instr_detector.get("OperatingTempMaxInC", "?") + "°C"
                     )
-                    instr_detectorminTemp = (
+                    pxrf.instr_detectorminTemp = (
                         instr_detector.get("OperatingTempMinInC", "?") + "°C"
                     )
                 else:
-                    instr_detectormodel = "N/A"
-                    instr_detectorwindowtype = "N/A"
-                    instr_detectorwindowthickness = "N/A"
-                    instr_detectorresolution = "N/A"
-                    instr_detectormaxTemp = "N/A"
-                    instr_detectorminTemp = "N/A"
+                    pxrf.instr_detectormodel = "N/A"
+                    pxrf.instr_detectorwindowtype = "N/A"
+                    pxrf.instr_detectorwindowthickness = "N/A"
+                    pxrf.instr_detectorresolution = "N/A"
+                    pxrf.instr_detectormaxTemp = "N/A"
+                    pxrf.instr_detectorminTemp = "N/A"
 
                 instr_source: dict = idf.get("XrayTube", "N/A")
                 # from pprint import pprint
@@ -1161,28 +1185,34 @@ def xrfListenLoop():
                     instr_sourceoplimits: dict = instr_source.get(
                         "OperatingLimits", "N/A"
                     )
-                    instr_sourcemanufacturer = instr_source.get("Manufacturer", "N/A")
-                    instr_sourcetargetZ = instr_source.get("TargetElementNumber", 0)
-                    instr_sourcetargetSymbol = elementZtoSymbol(
-                        int(instr_sourcetargetZ)
+                    pxrf.instr_sourcemanufacturer = instr_source.get(
+                        "Manufacturer", "N/A"
                     )
-                    instr_sourcetargetName = elementZtoName(int(instr_sourcetargetZ))
+                    pxrf.instr_sourcetargetZ = instr_source.get(
+                        "TargetElementNumber", 0
+                    )
+                    pxrf.instr_sourcetargetSymbol = elementZtoSymbol(
+                        int(pxrf.instr_sourcetargetZ)
+                    )
+                    pxrf.instr_sourcetargetName = elementZtoName(
+                        int(pxrf.instr_sourcetargetZ)
+                    )
                     if instr_sourceoplimits != "N/A":
-                        instr_sourcemaxV = (
+                        pxrf.instr_sourcemaxV = (
                             instr_sourceoplimits.get("MaxHighVoltage", "?") + "kV"
                         )
-                        instr_sourceminV = (
+                        pxrf.instr_sourceminV = (
                             instr_sourceoplimits.get("MinHighVoltage", "?") + "kV"
                         )
-                        instr_sourcemaxI = (
+                        pxrf.instr_sourcemaxI = (
                             instr_sourceoplimits.get("MaxAnodeCurrentInuA", "?")
                             + "\u03bcA"
                         )
-                        instr_sourceminI = (
+                        pxrf.instr_sourceminI = (
                             instr_sourceoplimits.get("MinAnodeCurrentInuA", "?")
                             + "\u03bcA"
                         )
-                        instr_sourcemaxP = (
+                        pxrf.instr_sourcemaxP = (
                             instr_sourceoplimits.get("MaxOutputPowerInmW", "?") + "mW"
                         )
                     else:
@@ -1190,18 +1220,21 @@ def xrfListenLoop():
                             "IDF: NO OP LIMITS FOUND: Instrument Definition File does not report any xTube Operating Limits. This is normal for some older instruments.",
                             "WARNING",
                         )
-                        instr_sourcemaxV = "N/A"
-                        instr_sourceminV = "N/A"
-                        instr_sourcemaxI = "N/A"
-                        instr_sourceminI = "N/A"
-                        instr_sourcemaxP = "N/A"
+                        pxrf.instr_sourcemaxV = "N/A"
+                        pxrf.instr_sourceminV = "N/A"
+                        pxrf.instr_sourcemaxI = "N/A"
+                        pxrf.instr_sourceminI = "N/A"
+                        pxrf.instr_sourcemaxP = "N/A"
 
                     # get illuminations
                     instr_rawilluminationdefs: list[dict] = instr_source.get(
                         "IlluminationDefinition", "N/A"
                     )
                     # only proceed with processing illuminations IF it hasn't been done already.
-                    if instr_rawilluminationdefs != "N/A" and instr_illuminations == []:
+                    if (
+                        instr_rawilluminationdefs != "N/A"
+                        and pxrf.instr_illuminations == []
+                    ):
                         for entry in instr_rawilluminationdefs:
                             # first, fix 'AnodeCurrent', which is a dict.
                             anodecurrent_dict: dict = entry.get(
@@ -1218,7 +1251,7 @@ def xrfListenLoop():
                             # then, iterate over list of id(s) and assign to Illumination dataclass.
                             for _id in id_list:
                                 # create new Illumination dataclass object and add to list of illuminations
-                                instr_illuminations.append(
+                                pxrf.instr_illuminations.append(
                                     Illumination(
                                         name=str(_id),
                                         voltage=int(entry.get("HighVoltage", 0)),
@@ -1245,7 +1278,7 @@ def xrfListenLoop():
                                     )
                                 )
                         # after all illuminations have been scanned, sort the list of illuminations.
-                        instr_illuminations.sort(key=lambda x: x.name)
+                        pxrf.instr_illuminations.sort(key=lambda x: x.name)
                         # print("illuminations SORTED")
                         # for illum in instr_illuminations:
                         #     print(
@@ -1253,61 +1286,63 @@ def xrfListenLoop():
                         #     )
 
                 else:
-                    instr_sourcemanufacturer = "N/A"
-                    instr_sourcetargetZ = "N/A"
-                    instr_sourcetargetSymbol = "N/A"
-                    instr_sourcetargetName = "N/A"
-                    instr_sourcemaxV = "N/A"
-                    instr_sourceminV = "N/A"
-                    instr_sourcemaxI = "N/A"
-                    instr_sourceminI = "N/A"
-                    instr_sourcemaxP = "N/A"
+                    pxrf.instr_sourcemanufacturer = "N/A"
+                    pxrf.instr_sourcetargetZ = "N/A"
+                    pxrf.instr_sourcetargetSymbol = "N/A"
+                    pxrf.instr_sourcetargetName = "N/A"
+                    pxrf.instr_sourcemaxV = "N/A"
+                    pxrf.instr_sourceminV = "N/A"
+                    pxrf.instr_sourcemaxI = "N/A"
+                    pxrf.instr_sourceminI = "N/A"
+                    pxrf.instr_sourcemaxP = "N/A"
 
                 try:
-                    instr_sourcespotsize = idf["SpotSize"]["Size"] + "mm"
+                    pxrf.instr_sourcespotsize = idf["SpotSize"]["Size"] + "mm"
                 except Exception as e:
-                    instr_sourcespotsize = "N/A"
+                    pxrf.instr_sourcespotsize = "N/A"
                     print(
                         f"Could not retrieve instrument spot size from IDF. ({repr(e)})"
                     )
 
-                instr_sourcehaschangeablecollimator = idf.get(
+                pxrf.instr_sourcehaschangeablecollimator = idf.get(
                     "HasChangeableCollimator", "N/A"
                 )
 
-                instr_filterspresent = []
+                pxrf.instr_filterspresent = []
                 for filterdesc_dict in idf["Filter"]["FilterPosition"]:
                     try:
-                        instr_filterspresent.append(filterdesc_dict["#text"])
+                        pxrf.instr_filterspresent.append(filterdesc_dict["#text"])
                     except Exception as e:
                         print(f"Could not get filter description from IDF. ({repr(e)})")
-                        instr_filterspresent.append("")
+                        pxrf.instr_filterspresent.append("")
 
                 try:
-                    instr_firmwareSUPversion = idf["SUP"]["FirmwareVersion"]
+                    pxrf.instr_firmwareSUPversion = idf["SUP"]["FirmwareVersion"]
                 except Exception as e:
-                    instr_firmwareSUPversion = "N/A"
+                    pxrf.instr_firmwareSUPversion = "N/A"
                     print(
                         f"Could not retrieve instrument SuP version from IDF. ({repr(e)})"
                     )
                 try:
-                    instr_firmwareUUPversion = idf["UUP"]["FirmwareVersion"]
+                    pxrf.instr_firmwareUUPversion = idf["UUP"]["FirmwareVersion"]
                 except Exception as e:
-                    instr_firmwareUUPversion = "N/A"
+                    pxrf.instr_firmwareUUPversion = "N/A"
                     print(
                         f"Could not retrieve instrument UuP version from IDF. ({repr(e)})"
                     )
                 try:
-                    instr_firmwareXILINXversion = idf["DPP"]["XilinxFirmwareVersion"]
+                    pxrf.instr_firmwareXILINXversion = idf["DPP"][
+                        "XilinxFirmwareVersion"
+                    ]
                 except Exception as e:
-                    instr_firmwareXILINXversion = "N/A"
+                    pxrf.instr_firmwareXILINXversion = "N/A"
                     print(
                         f"Could not retrieve instrument Xilinx version from IDF. ({repr(e)})"
                     )
                 try:
-                    instr_firmwareOMAPkernelversion = idf["OMAP"]["KernelVersion"]
+                    pxrf.instr_firmwareOMAPkernelversion = idf["OMAP"]["KernelVersion"]
                 except Exception as e:
-                    instr_firmwareOMAPkernelversion = "N/A"
+                    pxrf.instr_firmwareOMAPkernelversion = "N/A"
                     print(
                         f"Could not retrieve instrument OMAP kernel version from IDF. ({repr(e)})"
                     )
@@ -1317,32 +1352,34 @@ def xrfListenLoop():
                 #     printAndLog(i, ':', a[i])
 
                 # Print Important info to Console
-                printAndLog(f"Model: {instr_model}")
-                printAndLog(f"Serial Number: {instr_serialnumber}")
-                printAndLog(f"Build Number: {instr_buildnumber}")
+                printAndLog(f"Model: {pxrf.instr_model}")
+                printAndLog(f"Serial Number: {pxrf.instr_serialnumber}")
+                printAndLog(f"Build Number: {pxrf.instr_buildnumber}")
                 try:
-                    printAndLog(f"Software: S1 Version {instr_softwareS1version}")
+                    printAndLog(f"Software: S1 Version {pxrf.instr_softwareS1version}")
                 except Exception as e:
                     # This is in case the ver isn't retrieved or reported early enough. lazy, but oh well. It stops it failing or doublereporting
                     print(f"S1 Software version has not been checked yet. ({repr(e)})")
 
                 printAndLog(
-                    f"Firmware: SuP {instr_firmwareSUPversion}, UuP {instr_firmwareUUPversion}"
+                    f"Firmware: SuP {pxrf.instr_firmwareSUPversion}, UuP {pxrf.instr_firmwareUUPversion}"
                 )
-                printAndLog(f"Detector: {instr_detectormodel}")
+                printAndLog(f"Detector: {pxrf.instr_detectormodel}")
                 printAndLog(
-                    f"Detector Specs: {instr_detectortype} - {instr_detectorwindowthickness} {instr_detectorwindowtype} window, {instr_detectorresolution} resolution, operating temps {instr_detectormaxTemp} - {instr_detectorminTemp}"
-                )
-                printAndLog(f"Source: {instr_sourcemanufacturer} {instr_sourcemaxP}")
-                printAndLog(f"Source Target: {instr_sourcetargetName}")
-                printAndLog(
-                    f"Source Spot Size: {instr_sourcespotsize} (Changeable: {instr_sourcehaschangeablecollimator})"
+                    f"Detector Specs: {pxrf.instr_detectortype} - {pxrf.instr_detectorwindowthickness} {pxrf.instr_detectorwindowtype} window, {pxrf.instr_detectorresolution} resolution, operating temps {pxrf.instr_detectormaxTemp} - {pxrf.instr_detectorminTemp}"
                 )
                 printAndLog(
-                    f"Source Voltage Range: {instr_sourceminV} - {instr_sourcemaxV}"
+                    f"Source: {pxrf.instr_sourcemanufacturer} {pxrf.instr_sourcemaxP}"
+                )
+                printAndLog(f"Source Target: {pxrf.instr_sourcetargetName}")
+                printAndLog(
+                    f"Source Spot Size: {pxrf.instr_sourcespotsize} (Changeable: {pxrf.instr_sourcehaschangeablecollimator})"
                 )
                 printAndLog(
-                    f"Source Current Range: {instr_sourceminI} - {instr_sourcemaxI}"
+                    f"Source Voltage Range: {pxrf.instr_sourceminV} - {pxrf.instr_sourcemaxV}"
+                )
+                printAndLog(
+                    f"Source Current Range: {pxrf.instr_sourceminI} - {pxrf.instr_sourcemaxI}"
                 )
 
             elif ("Data" in data) and (data["Data"]["Elements"] is None):
@@ -1411,7 +1448,7 @@ def xrfListenLoop():
                         )
                     )
 
-                instr_currentassayresults = pd.DataFrame.from_dict(
+                pxrf.instr_currentassayresults = pd.DataFrame.from_dict(
                     instr_currentassayresults_chemistry
                 )
 
@@ -1433,7 +1470,7 @@ def xrfListenLoop():
                             instr_currentassayresults_grades
                         )
                         printAndLog(
-                            f"Assay # {str(assay_catalogue_num).zfill(4)} Grade Matches:",
+                            f"Assay # {str(pxrf.assay_catalogue_num).zfill(4)} Grade Matches:",
                             logbox_colour_tag="INFO",
                         )
                         printAndLog(instr_currentassayresults_grades_df)
@@ -1452,7 +1489,7 @@ def xrfListenLoop():
                 and (data["Response"]["@parameter"] == "phase times")
                 and (data["Response"]["@status"] == "success")
             ):
-                instr_currentapplication = data["Response"]["Application"]
+                pxrf.instr_currentapplication = data["Response"]["Application"]
                 phaselist = data["Response"]["PhaseList"]["Phase"]
                 # printAndLog(f'phaselist len = {len(phaselist)}')
                 phasenums = []
@@ -1469,12 +1506,14 @@ def xrfListenLoop():
                     phasenames.append(phaselist["Name"])
                     phasedurations.append(phaselist["Duration"])
 
-                instr_currentphases = list(zip(phasenums, phasenames, phasedurations))
-                instr_phasecount = len(instr_currentphases)
-                instr_estimatedrealisticassaytime = 0
+                pxrf.instr_currentphases = list(
+                    zip(phasenums, phasenames, phasedurations)
+                )
+                pxrf.instr_phasecount = len(pxrf.instr_currentphases)
+                pxrf.instr_estimatedrealisticassaytime = 0
                 for dur in phasedurations:
                     # add ~4 seconds per phase for general slowness and processing time on S1 titan, Tracer, CTX.
-                    instr_estimatedrealisticassaytime += int(dur) + 4
+                    pxrf.instr_estimatedrealisticassaytime += int(dur) + 4
 
                 # printAndLog(f'Current Phases: {instr_currentphases}')
                 ui_UpdateCurrentAppAndPhases()
@@ -1517,7 +1556,7 @@ def xrfListenLoop():
                     notify_slack=True,
                 )
                 if isuseracknowldegable == "Yes":
-                    instrument_AcknowledgeError(TxMsgID)
+                    pxrf.acknowledge_error(TxMsgID)
                     printAndLog(
                         "Info/Warning Acknowledgment Sent. Attempting to resume..."
                     )
@@ -1559,7 +1598,7 @@ def xrfListenLoop():
                     notify_slack=True,
                 )
                 if isuseracknowldegable == "Yes":
-                    instrument_AcknowledgeError(TxMsgID)
+                    pxrf.acknowledge_error(TxMsgID)
                     printAndLog("Error Acknowledgment Sent. Attempting to resume...")
                 else:
                     printAndLog(
@@ -1575,31 +1614,31 @@ def xrfListenLoop():
                 "login state" in data["Response"]["@parameter"]
             ):
                 if data["Response"]["#text"] == "Yes":
-                    instr_isloggedin = True
+                    pxrf.instr_isloggedin = True
                 elif data["Response"]["#text"] == "No":
-                    instr_isloggedin = False
-                    instr_isarmed = False
+                    pxrf.instr_isloggedin = False
+                    pxrf.instr_isarmed = False
 
             elif ("@parameter" in data["Response"]) and (
                 "armed state" in data["Response"]["@parameter"]
             ):
                 if data["Response"]["#text"] == "Yes":
                     # print(data)
-                    instr_isarmed = True
+                    pxrf.instr_isarmed = True
                 elif data["Response"]["#text"] == "No":
-                    instr_isarmed = False
+                    pxrf.instr_isarmed = False
 
             elif ("@parameter" in data["Response"]) and (
                 "nose temperature" in data["Response"]["@parameter"]
             ):
-                instr_currentnosetemp = data["Response"]["#text"]
-                printAndLog(f"Nose Temperature: {instr_currentnosetemp}°C")
+                pxrf.instr_currentnosetemp = data["Response"]["#text"]
+                printAndLog(f"Nose Temperature: {pxrf.instr_currentnosetemp}°C")
 
             elif ("@parameter" in data["Response"]) and (
                 "nose pressure" in data["Response"]["@parameter"]
             ):
-                instr_currentnosepressure = data["Response"]["#text"]
-                printAndLog(f"Nose Pressure: {instr_currentnosepressure}mBar")
+                pxrf.instr_currentnosepressure = data["Response"]["#text"]
+                printAndLog(f"Nose Pressure: {pxrf.instr_currentnosepressure}mBar")
 
             # Response confirming app change
             elif ("#text" in data["Response"]) and (
@@ -1613,8 +1652,9 @@ def xrfListenLoop():
                     print(
                         f"Application set response message parsing failed. ({repr(e)})"
                     )
-                sendCommand(xrf, bruker_query_currentapplicationinclmethods)
-                instrument_QueryCurrentApplicationPhaseTimes()
+                # sendCommand(xrf, bruker_query_currentapplicationinclmethods)
+                pxrf.query_current_application_incl_methods()
+                pxrf.query_current_application_phase_times()
                 # ui_UpdateCurrentAppAndPhases()
 
             # phase times set response
@@ -1624,19 +1664,19 @@ def xrfListenLoop():
                 and ("#text" in data["Response"])
             ):
                 printAndLog(f"{data['Response']['#text']}")
-                instrument_QueryCurrentApplicationPhaseTimes()
+                pxrf.query_current_application_phase_times()
 
             # s1 version response
             elif ("@parameter" in data["Response"]) and (
                 data["Response"]["@parameter"] == "version"
             ):
                 try:
-                    instr_softwareS1version = data["Response"]["#text"]
+                    pxrf.instr_softwareS1version = data["Response"]["#text"]
                 except Exception as e:
                     print(f"s1 version message parsing failed ({repr(e)})")
-                    instr_softwareS1version = "UNKNOWN"
-                if s1vermanuallyrequested:
-                    printAndLog(f"Software: S1 Version {instr_softwareS1version}")
+                    pxrf.instr_softwareS1version = "UNKNOWN"
+                if pxrf.s1vermanuallyrequested:
+                    printAndLog(f"Software: S1 Version {pxrf.instr_softwareS1version}")
 
             # Secondary Response for Assay Start and Stop for some instruments??? Idk why, should NOT RELY ON
             elif ("#text" in data["Response"]) and (
@@ -1644,7 +1684,7 @@ def xrfListenLoop():
             ):
                 if data["Response"]["#text"] == "Assay Start":
                     printAndLog("Response: Assay Start")
-                    instr_assayisrunning = True
+                    pxrf.instr_assayisrunning = True
                 elif data["Response"]["#text"] == "Assay Stop":
                     printAndLog("Response: Assay Stop")
                     # instr_assayisrunning = False
@@ -1656,7 +1696,7 @@ def xrfListenLoop():
                 and ("ogged in as" in data["Response"]["#text"])
                 and ("success" in data["Response"]["@status"])
             ):
-                instr_isloggedin = True
+                pxrf.instr_isloggedin = True
                 printAndLog(
                     f"{data['Response']['@status']}: {data['Response']['#text']}"
                 )
@@ -1739,12 +1779,12 @@ def xrfListenLoop():
         # 5b - XML PACKET, Applications present response
         elif datatype == XML_APPS_PRESENT_RESPONSE:
             try:
-                instr_applicationspresent = data["Response"]["ApplicationList"][
+                pxrf.instr_applicationspresent = data["Response"]["ApplicationList"][
                     "Application"
                 ]
-                if isinstance(instr_applicationspresent, str):
-                    instr_applicationspresent = [instr_applicationspresent]
-                printAndLog(f"Applications Available: {instr_applicationspresent}")
+                if isinstance(pxrf.instr_applicationspresent, str):
+                    pxrf.instr_applicationspresent = [pxrf.instr_applicationspresent]
+                printAndLog(f"Applications Available: {pxrf.instr_applicationspresent}")
             except Exception as e:
                 print(
                     f"Applications Available Error: Not Found - Was the instrument busy when it was connected? ({repr(e)})"
@@ -1753,46 +1793,52 @@ def xrfListenLoop():
         # 5c - XML PACKET, Active Application and Methods present response
         elif datatype == XML_ACTIVE_APP_RESPONSE:
             try:
-                instr_currentapplication = data["Response"]["Application"]
-                printAndLog(f"Current Application: {instr_currentapplication}")
+                pxrf.instr_currentapplication = data["Response"]["Application"]
+                printAndLog(f"Current Application: {pxrf.instr_currentapplication}")
             except Exception as e:
                 print(f"Current application could not be found. ({repr(e)})")
                 printAndLog("Current Application: Not Found / Spectrometer Mode")
             try:
-                instr_methodsforcurrentapplication = data["Response"]["MethodList"][
-                    "Method"
-                ]
-                if isinstance(instr_methodsforcurrentapplication, str):
-                    instr_methodsforcurrentapplication = [
-                        instr_methodsforcurrentapplication
+                pxrf.instr_methodsforcurrentapplication = data["Response"][
+                    "MethodList"
+                ]["Method"]
+                if isinstance(pxrf.instr_methodsforcurrentapplication, str):
+                    pxrf.instr_methodsforcurrentapplication = [
+                        pxrf.instr_methodsforcurrentapplication
                     ]
-                printAndLog(f"Methods Available: {instr_methodsforcurrentapplication}")
+                printAndLog(
+                    f"Methods Available: {pxrf.instr_methodsforcurrentapplication}"
+                )
             except Exception as e:
-                instr_methodsforcurrentapplication = [""]
+                pxrf.instr_methodsforcurrentapplication = [""]
                 print(
                     f"Methods for current application could not be found. ({repr(e)})"
                 )
                 printAndLog("Methods Available: Not Found / Spectrometer Mode")
             try:
-                instr_currentmethod = data["Response"]["ActiveMethod"]
-                printAndLog(f"Current Method: {instr_currentmethod}")
+                pxrf.instr_currentmethod = data["Response"]["ActiveMethod"]
+                printAndLog(f"Current Method: {pxrf.instr_currentmethod}")
             except Exception as e:
-                instr_currentmethod = ""
+                pxrf.instr_currentmethod = ""
                 print(f"Current method could not be found. ({repr(e)})")
                 printAndLog("Current Method: Not Found / Spectrometer Mode")
             try:
-                methodselected_stringvar.set(instr_currentmethod)
-                dropdown_method.configure(values=instr_methodsforcurrentapplication)
+                methodselected_stringvar.set(pxrf.instr_currentmethod)
+                dropdown_method.configure(
+                    values=pxrf.instr_methodsforcurrentapplication
+                )
             except NameError as e:
                 print(f"Error updating method dropdown. ({repr(e)})")
             except RuntimeError as e:
                 print(
                     f"Error: tried to set method stringvar too early. resuming... ({repr(e)})"
                 )
+            except AttributeError as e:
+                print(f"Error updating method dropdown. ({repr(e)})")
 
         # 7 - SPECTRUM ENERGY PACKET, contains the SpecEnergy structure, cal info (The instrument will transmit a SPECTRUM_ENERGY packet inmmediately before transmitting it’s associated COOKED_SPECTRUM packet. The SpecEnergy iPacketCount member contains an integer that associates the SpecEnergy values with the corresponding COOKED_SPECTRUM packet via the iPacket_Cnt member of the s1_cooked_header structure.)
         elif datatype == SPECTRUM_ENERGY_PACKET:
-            specenergies = setSpecEnergy(data)  # noqa: F841
+            pxrf.current_working_specenergies = setSpecEnergy(data)  # noqa: F841
 
         else:
             if (data is not None) and (datatype is not None):
@@ -1807,56 +1853,54 @@ def xrfListenLoop():
 
 
 def setSpectrum(data):
-    global spectra
-    global instr_currentambtemp
-    global instr_currentambtemp_F
-    global instr_currentdettemp
-    a = {}
+    _a = {}
     (
-        a["fEVPerChannel"],
-        a["iTDur"],
-        a["iRaw_Cnts"],
-        a["iValid_Cnts"],
-        a["iADur"],
-        a["iADead"],
-        a["iAReset"],
-        a["iALive"],
-        a["iPacket_Cnt"],
-        a["Det_Temp"],
-        a["Amb_Temp"],
-        a["iRaw_Cnts_Acc"],
-        a["iValid_Cnts_Acc"],
-        a["fTDur"],
-        a["fADur"],
-        a["fADead"],
-        a["fAReset"],
-        a["fALive"],
-        a["lPacket_Cnt"],
-        a["iFilterNum"],
-        a["fltElement1"],
-        a["fltThickness1"],
-        a["fltElement2"],
-        a["fltThickness2"],
-        a["fltElement3"],
-        a["fltThickness3"],
-        a["sngHVADC"],
-        a["sngCurADC"],
-        a["Toggle"],
+        _a["fEVPerChannel"],
+        _a["iTDur"],
+        _a["iRaw_Cnts"],
+        _a["iValid_Cnts"],
+        _a["iADur"],
+        _a["iADead"],
+        _a["iAReset"],
+        _a["iALive"],
+        _a["iPacket_Cnt"],
+        _a["Det_Temp"],
+        _a["Amb_Temp"],
+        _a["iRaw_Cnts_Acc"],
+        _a["iValid_Cnts_Acc"],
+        _a["fTDur"],
+        _a["fADur"],
+        _a["fADead"],
+        _a["fAReset"],
+        _a["fALive"],
+        _a["lPacket_Cnt"],
+        _a["iFilterNum"],
+        _a["fltElement1"],
+        _a["fltThickness1"],
+        _a["fltElement2"],
+        _a["fltThickness2"],
+        _a["fltElement3"],
+        _a["fltThickness3"],
+        _a["sngHVADC"],
+        _a["sngCurADC"],
+        _a["Toggle"],
     ) = struct.unpack(
         "<f4xLLL4xLLLL6xH78xhHxxLL8xfffff4xLihhhhhhffxxbxxxxx", data[0:208]
     )
     # originally, struct.unpack('<f4xLLL4xLLLLLHH78xhH2xLLLLfffffLLihhhhhhff2xbbbbbb', data[0:208])
-    txt = a
-    a["data"] = list(map(lambda x: x[0], struct.iter_unpack("<L", data[208:])))
+    txt = _a
+    _a["data"] = list(map(lambda x: x[0], struct.iter_unpack("<L", data[208:])))
 
     # GET CURRENT TEMPS  - I think this is not working properly, or needs some offsets or something to be taken into account?
     # Operating under the assumption that the det temp is actually double what it should be (often reading -54 degrees) and ambient temp value is actually 1/10 of a degree F, (e.g. reading 1081 instead of 108.1)
-    instr_currentambtemp = float(a["Amb_Temp"])
-    instr_currentambtemp_F = instr_currentambtemp
-    instr_currentambtemp = round((((instr_currentambtemp / 10) - 32) * (5 / 9)), 2)
+    pxrf.instr_currentambtemp = float(_a["Amb_Temp"])
+    pxrf.instr_currentambtemp_F = pxrf.instr_currentambtemp
+    pxrf.instr_currentambtemp = round(
+        (((pxrf.instr_currentambtemp / 10) - 32) * (5 / 9)), 2
+    )
     # shifts decimal place one left (see above comment) and converts to C from F, then rounds to 2 dp.
-    instr_currentdettemp = float(a["Det_Temp"])
-    instr_currentdettemp = round((instr_currentdettemp / 2), 2)
+    pxrf.instr_currentdettemp = float(_a["Det_Temp"])
+    pxrf.instr_currentdettemp = round((pxrf.instr_currentdettemp / 2), 2)
     # halves and rounds (halves because see above comment)
     # printAndLog(f'Temps: Detector {instr_currentdettemp}°C, Ambient {instr_currentambtemp}°F')
 
@@ -1885,28 +1929,27 @@ def setSpectrum(data):
     if txt["fltDescription"] == "()":
         txt["fltDescription"] = "(No Filter)"
 
-    idx = len(spectra) - 1
-    if idx < 0 or a["lPacket_Cnt"] == 1:
-        spectra.append(a)
+    idx = len(pxrf.current_working_spectra) - 1
+    if idx < 0 or _a["lPacket_Cnt"] == 1:
+        pxrf.current_working_spectra.append(_a)
     else:
-        spectra[idx] = a
+        pxrf.current_working_spectra[idx] = _a
     # plotSpectra(spectra[-1]['data'])
-    return txt, spectra
+    return txt, pxrf.current_working_spectra
 
 
 def setSpecEnergy(data):
-    global specenergies
-    b = {}
-    (b["iPacketCount"], b["fEVChanStart"], b["fEVPerChannel"]) = struct.unpack(
+    _b = {}
+    (_b["iPacketCount"], _b["fEVChanStart"], _b["fEVPerChannel"]) = struct.unpack(
         "<iff", data
     )
-    idx = len(specenergies) - 1
+    idx = len(pxrf.current_working_specenergies) - 1
     if idx < 0:
-        specenergies.append(b)
+        pxrf.current_working_specenergies.append(_b)
     else:
-        specenergies[idx] = b
+        pxrf.current_working_specenergies[idx] = _b
 
-    return specenergies
+    return pxrf.current_working_specenergies
 
 
 def normaliseSpectrum(spectrum_counts, time_in_milliseconds):
@@ -1988,11 +2031,6 @@ def completeAssay(
     assay_legends: list,
     assay_finaltemps: str,
 ):
-    global assay_catalogue
-    global assay_catalogue_num
-    global assay_start_time
-    global assay_end_time
-
     t = time.localtime()
     assay_sane = "N/A"
 
@@ -2017,7 +2055,7 @@ def completeAssay(
             ]  # starting ev of spectrum channel 1
             _evperchannel = assay_specenergies[i]["fEVPerChannel"]
             # Use ev per channel etc for bins instead of basic 20
-            _energies = spec_channels * _evperchannel
+            _energies = pxrf.specchannelsarray * _evperchannel
             _energies = _energies + _evchannelstart
             _energies = _energies / 1000  # TO GET keV instead of eV
             if not sanityCheckSpectrum_SumMethod(
@@ -2027,7 +2065,7 @@ def completeAssay(
             ):
                 any_phases_failed_sanity_check = True
                 printAndLog(
-                    f"SPECTRA SANITY CHECK FAILED: Assay # {assay_catalogue_num}, Phase {i+1}. Check Spectrum for Possible Incorrect Voltage or Zero-peak-only! Note: This function has no way of checking for sum peaks or low-fluorescence samples, so false positives may occur.",
+                    f"SPECTRA SANITY CHECK FAILED: Assay # {pxrf.assay_catalogue_num}, Phase {i+1}. Check Spectrum for Possible Incorrect Voltage or Zero-peak-only! Note: This function has no way of checking for sum peaks or low-fluorescence samples, so false positives may occur.",
                     "WARNING",
                     notify_slack=True,
                 )
@@ -2054,10 +2092,10 @@ def completeAssay(
     incrementInfoFieldCounterValues()
 
     newassay = Assay(
-        index=str(assay_catalogue_num).zfill(4),
+        index=str(pxrf.assay_catalogue_num).zfill(4),
         date_completed=time.strftime("%Y/%m/%d", t),
         time_completed=time.strftime("%H:%M:%S", t),
-        time_elapsed=f"{round((assay_end_time - assay_start_time),2)}s",
+        time_elapsed=f"{round((pxrf.assay_end_time - pxrf.assay_start_time),2)}s",
         time_total_set=assay_time_total_set,
         cal_application=assay_application,
         cal_method=assay_method,
@@ -2071,13 +2109,13 @@ def completeAssay(
     )
 
     # increment catalogue index number for next assay
-    assay_catalogue_num += 1
+    pxrf.assay_catalogue_num += 1
 
     # make new 'assay' var with results, spectra, time etc
     # assay = [assay_catalogue_num, assay_time, assay_application, assay_results, assay_spectra, assay_specenergies]
 
     # add assay with all relevant info to catalogue for later recall
-    assay_catalogue.append(newassay)
+    pxrf.assay_catalogue.append(newassay)
 
     # add entry to assays table
     assaysTable.insert(
@@ -2145,21 +2183,12 @@ def statusUpdateCheckerLoop_Check():
 
 
 def statusUpdateChecker():
-    global instr_assayisrunning
-    global instr_isarmed
-    global instr_isloggedin
-    global instr_DANGER_stringvar
-    global status_label
-    global xraysonbar
-    global assayprogressbar
-    global button_assay
-
     while True:
         if thread_halt:
             break
 
-        if not instr_isloggedin:
-            instr_DANGER_stringvar.set("Not Logged In!")
+        if not pxrf.instr_isloggedin:
+            danger_stringvar.set("Not Logged In!")
             status_label.configure(text_color=WHITEISH, fg_color=("#939BA2", "#454D50"))
             # Def background colour: '#3A3A3A'
             statusframe.configure(fg_color=("#939BA2", "#454D50"))
@@ -2169,8 +2198,8 @@ def statusUpdateChecker():
 
             updateCurrentVitalsDisplay(override=True)
 
-        elif not instr_isarmed:
-            instr_DANGER_stringvar.set("Not Armed!")
+        elif not pxrf.instr_isarmed:
+            danger_stringvar.set("Not Armed!")
             status_label.configure(text_color=WHITEISH, fg_color=("#939BA2", "#454D50"))
             statusframe.configure(fg_color=("#939BA2", "#454D50"))
             xraysonbar.configure(progress_color=("#939BA2", "#454D50"))
@@ -2179,8 +2208,8 @@ def statusUpdateChecker():
 
             updateCurrentVitalsDisplay(override=True)
 
-        elif instr_assayisrunning:
-            instr_DANGER_stringvar.set("WARNING: X-RAYS")
+        elif pxrf.instr_assayisrunning:
+            danger_stringvar.set("WARNING: X-RAYS")
             status_label.configure(text_color=WHITEISH, fg_color="#D42525")
             # X-RAY WARNING YELLOW = '#FFCC00', NICE RED = '#D42525'
             statusframe.configure(fg_color="#D42525")
@@ -2189,18 +2218,21 @@ def statusUpdateChecker():
                 button_assay.configure(state="normal")
 
             # Calculating progress of total assays incl repeats, for progressbar
-            num_phases_in_each_assay = len(instr_currentphases)
+            num_phases_in_each_assay = len(pxrf.instr_currentphases)
 
             progress_phases_done = (
                 (
                     num_phases_in_each_assay
-                    * (instr_assayrepeatsselected - instr_assayrepeatsleft)
+                    * (pxrf.instr_assayrepeatsselected - pxrf.instr_assayrepeatsleft)
                 )
-                + instr_currentphase
-                + (assay_phase_spectrumpacketcounter / (instr_currentphaselength_s + 2))
+                + pxrf.instr_currentphase
+                + (
+                    pxrf.assay_phase_spectrumpacketcounter
+                    / (pxrf.instr_currentphaselength_s + 2)
+                )
             )
             progress_phases_amounttotal = (
-                num_phases_in_each_assay * instr_assayrepeatsselected
+                num_phases_in_each_assay * pxrf.instr_assayrepeatsselected
             )
 
             # Convert to float of range 0 -> 1
@@ -2216,7 +2248,7 @@ def statusUpdateChecker():
             assayprogressbar.set(current_assay_progress)
 
         else:
-            instr_DANGER_stringvar.set("Ready")
+            danger_stringvar.set("Ready")
             status_label.configure(text_color=WHITEISH, fg_color=("#3A3A3A", "#454D50"))
             statusframe.configure(
                 fg_color=("#3A3A3A", "#454D50")
@@ -2241,12 +2273,12 @@ def getAssayPlurality(startorstop: str):
     """returns either 'Start Assay', 'Start Assays', 'Stop Assay', or 'Stop Assays', depending on the number of consecutive tests selected."""
 
     if startorstop.lower() == "start":
-        if instr_assayrepeatsselected > 1:
+        if pxrf.instr_assayrepeatsselected > 1:
             return "Start Assays"
         else:
             return "Start Assay"
     elif startorstop.lower() == "stop":
-        if instr_assayrepeatsselected > 1:
+        if pxrf.instr_assayrepeatsselected > 1:
             return "Stop Assays"
         else:
             return "Stop Assay"
@@ -2276,7 +2308,7 @@ def assaySelected(event):
 
     # get assay(s) in case of multiselect
     assays_to_plot = [
-        assay_catalogue[int(assay_num) - 1]
+        pxrf.assay_catalogue[int(assay_num) - 1]
         for assay_num in selected_assay_catalogue_nums
     ]
 
@@ -2297,7 +2329,6 @@ def plotSpectrum(spectrum, specenergy, colour, spectrum_legend):
     global spectratoolbar
     global spectra_ax
     global fig
-    global plottedspectra
 
     if doNormaliseSpectra_var.get():
         try:
@@ -2316,7 +2347,7 @@ def plotSpectrum(spectrum, specenergy, colour, spectrum_legend):
     ev_per_channel = specenergy["fEVPerChannel"]
 
     # Use ev per channel etc for bins instead of basic
-    bins = spec_channels * ev_per_channel
+    bins = pxrf.specchannelsarray * ev_per_channel
     bins = bins + ev_channel_start
     bins = bins / 1000  # TO GET keV instead of eV
 
@@ -2327,9 +2358,6 @@ def plotSpectrum(spectrum, specenergy, colour, spectrum_legend):
     for line, text in zip(leg.get_lines(), leg.get_texts()):
         text.set_color(plottextColour)
 
-    plottedspectra.append(plottedspectrum)
-    # adds spectrum to list of currently plotted spectra, for ease of removal later
-
     spectratoolbar.update()
     spectra_ax.autoscale(enable=True, axis="y", tight=False)  ####
     spectra_ax.relim(True)
@@ -2339,7 +2367,6 @@ def plotSpectrum(spectrum, specenergy, colour, spectrum_legend):
 
 def clearCurrentSpectra():
     global spectra_ax
-    global plottedspectra
     global colouridx
     colouridx = 0
     resetPlotAxes()
@@ -2359,7 +2386,6 @@ def clearCurrentSpectra():
     #     spectra_ax.lines.remove(plotref)
     # try: spectra_ax.get_legend().remove()
     # except: pass
-    plottedspectra = []  # clears this list which is now probably full of empty refs?
     # plt.clf()
     # plt.close()
     # spectra_ax.cla()
@@ -2371,7 +2397,6 @@ def plotEmissionLines():
     global spectratoolbar
     global spectra_ax
     global fig
-    global plottedemissionlineslist
     global emission_lines_to_plot
 
     # clearCurrentEmissionLines()
@@ -2389,7 +2414,7 @@ def plotEmissionLines():
             linecol = "grey"
         if linedata[1][-1] == "β":
             linedash = (4, 2, 4, 2)
-        plottedemissionline = spectra_ax.axvline(
+        _plottedemissionline = spectra_ax.axvline(
             x=energy,
             ymin=0,
             ymax=1,
@@ -2398,7 +2423,6 @@ def plotEmissionLines():
             linewidth=0.5,
             label=linelabel,
         )
-        plottedemissionlineslist.append(plottedemissionline)
         # extraticks.append(energy)
         # extraticklabels.append(linelabel)
         # spectra_ax.set_xticks(ticks = list(spectra_ax.get_xticks()).extend(extraticks), labels = (spectra_ax.get_xticklabels()).extend(extraticklabels))
@@ -2414,7 +2438,6 @@ def plotEmissionLines():
 
 def clearCurrentEmissionLines():
     global spectra_ax
-    global plottedemissionlineslist
     global emissionLinesElementslist
     # print(f"REMOVING: {spectra_ax.lines}")
     # for plottedemissionline in plottedemissionlineslist:
@@ -2431,7 +2454,6 @@ def clearCurrentEmissionLines():
     for line in lines_to_remove:
         line.remove()
 
-    plottedemissionlineslist = []
     emissionLinesElementslist = []
 
     # leg = spectra_ax.legend()
@@ -2622,7 +2644,7 @@ def displayResults(assay):
 
 
 def loginClicked():
-    instrument_Login()
+    pxrf.command_login()
 
 
 def getInfoClicked():
@@ -2631,26 +2653,16 @@ def getInfoClicked():
 
 
 def getS1verClicked():
-    global s1vermanuallyrequested
-    s1vermanuallyrequested = True
-    instrument_QuerySoftwareVersion()
+    pxrf.s1vermanuallyrequested = True
+    pxrf.query_software_version()
 
 
 def startAssayClicked():
-    global instr_assayisrunning
-    global instr_assayrepeatsselected
-    global instr_assayrepeatsleft
-    global instr_assayrepeatschosenforcurrentrun
-    global button_assay
-    global instr_currentphaselength_s
-    global instr_phasecount
-    global instr_currentphases
-    global instr_estimatedrealisticassaytime
-    instr_assayrepeatsleft = instr_assayrepeatsselected
-    instr_assayrepeatschosenforcurrentrun = instr_assayrepeatsselected
-    if instr_assayisrunning:
+    pxrf.instr_assayrepeatsleft = pxrf.instr_assayrepeatsselected
+    pxrf.instr_assayrepeatschosenforcurrentrun = pxrf.instr_assayrepeatsselected
+    if pxrf.instr_assayisrunning:
         instrument_StopAssay()
-        instr_assayisrunning = False
+        pxrf.instr_assayisrunning = False
         # button_assay_text.set('\u2BC8 Start Assay')
         button_assay.configure(
             text=getAssayPlurality("start"),
@@ -2659,16 +2671,16 @@ def startAssayClicked():
             hover_color="#237A3C",
         )
     else:
-        if instr_assayrepeatsselected > 1:
+        if pxrf.instr_assayrepeatsselected > 1:
             printAndLog(
-                f"Starting Assays - {instr_assayrepeatsselected} consecutive selected."
+                f"Starting Assays - {pxrf.instr_assayrepeatsselected} consecutive selected."
             )
         if applicationselected_stringvar.get() == "Custom Spectrum":
-            instr_currentphaselength_s = int(customspectrum_duration_entry.get())
-            instr_phasecount = 1
-            instr_estimatedrealisticassaytime = instr_currentphaselength_s + 2
-            instr_currentphases = [
-                ("0", "Custom Spectrum", f"{instr_currentphaselength_s}")
+            pxrf.instr_currentphaselength_s = int(customspectrum_duration_entry.get())
+            pxrf.instr_phasecount = 1
+            pxrf.instr_estimatedrealisticassaytime = pxrf.instr_currentphaselength_s + 2
+            pxrf.instr_currentphases = [
+                ("0", "Custom Spectrum", f"{pxrf.instr_currentphaselength_s}")
             ]
             instrument_StartAssay(
                 customassay=True,
@@ -2680,7 +2692,9 @@ def startAssayClicked():
         else:
             instrument_StartAssay()
 
-        approx_secs_total = instr_assayrepeatsleft * instr_estimatedrealisticassaytime
+        approx_secs_total = (
+            pxrf.instr_assayrepeatsleft * pxrf.instr_estimatedrealisticassaytime
+        )
         approx_mins = approx_secs_total // 60
         approx_secs = approx_secs_total % 60
         printAndLog(
@@ -2696,8 +2710,7 @@ def startAssayClicked():
         )
 
 
-def endOfAssaysReset():  # Assumes this is called when assay is completed and no repeats remain to be done
-    global instr_assayisrunning
+def ui_EndOfAssaysReset():  # Assumes this is called when assay is completed and no repeats remain to be done
     # instr_assayisrunning = False
     if "Stop Assay" in button_assay.cget("text"):
         # button_assay_text.set('\u2BC8 Start Assay')
@@ -2709,10 +2722,9 @@ def endOfAssaysReset():  # Assumes this is called when assay is completed and no
         )
 
 
-def ui_UpdateCurrentAppAndPhases():  # update application selected and phase timings in UI
-    global instr_currentphases
-    global instr_currentapplication
-    global instr_methodsforcurrentapplication
+def ui_UpdateCurrentAppAndPhases():
+    """force update application selected and phase timings in UI."""
+    # a lot of globals here because tkinter is janky.
     global ui_firsttime
     global dropdown_application
     global dropdown_method
@@ -2725,16 +2737,16 @@ def ui_UpdateCurrentAppAndPhases():  # update application selected and phase tim
     global p1_s
     global p2_s
     global p3_s
+    global applyphasetimes
+    global customspectrum_filter_dropdown
     global p1_increment
     global p1_decrement
     global p2_increment
     global p2_decrement
     global p3_increment
     global p3_decrement
-    global applyphasetimes
-    global customspectrum_filter_dropdown
 
-    phasecount = len(instr_currentphases)
+    pxrf.instr_phasecount = len(pxrf.instr_currentphases)
 
     if ui_firsttime == 1:
         label_application = ctk.CTkLabel(
@@ -2744,7 +2756,7 @@ def ui_UpdateCurrentAppAndPhases():  # update application selected and phase tim
         dropdown_application = ctk.CTkOptionMenu(
             appmethodframe,
             variable=applicationselected_stringvar,
-            values=instr_applicationspresent + ["Custom Spectrum"],
+            values=pxrf.instr_applicationspresent + ["Custom Spectrum"],
             command=applicationChoiceMade,
             dynamic_resizing=False,
             font=ctk_jbm12B,
@@ -2766,7 +2778,7 @@ def ui_UpdateCurrentAppAndPhases():  # update application selected and phase tim
         dropdown_method = ctk.CTkOptionMenu(
             appmethodframe,
             variable=methodselected_stringvar,
-            values=instr_methodsforcurrentapplication,
+            values=pxrf.instr_methodsforcurrentapplication,
             command=methodChoiceMade,
             dynamic_resizing=False,
             font=ctk_jbm12B,
@@ -2876,7 +2888,7 @@ def ui_UpdateCurrentAppAndPhases():  # update application selected and phase tim
         applyphasetimes.grid(
             row=1,
             column=5,
-            rowspan=phasecount,
+            rowspan=pxrf.instr_phasecount,
             padx=4,
             pady=4,
             ipadx=4,
@@ -2903,58 +2915,67 @@ def ui_UpdateCurrentAppAndPhases():  # update application selected and phase tim
     p3_decrement.grid_remove()
 
     # dropdown_application.configure(values=instr_applicationspresent)
-    applicationselected_stringvar.set(instr_currentapplication)
-    methodselected_stringvar.set(instr_currentmethod)
+
+    applicationselected_stringvar.set(pxrf.instr_currentapplication)
+    methodselected_stringvar.set(pxrf.instr_currentmethod)
     # label_currentapplication_text.set(f'{instr_currentapplication} | {instr_currentmethod}')
 
     # for widget in phaseframe.winfo_children():    #first remove all prev widgets in phaseframe
     #     widget.destroy()
 
-    dropdown_method.configure(values=instr_methodsforcurrentapplication)
+    dropdown_method.configure(values=pxrf.instr_methodsforcurrentapplication)
 
-    if phasecount >= 1:
-        phasetime1_stringvar.set(instr_currentphases[0][2])
-        if len(instr_currentphases[0][1]) > 18:
-            phasename1_stringvar.set(f"{instr_currentphases[0][1][0:18]}...")
+    if pxrf.instr_phasecount >= 1:
+        phasetime1_stringvar.set(pxrf.instr_currentphases[0][2])
+        if len(pxrf.instr_currentphases[0][1]) > 18:
+            phasename1_stringvar.set(f"{pxrf.instr_currentphases[0][1][0:18]}...")
         else:
-            phasename1_stringvar.set(instr_currentphases[0][1])
+            phasename1_stringvar.set(pxrf.instr_currentphases[0][1])
         p1_label.grid()
         p1_entry.grid()
         p1_s.grid()
         p1_increment.grid()
         p1_decrement.grid()
 
-    if phasecount >= 2:
-        phasetime2_stringvar.set(instr_currentphases[1][2])
-        if len(instr_currentphases[1][1]) > 18:
-            phasename2_stringvar.set(f"{instr_currentphases[1][1][0:18]}...")
+    if pxrf.instr_phasecount >= 2:
+        phasetime2_stringvar.set(pxrf.instr_currentphases[1][2])
+        if len(pxrf.instr_currentphases[1][1]) > 18:
+            phasename2_stringvar.set(f"{pxrf.instr_currentphases[1][1][0:18]}...")
         else:
-            phasename2_stringvar.set(instr_currentphases[1][1])
+            phasename2_stringvar.set(pxrf.instr_currentphases[1][1])
         p2_label.grid()
         p2_entry.grid()
         p2_s.grid()
         p2_increment.grid()
         p2_decrement.grid()
 
-    if phasecount >= 3:
-        phasetime3_stringvar.set(instr_currentphases[2][2])
-        if len(instr_currentphases[2][1]) > 18:
-            phasename3_stringvar.set(f"{instr_currentphases[2][1][0:18]}...")
+    if pxrf.instr_phasecount >= 3:
+        phasetime3_stringvar.set(pxrf.instr_currentphases[2][2])
+        if len(pxrf.instr_currentphases[2][1]) > 18:
+            phasename3_stringvar.set(f"{pxrf.instr_currentphases[2][1][0:18]}...")
         else:
-            phasename3_stringvar.set(instr_currentphases[2][1])
+            phasename3_stringvar.set(pxrf.instr_currentphases[2][1])
         p3_label.grid()
         p3_entry.grid()
         p3_s.grid()
         p3_increment.grid()
         p3_decrement.grid()
 
-    applyphasetimes.grid_configure(rowspan=phasecount)
+    applyphasetimes.grid_configure(rowspan=pxrf.instr_phasecount)
 
-    customspectrum_filter_dropdown.configure(values=instr_filterspresent)
+    customspectrum_filter_dropdown.configure(values=pxrf.instr_filterspresent)
     customspectrum_illumination_dropdown.configure(
-        values=[illum.name for illum in instr_illuminations]
+        values=[illum.name for illum in pxrf.instr_illuminations]
     )
     # gui.update()
+
+
+def getNoseTempClicked() -> None:
+    pxrf.query_nose_temp()
+
+
+def getNosePressureClicked() -> None:
+    pxrf.query_nose_pressure()
 
 
 def increment_phasetime_clicked(phasetime_var: tk.StringVar) -> None:
@@ -3016,10 +3037,9 @@ def treeview_sort_column(treeview, col, reverse):
 
 
 def repeatsChoiceMade(val):
-    global instr_assayrepeatsselected
     printAndLog(f"Consecutive Tests Selected: {val}")
-    instr_assayrepeatsselected = int(val)
-    if not instr_assayisrunning:
+    pxrf.instr_assayrepeatsselected = int(val)
+    if not pxrf.instr_assayisrunning:
         button_assay.configure(
             text=getAssayPlurality("start"),
             image=icon_startassay,
@@ -3036,9 +3056,6 @@ def repeatsChoiceMade(val):
 
 
 def applicationChoiceMade(val):
-    global phaseframe
-    global instr_currentapplication
-    global instr_currentmethod
     if val == "Custom Spectrum":
         # destroy/unpack phase timing frame
         # button_editinfofields.grid_remove()
@@ -3047,8 +3064,8 @@ def applicationChoiceMade(val):
         customspectrumconfigframe.grid()
         # button_editinfofields.grid()
         # set current application to Custom Spectrum (because it's usually done via isntrument message) and fix method display
-        instr_currentapplication = "Custom Spectrum"
-        instr_currentmethod = "None"
+        pxrf.instr_currentapplication = "Custom Spectrum"
+        pxrf.instr_currentmethod = "None"
         methodselected_stringvar.set("None")
         dropdown_method.configure(values=["None"])
     else:
@@ -3056,42 +3073,44 @@ def applicationChoiceMade(val):
         phaseframe.grid()
         # destroy/unpack customspectrumconfig frame
         customspectrumconfigframe.grid_remove()
-        cmd = f'<Configure parameter="Application">{val}</Configure>'
-        sendCommand(xrf, cmd)
+        _cmd = f'<Configure parameter="Application">{val}</Configure>'
+        # sendCommand(xrf, _cmd)
+        pxrf.send_command(_cmd)
 
 
 def methodChoiceMade(val):
-    cmd = f'<Configure parameter="Method">{val}</Configure>'
-    sendCommand(xrf, cmd)
+    _cmd = f'<Configure parameter="Method">{val}</Configure>'
+    # sendCommand(xrf, _cmd)
+    pxrf.send_command(_cmd)
 
 
 def savePhaseTimes():
-    global instr_currentphases
-    phasecount = len(instr_currentphases)
+    phasecount = len(pxrf.instr_currentphases)
     msg = '<Configure parameter="Phase Times"><PhaseList>'
     msg_end = "</PhaseList></Configure>"
     if phasecount >= 1:
         len_1 = int(phasetime1_stringvar.get())
-        num_1 = instr_currentphases[0][0]
+        num_1 = pxrf.instr_currentphases[0][0]
         ph1 = f'<Phase number="{num_1}" enabled="Yes"><Duration unlimited="No">{len_1}</Duration></Phase>'
         msg = msg + ph1
     if phasecount >= 2:
         len_2 = int(phasetime2_stringvar.get())
-        num_2 = instr_currentphases[1][0]
+        num_2 = pxrf.instr_currentphases[1][0]
         ph2 = f'<Phase number="{num_2}" enabled="Yes"><Duration unlimited="No">{len_2}</Duration></Phase>'
         msg = msg + ph2
     if phasecount >= 3:
         len_3 = int(phasetime3_stringvar.get())
-        num_3 = instr_currentphases[2][0]
+        num_3 = pxrf.instr_currentphases[2][0]
         ph3 = f'<Phase number="{num_3}" enabled="Yes"><Duration unlimited="No">{len_3}</Duration></Phase>'
         msg = msg + ph3
     msg = msg + msg_end
-    sendCommand(xrf, msg)
+    # sendCommand(xrf, msg)
+    pxrf.send_command(msg)
 
 
 def customSpectrumIlluminationChosen(choice):
     # get data for choice
-    for illum in instr_illuminations:
+    for illum in pxrf.instr_illuminations:
         if illum.name == choice:
             customspectrum_voltage_entry.delete(0, ctk.END)
             customspectrum_voltage_entry.insert(0, illum.voltage)
@@ -3137,7 +3156,7 @@ class GerdaSample:
             self.optional_time_in_s = 60
         if (self.optional_illumination_name is not None) and (
             self.optional_illumination_name
-            not in [illum.name for illum in instr_illuminations]
+            not in [illum.name for illum in pxrf.instr_illuminations]
         ):
             printAndLog(
                 f"Illumination '{self.optional_illumination_name}' was not found on instrument. Illumination set from CSV has been overridden. Please check instrument or CSV and try again.",
@@ -3248,14 +3267,14 @@ class GerdaCNCController:
         # store the last moved-to position x and y
         self.instrument_last_moved_to_xyz_position: tuple = (5, 5, 5)
         # get serial num letter for determining xyz offsets per instrument
-        match instr_model:
+        match pxrf.instr_model:
             case "Titan":
                 # TODO: set ACTUAL titan xyz offsets
                 self.instr_offset_x: int = 37
                 self.instr_offset_y: int = 65
                 self.instr_offset_z: int = 62
                 printAndLog(
-                    f"CNC Co-ordinate offsets set for instrument type: {instr_model} (x={self.instr_offset_x},y={self.instr_offset_y},z={self.instr_offset_x})"
+                    f"CNC Co-ordinate offsets set for instrument type: {pxrf.instr_model} (x={self.instr_offset_x},y={self.instr_offset_y},z={self.instr_offset_x})"
                 )
             case "Tracer":
                 # TODO: set ACTUAL tracer xyz offsets (was 39 75 60)
@@ -3263,21 +3282,21 @@ class GerdaCNCController:
                 self.instr_offset_y: int = 70
                 self.instr_offset_z: int = 60
                 printAndLog(
-                    f"CNC Co-ordinate offsets set for instrument type: {instr_model} (x={self.instr_offset_x},y={self.instr_offset_y},z={self.instr_offset_x})"
+                    f"CNC Co-ordinate offsets set for instrument type: {pxrf.instr_model} (x={self.instr_offset_x},y={self.instr_offset_y},z={self.instr_offset_x})"
                 )
             case "XMS":
                 self.instr_offset_x: int = 37
                 self.instr_offset_y: int = 65
                 self.instr_offset_z: int = 45
                 printAndLog(
-                    f"CNC Co-ordinate offsets set for instrument type: {instr_model} (x={self.instr_offset_x},y={self.instr_offset_y},z={self.instr_offset_x})"
+                    f"CNC Co-ordinate offsets set for instrument type: {pxrf.instr_model} (x={self.instr_offset_x},y={self.instr_offset_y},z={self.instr_offset_x})"
                 )
             case _:
                 self.instr_offset_x: int = 0
                 self.instr_offset_y: int = 0
                 self.instr_offset_z: int = 0
                 printAndLog(
-                    f"CNC Co-ordinate offsets UNABLE to be set for unknown instrument type: {instr_model} (x={self.instr_offset_x},y={self.instr_offset_y},z={self.instr_offset_x})",
+                    f"CNC Co-ordinate offsets UNABLE to be set for unknown instrument type: {pxrf.instr_model} (x={self.instr_offset_x},y={self.instr_offset_y},z={self.instr_offset_x})",
                     "ERROR",
                 )
         self.sample_z_dist_from_origin = 130
@@ -3405,7 +3424,7 @@ class GerdaCNCController:
             # if in G1 mode, need to include speed/feedrate (mm/min)
             command += f" F{speed}"
         printAndLog(
-            f"{instr_model} moving to position: {(temp_x, temp_y, temp_z)}, at speed: {'RAPID' if rapid_mode else speed} (actual CNC co-ords (negative, incl offset) = {(x_adj, y_adj, z_adj)}))"
+            f"{pxrf.instr_model} moving to position: {(temp_x, temp_y, temp_z)}, at speed: {'RAPID' if rapid_mode else speed} (actual CNC co-ords (negative, incl offset) = {(x_adj, y_adj, z_adj)}))"
         )
         response = self.send_command(command)
         self.instrument_last_moved_to_xyz_position = (temp_x, temp_y, temp_z)
@@ -3478,7 +3497,7 @@ class GerdaCNCController:
         """waits until it knows instr_assayisrunning == False."""
         time.sleep(1)
         printAndLog("GeRDA Waiting for Assay Completion...")
-        while instr_assayisrunning:
+        while pxrf.instr_assayisrunning:
             time.sleep(1)
         return
 
@@ -3567,7 +3586,8 @@ class GerdaCNCController:
                 f"GeRDA Setting Instrument Info-fields: Name={sample_obj.name_or_note}, X={sample_obj.x_position}, Y={sample_obj.y_position}"
             )
             infofield_msg = f'<Configure parameter="Edit Fields"><FieldList><Field type="Fixed"><Name>GeRDA_Sample_Name</Name><Value>{sample_obj.name_or_note}</Value></Field><Field type="Fixed"><Name>GeRDA_X</Name><Value>{sample_obj.x_position}</Value></Field><Field type="Fixed"><Name>GeRDA_Y</Name><Value>{sample_obj.y_position}</Value></Field></FieldList></Configure>'
-            sendCommand(xrf, infofield_msg)
+            # sendCommand(xrf, infofield_msg)
+            pxrf.send_command(infofield_msg)
             field1_name_strvar.set("Name")
             field1_val_strvar.set(sample_obj.name_or_note)
             field2_name_strvar.set("X")
@@ -3611,7 +3631,7 @@ class GerdaCNCController:
             scan_completion_time = time.time()
             scan_duration_s = scan_completion_time - scan_start_time
             if sample_obj.optional_illumination_name is None:
-                scan_time_minimum_required = assay_time_total_set_seconds
+                scan_time_minimum_required = pxrf.assay_time_total_set_seconds
             else:
                 scan_time_minimum_required = sample_obj.optional_time_in_s
             if scan_duration_s < scan_time_minimum_required:
@@ -3838,8 +3858,8 @@ def gerdaCNC_moveto_coords_clicked() -> None:
 
 
 def getIlluminationFromName(illumination_name: str) -> Illumination:
-    if instr_illuminations != []:
-        for illum in instr_illuminations:
+    if pxrf.instr_illuminations != []:
+        for illum in pxrf.instr_illuminations:
             if illum.name == illumination_name:
                 return illum
         printAndLog(
@@ -3865,6 +3885,7 @@ def resetPlotAxes():
     spectra_ax.locator_params(axis="x", nbins=23)
     spectra_ax.locator_params(axis="y", nbins=10)
     spectra_ax.margins(y=0.05, x=0.05)
+    setPlotColours()
 
 
 # CTK appearance mode switcher
@@ -4281,7 +4302,7 @@ def window_on_configure(e):
 
 def saveAssayToCSV(assay: Assay):
     """Saves a CSV file with all of the info from a single Assay."""
-    assayFolderName = f"Assays_{datetimeString}_{instr_serialnumber}"
+    assayFolderName = f"Assays_{datetimeString}_{pxrf.instr_serialnumber}"
     assayFolderPath = rf"{os.getcwd()}/Results/{assayFolderName}"
     assayFileName = f"{assay.index}_{assay.cal_application}_{datetimeString}.csv"
 
@@ -4292,7 +4313,7 @@ def saveAssayToCSV(assay: Assay):
         (f"{assayFolderPath}/{assayFileName}"), "x", newline="", encoding="utf-8"
     ) as assayFile:
         writer = csv.writer(assayFile)
-        writer.writerow(["Instrument", instr_serialnumber])
+        writer.writerow(["Instrument", pxrf.instr_serialnumber])
         writer.writerow(["Date", assay.date_completed])
         writer.writerow(["Time", assay.time_completed])
         writer.writerow(["Assay #", assay.index])
@@ -4419,7 +4440,9 @@ def addAssayToResultsCSV(assay: Assay):
     """given an Assay object, add the results of that assay to the results CSV file. designed to mimic results CSV output of instrument."""
     global current_session_results_df
 
-    resultsFileName = f"S1Control_Results_{datetimeString}_{instr_serialnumber}.csv"
+    resultsFileName = (
+        f"S1Control_Results_{datetimeString}_{pxrf.instr_serialnumber}.csv"
+    )
     resultsFolderPath = rf"{os.getcwd()}/Results"
     _resultsFilePath = rf"{resultsFolderPath}/{resultsFileName}"
     # create /Results folder in local dir if not there already
@@ -4428,7 +4451,7 @@ def addAssayToResultsCSV(assay: Assay):
 
     new_assay_results_dict = {}
     new_assay_results_dict["Assay #"] = [assay.index]
-    new_assay_results_dict["Serial #"] = [instr_serialnumber]
+    new_assay_results_dict["Serial #"] = [pxrf.instr_serialnumber]
     new_assay_results_dict["Date"] = [assay.date_completed]
     new_assay_results_dict["Time"] = [assay.time_completed]
     new_assay_results_dict["Application"] = [assay.cal_application]
@@ -4941,7 +4964,8 @@ def instrument_ApplyInfoFields():
                 infofieldprintstr += f"{editinfo_fieldnames[i].get()}/{editinfo_fieldvalues[i].get()}/{'<Counter>' if editinfo_fieldcounters[i].get() else '<Fixed>'} "
 
         infofieldsmsg = infofieldsmsg + "</FieldList></Configure>"
-        sendCommand(xrf, infofieldsmsg)
+        # sendCommand(xrf, infofieldsmsg)
+        pxrf.send_command(infofieldsmsg)
         printAndLog(f"Info-Fields Set: {infofieldprintstr}")
 
         editInfoOnClosing()
@@ -5029,12 +5053,12 @@ def queryEditFields_clicked():
         "Retrieve Info-Fields from Instrument?",
         "PLEASE BE AWARE: \nDue to an oversight in Bruker's OEM Protocol, retreiving the instrument's current info-fields will cause any 'Counter' fields to increment their value by 1 (this is only supposed to happen when an assay is started).\n\nAdditionally, the OEM Protocol does not provide a way to check if the fields are counters - only a way to set them as counters. \n\nFor these reasons, it is recommended to double check the field values and counter checkboxes are correct once retrieved. It is also reccommended to not regularly query the current field values if using counters as it will result in inconsistent incrementation. \n\nWould you like to proceed?",
     ):
-        instrument_QueryEditFields()
+        pxrf.query_edit_fields()
     editinfo_windows[0].lift()
 
 
 def queryXraySettings_clicked():
-    sendCommand(xrf, '<Query parameter="XRay Settings"/>')
+    pxrf.send_command('<Query parameter="XRay Settings"/>')
 
 
 if __name__ == "__main__":
@@ -5357,14 +5381,6 @@ if __name__ == "__main__":
             )
             guiStyle.map("Treeview.Heading", background=[("active", "#3b8ed0")])
 
-    instr_isarmed: bool = False
-    instr_isloggedin: bool = False
-    instr_assayisrunning: bool = False
-    instr_assayrepeatsleft: int = 1
-    instr_assayrepeatsselected: int = 1  # initial set
-    instr_assayrepeatschosenforcurrentrun: int = 1
-    instr_illuminations: list[Illumination] = []
-
     emissionLineElementButtonIDs = []
     emissionLinesElementslist = []
     linecfg_firsttime = True
@@ -5416,9 +5432,6 @@ if __name__ == "__main__":
     extraticks = []
     extraticklabels = []
 
-    total_spec_channels = 2048
-    spec_channels = np.array(list(range(0, total_spec_channels)))
-
     # plotphasecolours = ['blue', 'green', 'pink', 'orange', 'purple', 'pink', 'yellow']
     plotphasecolours = [
         "#5BB5F1",
@@ -5435,107 +5448,16 @@ if __name__ == "__main__":
         "#6295a6",
         "#964726",
     ]
-    plottedspectra = []
-    plottedemissionlineslist = []
-    assay_catalogue = []
-    assay_catalogue_num = 1
-
-    spectra = []
-    specenergies = []
-    instr_currentassayspectra = []
-    instr_currentassayspecenergies = []
-    instr_currentassaylegends = []
-    # instr_currentassayresults =
-    instr_currentambtemp = ""
-    instr_currentdettemp = ""
-    instr_serialnumber = "UNKNOWN"
-
-    # CONNECTION DETAILS FOR TCP/IP VIA USB (Recommended)
-    XRF_IP_USB = "192.168.137.139"
-    XRF_PORT_USB = 55204  # 55204
 
     # CONNECTION STUFF FOR GeRDA CNC
     gerdaCNC: GerdaCNCController = None
     gerda_sample_sequence: GerdaSampleSequence = None
 
-    # CONNECTION DETAILS FOR WIFI  (Not Recommended - Also, DHCP will cause IP to change. Port may change as well?) Wifi is unreliable and prone to massive packet loss and delayed commands/info transmit.
-    XRF_IP_WIFI = "192.168.153.167"  # '192.168.153.167:55101' found to work for ruffo when on phone hotspot network. both values may change depending on network settings?
-    XRF_PORT_WIFI = 55101
-
-    XRF_IP_USB_ALTERNATE = "190.168.137.139"  # In some VERY UNUSUAL cases, I have seen instuments come back from Bruker servicing with this IP changed to 190 instead of 192. Worth checking if it breaks.
-
-    xrf = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
-    # BRUKER API COMMANDS to be used with sendCommand
-    bruker_query_loginstate = '<Query parameter="Login State"/>'
-    bruker_query_armedstate = '<Query parameter="Armed State"/>'
-    bruker_query_instdef = '<Query parameter="Instrument Definition"/>'
-    bruker_query_allapplications = '<Query parameter="Applications"/>'
-    bruker_query_currentapplicationinclmethods = (
-        '<Query parameter="ActiveApplication">Include Methods</Query>'
-    )
-    bruker_query_methodsforcurrentapplication = '<Query parameter="Method"></Query>'
-    bruker_query_currentapplicationprefs = (
-        '<Query parameter="User Preferences"></Query>'
-    )
-    # UAP - incl everything
-    bruker_query_currentapplicationphasetimes = '<Query parameter="Phase Times"/>'
-    bruker_query_softwareversion = '<Query parameter="Version"/>'
-    # S1 version, eg 2.7.58.392
-    bruker_query_nosetemp = '<Query parameter="Nose Temperature"/>'
-    bruker_query_nosepressure = '<Query parameter="Nose Pressure"/>'
-    bruker_query_editfields = '<Query parameter="Edit Fields"/>'
-    bruker_query_proximityrequired = '<Query parameter="Proximity Required"/>'
-    bruker_query_storeresults = '<Query parameter="Store Results"/>'
-    bruker_query_storespectra = '<Query parameter="Store Spectra"/>'
-
-    bruker_configure_transmitstatusenable = '<Configure parameter="Transmit Statusmsg">Yes</Configure>'  # Enable transmission of trigger pull/release and assay start/stop status messages
-    bruker_configure_transmitelementalresultsenable = '<Configure parameter="Transmit Results" grades="Yes" elements="Yes">Yes</Configure>'  # Enable transmission of elemental results, disables transmission of grade ID / passfail results
-    bruker_configure_transmitspectraenable = (
-        '<Configure parameter="Transmit Spectra">Yes</Configure>'
-    )
-    bruker_configure_transmitspectradisable = (
-        '<Configure parameter="Transmit Spectra">No</Configure>'
-    )
-    bruker_configure_transmitstatusmessagesenable = (
-        '<Configure parameter="Transmit Statusmsg">Yes</Configure>'
-    )
-    bruker_configure_proximityenable = (
-        '<Configure parameter="Proximity Required">Yes</Configure>'
-    )
-    bruker_configure_proximitydisable = (
-        '<Configure parameter="Proximity Required">No</Configure>'
-    )
-    bruker_configure_storeresultsenable = (
-        '<Configure parameter="Store Results">Yes</Configure>'
-    )
-    bruker_configure_storeresultsdisable = (
-        '<Configure parameter="Store Results">No</Configure>'
-    )
-    bruker_configure_storespectraenable = (
-        '<Configure parameter="Store Spectra">Yes</Configure>'
-    )
-    bruker_configure_storespectradisable = (
-        '<Configure parameter="Store Spectra">No</Configure>'
-    )
-    bruker_configure_resetinfofields = (
-        '<Configure parameter="Edit Fields">Reset</Configure>'
-    )
-
-    bruker_command_login = "<Command>Login</Command>"
-    bruker_command_assaystart = '<Command parameter="Assay">Start</Command>'
-    bruker_command_assaystop = '<Command parameter="Assay">Stop</Command>'
-
-    instr_currentphase = 0
-    assay_phase_spectrumpacketcounter = 0
-    instr_currentphaselength_s = 0
-    instr_estimatedrealisticassaytime = 0
     gerda_last_executed_thread = None
 
     # set mpl log level to prevent console spam about missing fonts
     logging.getLogger("matplotlib.font_manager").setLevel(logging.ERROR)
     driveFolderStr = ""
-    s1vermanuallyrequested = False
 
     # Consts for datatypes on recv
     COOKED_SPECTRUM = "1"
@@ -5758,9 +5680,9 @@ if __name__ == "__main__":
         side=tk.BOTTOM, anchor=tk.S, fill="x", expand=False, padx=8, pady=[4, 8]
     )
     # Status text display warningxrays/ready/not armed etc
-    instr_DANGER_stringvar = tk.StringVar()
+    danger_stringvar = tk.StringVar()
     status_label = ctk.CTkLabel(
-        statusframe, textvariable=instr_DANGER_stringvar, font=ctk_jbm18B
+        statusframe, textvariable=danger_stringvar, font=ctk_jbm18B
     )
     status_label.pack(
         side=tk.TOP, fill="both", anchor=tk.N, expand=True, padx=2, pady=2
@@ -6221,16 +6143,6 @@ if __name__ == "__main__":
         row=8, column=0, columnspan=3, padx=4, pady=4, sticky=tk.NSEW
     )
 
-    # button_startlistener = tk.Button(width = 15, text = "start listen", font = jbm10, fg = buttonfg3, bg = buttonbg3, command = lambda:xrfListenLoop_Start(None)).pack(ipadx=8,ipady=2)
-
-    # button_getinstdef = tk.Button(width = 15, text = "get instdef", font = jbm10, fg = buttonfg3, bg = buttonbg3, command = getInfoClicked).pack(ipadx=8,ipady=2)
-
-    # button_enablespectra = ctk.CTkButton(ctrltabview.tab("Instrument"), width = 13, text = "Enable Spectra Transmit", command = instrument_ConfigureTransmitSpectraEnable)
-    # button_enablespectra.grid(row=1, column=0, padx=4, pady=4, sticky=tk.NSEW)
-
-    # button_disablespectra = ctk.CTkButton(ctrltabview.tab("Instrument"), width = 13, text = "Disable Spectra Transmit", command = instrument_ConfigureTransmitSpectraDisable)
-    # button_disablespectra.grid(row=2, column=0, padx=4, pady=4, sticky=tk.NSEW)
-
     button_gets1softwareversion = ctk.CTkButton(
         ctrltabview.tab("Instrument"),
         width=13,
@@ -6248,7 +6160,7 @@ if __name__ == "__main__":
         width=13,
         image=icon_temperature,
         text="Check Nose Temperature",
-        command=instrument_QueryNoseTemp,
+        command=getNoseTempClicked,
         font=ctk_jbm12B,
     )
     button_getnosetemp.grid(
@@ -6260,7 +6172,7 @@ if __name__ == "__main__":
         width=13,
         image=icon_pressure,
         text="Check Nose Pressure",
-        command=instrument_QueryNosePressure,
+        command=getNosePressureClicked,
         font=ctk_jbm12B,
     )
     button_getnosepressure.grid(
@@ -6331,24 +6243,6 @@ if __name__ == "__main__":
         command=queryXraySettings_clicked,
         font=ctk_jbm12B,
     )
-    # button_queryxraysettings.grid(
-    #     row=8, column=0, columnspan=1, padx=4, pady=4, sticky=tk.NSEW
-    # )
-
-    # button_proximityenable = ctk.CTkButton(ctrltabview.tab("Instrument"), width = 13, image=icon_sensoron, text = "Enable Proximity", command = instrument_ConfigureProximityEnable)
-    # button_proximityenable.grid(row=4, column=0, padx=4, pady=4, sticky=tk.NSEW)
-
-    # button_proximitydisable = ctk.CTkButton(ctrltabview.tab("Instrument"), width = 13, image=icon_sensoroff, text = "Disable Proximity", command = instrument_ConfigureProximityDisable)
-    # button_proximitydisable.grid(row=4, column=1, padx=4, pady=4, sticky=tk.NSEW)
-
-    # button_geteditfields = ctk.CTkButton(ctrltabview.tab("Instrument"), width = 13 ,text = "Get Current Info Fields", command = instrument_QueryEditFields)
-    # button_geteditfields.grid(row=4, column=0, padx=4, pady=4, sticky=tk.NSEW)
-
-    # button_getapplicationprefs = tk.Button(configframe, width = 25, text = "get current app prefs", font = jbm10, fg = buttonfg3, bg = buttonbg3, command = instrument_QueryCurrentApplicationPreferences)
-    # button_getapplicationprefs.grid(row=7, column=1, padx=2, pady=2, ipadx=4, ipady=0, sticky=tk.NSEW)
-
-    # button_getapplicationphasetimes = ctk.CTkButton(ctrltabview.tab("Instrument"), width = 13, text = "Get Phase Times", command = instrument_QueryCurrentApplicationPhaseTimes)
-    # button_getapplicationphasetimes.grid(row=2, column=1, padx=4, pady=4, sticky=tk.NSEW)
 
     displayunits_label = ctk.CTkLabel(
         ctrltabview.tab("Options"), text="Units:", font=ctk_jbm12
@@ -6486,9 +6380,9 @@ if __name__ == "__main__":
     # label_currentapplication_text = ctk.StringVar()
     applicationselected_stringvar = ctk.StringVar(value="Application")
     methodselected_stringvar = ctk.StringVar(value="Method")
-    instr_applicationspresent = []
-    instr_methodsforcurrentapplication = []
-    instr_filterspresent = []
+
+    dropdown_method: ctk.CTkOptionMenu = None
+    dropdown_application: ctk.CTkOptionMenu = None
 
     # Log Box
 
@@ -6832,8 +6726,8 @@ if __name__ == "__main__":
         print("S1CONTROL Launched in Lightweight-Mode.")
 
     # Begin Instrument Connection
-
-    instrument_Connect()
+    pxrf: BrukerInstrument = BrukerInstrument()
+    # pxrf.open_tcp_connection(pxrf.ip, pxrf.port)
     time.sleep(0.2)
     xrfListenLoopThread_Start(None)
     # xrfListenLoopProcess_Start()
@@ -6855,19 +6749,16 @@ if __name__ == "__main__":
         print(f"Unable To Set Window Title Using driveFolderStr. ({repr(e)})")
         pass
 
-    if not instr_isloggedin:
-        instrument_Login()
+    if not pxrf.instr_isloggedin:
+        pxrf.command_login()
 
     time.sleep(0.05)
     instrument_SetImportantStartupConfigurables()
     time.sleep(0.05)
-    instrument_QueryCurrentApplicationPhaseTimes()
+    pxrf.query_current_application_phase_times()
 
     gui.protocol("WM_DELETE_WINDOW", onClosing)
 
-    # gerdaCNC = 1
-    # gui.after(1000,notifyChannelViaWebhook_OnlyIfGerdaConnected,"this is a test")
-
     gui.mainloop()
 
-    closeAllThreads()  # call after gui mainloop has ended
+    closeAllThreads()  # after gui mainloop has ended
