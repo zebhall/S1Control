@@ -1,5 +1,10 @@
 # S1Control Changelog 
 
+## v1.1.1 - 2024/06/26
+ - Fixed an error related to instrument TCP connection initialisation (no longer assuming instrument is connected on startup)
+ - Removed deprecated spectra sanity-checking function
+ - Tidied some imports, docstings, typing
+
 ## v1.1.0 - 2024/06/20
  - Massive refactor complete!
  - Improved data structures to improve readability and maintainability, and make flet rewrite easier.

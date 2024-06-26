@@ -4,29 +4,29 @@ import os
 import sys
 import threading
 import time
-import pandas as pd
 import json
 import shutil
 import socket
 import xmltodict
-import tkinter as tk
-import customtkinter as ctk
-from tkinter import ttk, messagebox, font
-from tkinter.ttk import Treeview
 import struct
-import numpy as np
-import matplotlib.pyplot as plt
-from dataclasses import dataclass
-from matplotlib.figure import Figure
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
-from PIL import Image
 import csv
-from decimal import Decimal
-from plyer import notification as plyer_notification
 import subprocess
 import logging
 import serial
 import requests
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import tkinter as tk
+import customtkinter as ctk
+from tkinter import ttk, messagebox, font
+from tkinter.ttk import Treeview
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+from PIL import Image
+from decimal import Decimal
+from plyer import notification as plyer_notification
+from dataclasses import dataclass
 from element_string_lists import (
     elementstr_symbolsonly,
     elementstr_namesonly,
@@ -34,8 +34,8 @@ from element_string_lists import (
     all_xray_lines,
 )
 
-versionNum = "v1.1.0"  # v0.9.6 was the first GeRDA-control version
-versionDate = "2024/06/20"
+versionNum = "v1.1.1"  # v0.9.6 was the first GeRDA-control version
+versionDate = "2024/06/26"
 
 
 class BrukerInstrument:
@@ -113,7 +113,7 @@ class BrukerInstrument:
         self.instr_totalspecchannels = 2048
         self.specchannelsarray = np.array(list(range(0, self.instr_totalspecchannels)))
 
-        self.open_tcp_connection(self.ip, self.port, instant_connect=True)
+        self.open_tcp_connection(self.ip, self.port, instant_connect=False)
 
     def open_tcp_connection(
         self, connection_ip: str, connection_port: int, instant_connect: bool = False
@@ -2535,54 +2535,63 @@ def getNearbyEnergies(energy, qty):
     printAndLog(closest, "INFO")
 
 
-def sanityCheckSpectrum(
-    spectrum_counts: list, spectrum_energies: list, source_voltage_in_kV: int
-) -> bool:
-    """Checks that a spectrum is sensible, and that the listed voltage is accurate.
-    This is required because of a bug in Bruker pXRF instrument software, sometimes causing phases of an assay to use an incorrect voltage.
-    Returns TRUE if sanity check PASSES, return FALSE if not.
-    DEPRECATED 2024/01/08, USE sanityCheckSpectrum_SumMethod instead."""
-    # Calculate the standard deviation of the spectrum
-    std_dev = np.std(spectrum_counts)
-    # print(f"spectrum std dev = {std_dev}")
+# def sanityCheckSpectrum(
+#     spectrum_counts: list, spectrum_energies: list, source_voltage_in_kV: int
+# ) -> bool:
+#     """Checks that a spectrum is sensible, and that the listed voltage is accurate.
+#     This is required because of a bug in Bruker pXRF instrument software, sometimes causing phases of an assay to use an incorrect voltage.
+#     Returns TRUE if sanity check PASSES, return FALSE if not.
+#     DEPRECATED 2024/01/08, USE sanityCheckSpectrum_SumMethod instead."""
+#     # Calculate the standard deviation of the spectrum
+#     std_dev = np.std(spectrum_counts)
+#     # print(f"spectrum std dev = {std_dev}")
 
-    # Set a threshold for noise detection (too small might be prone to noise, too high isn't useful. starting with stddev/100. UPDATE - using /50, 100 was too sensitive in some cases. /40 now. need to come up with a better method for this, it gives a lot of false positives.)
-    threshold = std_dev / 40
-    # print(f"{threshold=}")
+#     # Set a threshold for noise detection (too small might be prone to noise, too high isn't useful. starting with stddev/100. UPDATE - using /50, 100 was too sensitive in some cases. /40 now. need to come up with a better method for this, it gives a lot of false positives.)
+#     threshold = std_dev / 40
+#     # print(f"{threshold=}")
 
-    # reverse iterate list to search backwards - no zero peak to worry about, and generally should be faster.
-    for i in range(len(spectrum_counts) - 1, 0, -1):
-        if spectrum_counts[i] > threshold:
-            # Found a peak above the noise threshold
-            peak_index = i
-            break
-    else:
-        # No peak above the noise threshold found
-        peak_index = None
+#     # reverse iterate list to search backwards - no zero peak to worry about, and generally should be faster.
+#     for i in range(len(spectrum_counts) - 1, 0, -1):
+#         if spectrum_counts[i] > threshold:
+#             # Found a peak above the noise threshold
+#             peak_index = i
+#             break
+#     else:
+#         # No peak above the noise threshold found
+#         peak_index = None
 
-    if peak_index is not None:
-        # print(f"Latest point with a peak above noise: energy={spectrum_energies[peak_index]}, counts={spectrum_counts[peak_index]}")
-        if spectrum_energies[peak_index] < source_voltage_in_kV:
-            # this point should be LOWER than source voltage *almost* always. some exclusions, incl. sum peaks, but those should be niche.
-            return True
-        else:
-            printAndLog(
-                f"Failed Sanity Check Details: highest meaningful energy present={spectrum_energies[peak_index]:.2f}, meaningful counts threshold={threshold:.0f}, reported source voltage={source_voltage_in_kV:.0f}"
-            )
-            return False
+#     if peak_index is not None:
+#         # print(f"Latest point with a peak above noise: energy={spectrum_energies[peak_index]}, counts={spectrum_counts[peak_index]}")
+#         if spectrum_energies[peak_index] < source_voltage_in_kV:
+#             # this point should be LOWER than source voltage *almost* always. some exclusions, incl. sum peaks, but those should be niche.
+#             return True
+#         else:
+#             printAndLog(
+#                 f"Failed Sanity Check Details: highest meaningful energy present={spectrum_energies[peak_index]:.2f}, meaningful counts threshold={threshold:.0f}, reported source voltage={source_voltage_in_kV:.0f}"
+#             )
+#             return False
 
-    else:
-        # No peak above noise detected - flat spectra?
-        return False
+#     else:
+#         # No peak above noise detected - flat spectra?
+#         return False
 
 
 def sanityCheckSpectrum_SumMethod(
-    spectrum_counts: list, spectrum_energies: list, source_voltage_in_kV: int
+    spectrum_counts: list[int], spectrum_energies: list[float], source_voltage_in_kV: int
 ) -> bool:
-    """Checks that a spectrum is sensible, and that the listed voltage is accurate.
-    This is required because of a bug in Bruker pXRF instrument software, sometimes causing phases of an assay to use an incorrect voltage.
+    """Checks that a spectrum is 'sensible', and that the communicated voltage is accurate.
+    This is required because of a 'voltage bug' in Bruker pXRF instrument software (or NSI tube firmware), 
+    sometimes causing phases of an assay to use an incorrect voltage from a previous phase.
+    This algorithm operates by working backwards through the list of counts (starting from the right-hand-side of the spectrum), 
+    and summing those counts it passes until it reaches the point where 2% of the total counts of the spectrum have been passed.
+    At this point on the spectrum, the energy of that channel should be below the source voltage used for the spectrum 
+    (assuming no sum-peaks, which CAN give a false-positive). The Bremsstrahlung in the spectrum *should* drop down 
+    to near 0 counts beyond the source voltage (in keV).
+    
+    `spectrum_counts` is a ordered list of 2048 integers representing the counts from each channel/bin of the detector.\n
+    `spectrum_energies` is a ordered list of 2048 floats representing the energy (keV) of each channel/bin of the detector.\n
+    `source_voltage_in_kV` is the voltage of the source for the given spectrum, AS REPORTED BY THE OEM API AND IN THE PDZ FILE.\n
     Returns TRUE if sanity check passed, return FALSE if not.
-    An UPDATED version of the sanityCheckSpectrum function that should be less prone to false positives, and faster.
     NOW ALSO CHECKS FOR NULL SPECTRA, i.e. zero-peak only.
     """
     counts_sum = np.sum(spectrum_counts)
