@@ -5,9 +5,6 @@ It can also be used as a drop-in replacement for the default system software for
 
 Prepackaged binaries for windows can be found as releases on github, or in /dist/. Make sure to install all of the .ttf font files found in the root directory to ensure UI text consistency.
 
-Tested and working on Windows (7,10,11), and Linux (Ubuntu 23.10, Fedora Workstation 38).
-
-
 ## Feature Screenshots
 ### Main Screen - Start/Stop Assays, control timings
 ![image](https://github.com/zebhall/S1Control/assets/81948605/85556477-d2ec-451d-9018-8509b6a553ea)
