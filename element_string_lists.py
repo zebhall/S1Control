@@ -701,3 +701,40 @@ all_xray_lines = [
     ["Cf", "Cf Lβ", 20.624],
     ["Cf", "Cf Lα", 15.66],
 ]
+
+def elementZtoSymbol(Z):
+    """Returns 1-2 character Element symbol as a string"""
+    if Z == 0:
+        return ""
+    elif Z <= 118:
+        return elementstr_symbolsonly[Z - 1]
+    else:
+        return "Error: Z out of range"
+
+
+def elementZtoSymbolZ(Z):
+    """Returns 1-2 character Element symbol formatted WITH atomic number in brackets"""
+    if Z <= 118:
+        return elementstr_symbolswithzinbrackets[Z - 1]
+    else:
+        return "Error: Z out of range"
+
+
+def elementZtoName(Z):
+    """Returns Element name from element Z"""
+    if Z <= 118:
+        return elementstr_namesonly[Z - 1]
+    else:
+        return "Error: Z out of range"
+
+
+def elementSymboltoName(sym: str):
+    """returns element name from element symbol e.g. 'He' -> 'Helium'"""
+    if len(sym) < 4:
+        try:
+            i = elementstr_symbolsonly.index(sym)
+            return elementstr_namesonly[i]
+        except ValueError:
+            print("Element symbol unrecognised")
+    else:
+        return "Error: Symbol too long"
