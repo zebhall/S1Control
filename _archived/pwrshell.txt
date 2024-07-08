@@ -6,3 +6,6 @@ pyinstaller S1Control.spec
 
 linux
 pyinstaller --onefile --windowed --clean --add-data='/home/zeb/.local/lib/python3.12/site-packages/customtkinter:customtkinter/' 'S1Control.py' --hidden-import=plyer.platforms.linux.notification
+
+
+git log --pretty="%x40%h%x2C%an%x2C%ad%x2C%x22%s%x22%x2C" --shortstat > path\to\gitlog.csv
