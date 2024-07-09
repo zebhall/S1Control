@@ -768,8 +768,19 @@ def initialiseLogFile():
 
     # Check for PSS Drive Paths to save backup of Log file
     if os.path.exists(R"Y:/Service/pXRF/Automatic Instrument Logs (S1Control)"):
-        # use gdrive path if available
+        # use nas path if available
         driveArchiveLoc = R"Y:/Service/pXRF/Automatic Instrument Logs (S1Control)"
+
+    elif os.path.exists(R"N:/Service/pXRF/Automatic Instrument Logs (S1Control)"):
+        # use alt N: nas path if available
+        driveArchiveLoc = R"N:/Service/pXRF/Automatic Instrument Logs (S1Control)"
+
+    # this won't work, requires mounting CIFS file share and requires nas root login :(
+    # elif os.path.exists(
+    #     R"smb://pss-nas.local/nas/Service/pXRF/Automatic Instrument Logs (S1Control)"
+    # ):
+    #     # otherwise, check for linux smb nas access as last resort
+    #     driveArchiveLoc = R"smb://pss-nas.local/nas/Service/pXRF/Automatic Instrument Logs (S1Control)"
 
     if pxrf.instr_serialnumber == "UNKNOWN":
         messagebox.showwarning(
@@ -2577,17 +2588,19 @@ def getNearbyEnergies(energy, qty):
 
 
 def sanityCheckSpectrum_SumMethod(
-    spectrum_counts: list[int], spectrum_energies: list[float], source_voltage_in_kV: int
+    spectrum_counts: list[int],
+    spectrum_energies: list[float],
+    source_voltage_in_kV: int,
 ) -> bool:
     """Checks that a spectrum is 'sensible', and that the communicated voltage is accurate.
-    This is required because of a 'voltage bug' in Bruker pXRF instrument software (or NSI tube firmware), 
+    This is required because of a 'voltage bug' in Bruker pXRF instrument software (or NSI tube firmware),
     sometimes causing phases of an assay to use an incorrect voltage from a previous phase.
-    This algorithm operates by working backwards through the list of counts (starting from the right-hand-side of the spectrum), 
+    This algorithm operates by working backwards through the list of counts (starting from the right-hand-side of the spectrum),
     and summing those counts it passes until it reaches the point where 2% of the total counts of the spectrum have been passed.
-    At this point on the spectrum, the energy of that channel should be below the source voltage used for the spectrum 
-    (assuming no sum-peaks, which CAN give a false-positive). The Bremsstrahlung in the spectrum *should* drop down 
+    At this point on the spectrum, the energy of that channel should be below the source voltage used for the spectrum
+    (assuming no sum-peaks, which CAN give a false-positive). The Bremsstrahlung in the spectrum *should* drop down
     to near 0 counts beyond the source voltage (in keV).
-    
+
     `spectrum_counts` is a ordered list of 2048 integers representing the counts from each channel/bin of the detector.\n
     `spectrum_energies` is a ordered list of 2048 floats representing the energy (keV) of each channel/bin of the detector.\n
     `source_voltage_in_kV` is the voltage of the source for the given spectrum, AS REPORTED BY THE OEM API AND IN THE PDZ FILE.\n
