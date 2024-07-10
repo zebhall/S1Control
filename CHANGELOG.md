@@ -1,5 +1,8 @@
 # S1Control Changelog 
 
+## v1.1.2 - 2024/07/10
+ - no longer auto-plots spectra on completion if not on windows (saves memory in embedded applications i.e. linux)
+
 ## v1.1.1 - 2024/06/26
  - Fixed an error related to instrument TCP connection initialisation (no longer assuming instrument is connected on startup)
  - Removed deprecated spectra sanity-checking function
