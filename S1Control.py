@@ -34,8 +34,8 @@ from element_string_lists import (
     all_xray_lines,
 )
 
-versionNum = "v1.1.1"  # v0.9.6 was the first GeRDA-control version
-versionDate = "2024/06/26"
+versionNum = "v1.1.2"  # v0.9.6 was the first GeRDA-control version
+versionDate = "2024/07/10"
 
 
 class BrukerInstrument:
@@ -6286,6 +6286,10 @@ if __name__ == "__main__":
 
     # FLAG TO CONTROL AUTOMATIC SPECTRA PLOTTING ON PHASE/ASSAY COMPLETION
     doAutoPlotSpectra_var = ctk.BooleanVar(value=True)
+    # if on linux (rpi) don't auto plot - saves memory
+    if not sys.platform.startswith("win"):
+        doAutoPlotSpectra_var.set(False)
+        
     checkbox_doAutoPlotSpectra = ctk.CTkCheckBox(
         ctrltabview.tab("Options"),
         text="Automatically Plot Spectra",
