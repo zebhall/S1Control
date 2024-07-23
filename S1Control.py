@@ -34,8 +34,10 @@ from element_string_lists import (
     all_xray_lines,
 )
 
-versionNum = "v1.1.2"  # v0.9.6 was the first GeRDA-control version
-versionDate = "2024/07/10"
+__author__ = "Zeb Hall"
+__contact__ = "zhall@portaspecs.com"
+__version__ = "v1.1.2"  # v0.9.6 was the first GeRDA-control version
+__versiondate__ = "2024/07/10"
 
 
 class BrukerInstrument:
@@ -129,7 +131,7 @@ class BrukerInstrument:
         # xrf.connect((XRF_IP_USB, XRF_PORT_USB))
         if not ping_result:
             if messagebox.askyesno(
-                f"Connection Problem - S1Control {versionNum}",
+                f"Connection Problem - S1Control {__version__}",
                 f"S1Control has not recieved a response from the instrument at {connection_ip}, and is unable to connect. Would you like to continue trying to connect?",
             ):
                 connection_attempt_count = 0
@@ -142,7 +144,7 @@ class BrukerInstrument:
                     connection_attempt_count += 1
                     if connection_attempt_count >= 5:
                         if messagebox.askyesno(
-                            f"Connection Problem - S1Control {versionNum}",
+                            f"Connection Problem - S1Control {__version__}",
                             f"S1Control has still not recieved a response from the instrument at {connection_ip}, and is still unable to connect. Would you like to continue trying to connect?",
                         ):
                             connection_attempt_count = 0
@@ -826,7 +828,7 @@ def initialiseLogFile():
 
     with open(logFilePath, "x", encoding="utf-16") as logFile:
         logFile.write(
-            f"TIMESTAMP \tLog File Created: {logFileStartTime} by {pc_device}/{pc_user}, using S1Control {versionNum}.\n"
+            f"TIMESTAMP \tLog File Created: {logFileStartTime} by {pc_device}/{pc_user}, using S1Control {__version__}.\n"
         )
         logFile.write(
             "--------------------------------------------------------------------------------------------------------------------------------------------\n"
@@ -6069,7 +6071,7 @@ if __name__ == "__main__":
     # About Section
     about_blurb1 = ctk.CTkLabel(
         ctrltabview.tab("About"),
-        text=f"S1Control {versionNum} ({versionDate})\nCreated by Zeb Hall for PSS\nContact: zhall@portaspecs.com\n",
+        text=f"S1Control {__version__} ({__versiondate__})\nCreated by Zeb Hall for PSS\nContact: zhall@portaspecs.com\n",
         image=icon_softwaredev,
         justify="center",
         compound="top",
