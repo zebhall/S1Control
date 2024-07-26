@@ -24,7 +24,15 @@ def rename_files(csv_filename):
                     os.rename(pdz_filename, new_filename + ".pdz")
                     print(f"Renamed {pdz_filename} to {new_filename}.pdz")
                 else:
-                    print(f"PDZ file {pdz_filename} not found. Moving on to next file.")
+                    print(
+                        f"PDZ file {pdz_filename} not found. Checking for RZ version."
+                    )
+                    pdz_filename = f"{pdz_number:05d}-RZ Resources.pdz"
+                    if os.path.exists(pdz_filename):
+                        os.rename(pdz_filename, new_filename + ".pdz")
+                        print(f"Renamed {pdz_filename} to {new_filename}.pdz")
+                    else:
+                        print(f"PDZ file {pdz_filename} not found. Moving on to next file.")
 
 
 if __name__ == "__main__":
